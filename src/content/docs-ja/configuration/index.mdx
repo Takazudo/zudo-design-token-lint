@@ -1,0 +1,99 @@
+---
+title: 設定
+description: .design-token-lint.json で design-token-lint を設定 — 禁止パターン、許可例外、無視ファイル、スキャンパターン。
+sidebar_position: 1
+category: guide
+---
+
+# 設定
+
+プロジェクトルートに `.design-token-lint.json` または `design-token-lint.config.json` ファイルを作成します。リンターは最初に見つかったファイルを読み込み、どちらも存在しない場合は組み込みのデフォルトにフォールバックします。
+
+## 完全な例
+
+```json
+{
+  "prohibited": [
+    "p-{n}",
+    "px-{n}",
+    "py-{n}",
+    "m-{n}",
+    "gap-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}",
+    "border-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0", "p-1px"],
+  "ignore": ["**/*.test.*", "**/*.stories.*"],
+  "patterns": [
+    "src/**/*.{tsx,jsx,astro}",
+    "components/**/*.{tsx,jsx,astro}"
+  ]
+}
+```
+
+## フィールド
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `prohibited` | `string[]` | 違反としてフラグを立てるパターン |
+| `allowed` | `string[]` | 禁止パターンに一致しても常に通す例外 |
+| `ignore` | `string[]` | 完全にスキップするファイル glob パターン |
+| `patterns` | `string[]` | スキャン対象の glob パターン(CLI 引数がない場合に使用) |
+
+すべてのフィールドはオプションで、省略時は組み込みのデフォルトにフォールバックします。
+
+### `prohibited`
+
+フラグを立てるクラス名パターンの配列。各パターンはプレースホルダー構文を使います:
+
+- **`{n}`** — `4`、`8`、`0.5`、`16` などの数値に一致。間隔(padding、margin、gap、inset、top/left/right/bottom など)に使用
+- **`{color}`** — 標準的な Tailwind カラー名に一致: `slate`、`gray`、`zinc`、`neutral`、`stone`、`red`、`orange`、`amber`、`yellow`、`lime`、`green`、`emerald`、`teal`、`cyan`、`sky`、`blue`、`indigo`、`violet`、`purple`、`fuchsia`、`pink`、`rose`
+- **`{shade}`** — `50`、`100`、`500`、`950` などの 2〜3 桁のシェード値に一致
+
+例:
+
+- `p-{n}` は `p-4`、`p-8`、`p-0.5` に一致
+- `bg-{color}-{shade}` は `bg-red-500`、`bg-blue-300` に一致
+- `gap-x-{n}` は `gap-x-2`、`gap-x-6` に一致
+
+### `allowed`
+
+完全一致の許可リスト。この配列にあるクラスは禁止パターンに関係なく常に通ります。`p-0`、`m-0`、`p-1px` のようなエスケープハッチに便利です。
+
+### `ignore`
+
+完全にスキップするファイル glob パターン。よくあるパターン:
+
+```json
+{
+  "ignore": [
+    "**/*.test.*",
+    "**/*.stories.*",
+    "**/*.spec.*"
+  ]
+}
+```
+
+### `patterns`
+
+CLI が明示的なファイル引数なしで呼び出されたときにスキャンするファイル glob パターン。省略時はデフォルトセット(`src/**`、`components/**`、`lib/**`、`app/**`)を使用します。
+
+## 組み込みのデフォルト
+
+設定ファイルが存在しない場合、リンターは以下のデフォルトを使用します:
+
+- **Prohibited**: すべての標準的な間隔ユーティリティ(`p-*`、`m-*`、`gap-*`、`inset-*`、`scroll-*`)の数値版、およびすべてのカラーユーティリティ(`bg-*`、`text-*`、`border-*`、`ring-*` など)のデフォルト Tailwind カラーとシェードの組み合わせ
+- **Allowed**: `p-0`、`m-0`、`gap-0`、`p-1px`
+- **Ignore**: `**/*.test.*`、`**/*.stories.*`
+
+完全なデフォルトリストは[パッケージの README](https://github.com/zudolab/zudo-design-token-lint/blob/main/packages/design-token-lint/README.md)を参照してください。
+
+## 自動的に通るクラス
+
+これらのクラスは `allowed` に含まれていなくても常に通ります:
+
+- **セマンティック間隔トークン**: `p-hgap-sm`、`gap-vgap-xs`、`m-hgap-md`(`hgap-*` または `vgap-*` サフィックスを持つクラス)
+- **デフォルト以外のカラー**: `bg-surface`、`text-fg`、`bg-zd-black`(標準 Tailwind パレット名ではないカラー名)
+- **任意値**: `w-[28px]`、`bg-[#123]`、`p-[10px]`
+- **間隔・色以外のユーティリティ**: `flex`、`grid`、`hidden`、`w-full`、`font-bold` など

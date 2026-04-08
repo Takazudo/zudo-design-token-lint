@@ -1,0 +1,104 @@
+---
+title: CLI
+description: Command-line usage and options for design-token-lint.
+sidebar_position: 2
+category: guide
+---
+
+# CLI
+
+The `design-token-lint` CLI scans files for prohibited Tailwind class names and reports violations.
+
+## Basic Usage
+
+```bash
+# Scan default patterns (from config.patterns or built-in defaults)
+design-token-lint
+
+# Scan specific files or globs
+design-token-lint "src/**/*.tsx" "pages/**/*.tsx"
+
+# Scan a single file
+design-token-lint src/App.tsx
+```
+
+## Exit Codes
+
+| Code | Meaning |
+|---|---|
+| `0` | No violations found (or no files matched) |
+| `1` | Violations found |
+| `2` | Unexpected error (e.g., file system failure) |
+
+Use exit code `1` in CI to fail builds when violations appear:
+
+```yaml
+# .github/workflows/lint.yml
+- run: pnpm design-token-lint
+```
+
+## Output Format
+
+Violations are grouped by file. Each line shows the line number, the offending class, and the reason:
+
+```
+Scanning 1 file(s)...
+
+src/App.tsx
+  L12: p-4 — Numeric spacing "p-4" — use semantic token (hgap-*/vgap-*) or arbitrary value
+  L12: bg-gray-500 — Default Tailwind color "bg-gray-500" — use design system token (zd-*, p0-p15, semantic)
+
+Found 2 violation(s) in 1 file(s).
+```
+
+All output goes to stderr so it doesn't interfere with scripts that pipe stdout.
+
+## File Pattern Resolution
+
+When called with no arguments, the CLI resolves files in this order:
+
+1. If `config.patterns` is set, use those globs
+2. Otherwise, use the built-in defaults: `src/**/*.{tsx,jsx,astro}`, `components/**/*.{tsx,jsx,astro}`, `lib/**/*.{tsx,jsx}`, `app/**/*.{tsx,jsx}`
+
+When called with arguments, each argument is treated as a file path or glob. The `ignore` config still applies.
+
+## Integration with package.json
+
+Add a script for convenient invocation:
+
+```json
+{
+  "scripts": {
+    "lint:tokens": "design-token-lint"
+  }
+}
+```
+
+Then run:
+
+```bash
+pnpm lint:tokens
+```
+
+## Integration with lint-staged
+
+Run only on changed files:
+
+```json
+{
+  "lint-staged": {
+    "*.{tsx,jsx,astro}": "design-token-lint"
+  }
+}
+```
+
+## Integration with CI
+
+Add a GitHub Actions step:
+
+```yaml
+- name: Lint design tokens
+  run: pnpm design-token-lint
+```
+
+Any violation will exit with code `1` and fail the workflow.

@@ -1,0 +1,95 @@
+---
+title: Methodology
+description: The reasoning behind design-token-lint — why raw Tailwind utilities are banned and what semantic tokens replace them.
+sidebar_position: 3
+category: guide
+---
+
+# Methodology
+
+`design-token-lint` enforces a specific approach to building design systems with Tailwind CSS. This page explains the reasoning.
+
+## The Problem
+
+Tailwind ships with hundreds of utility classes and a default color palette. This is great for prototypes but creates problems at scale:
+
+1. **Inconsistency creeps in silently.** A developer writes `p-4` here, `p-6` there, and `p-3` somewhere else. None are wrong. None are flagged. Design drifts.
+2. **Refactoring is expensive.** When the design system changes — say, spacing base unit moves from `4px` to `6px` — every hardcoded `p-4` needs to be audited and possibly updated.
+3. **Intent is lost.** `p-4` says "padding of 4 units" but doesn't say *why*. Is it card padding? Button inset? Section gutter? The class gives no clue.
+
+## The Solution
+
+Replace raw numeric utilities with **semantic tokens**:
+
+```diff
+- <div class="p-4 gap-6 bg-gray-100 text-gray-900">
++ <div class="p-hgap-md gap-vgap-sm bg-surface text-fg">
+```
+
+The semantic version:
+
+- Communicates intent (`surface`, `fg`, `md`, `sm`)
+- Can be re-tuned centrally without touching every component
+- Stays consistent because there's a finite vocabulary
+
+## Token Categories
+
+### Spacing
+
+Use `hgap-*` (horizontal) and `vgap-*` (vertical) suffixes:
+
+```
+p-hgap-sm   # small horizontal padding
+m-vgap-lg   # large vertical margin
+gap-hgap-md # medium gap
+```
+
+Scale names (`2xs`, `xs`, `sm`, `md`, `lg`, `xl`, `2xl`, ...) are defined in your Tailwind config and map to actual pixel values.
+
+### Colors
+
+Use semantic names that describe role, not hue:
+
+```
+bg-surface     # any surface (cards, panels)
+bg-surface-alt # alternate surface tint
+text-fg        # primary foreground
+text-muted     # de-emphasized text
+border-muted   # subtle borders
+bg-accent      # primary action color
+```
+
+Or use project-scoped tokens:
+
+```
+bg-zd-black    # project-specific palette
+text-p7        # primary palette slot 7
+```
+
+The exact names are up to your design system — the linter just blocks *default Tailwind colors* (`gray`, `blue`, `red`, etc.).
+
+## What Still Works
+
+The linter isn't trying to ban Tailwind. Most utilities still work:
+
+- Layout: `flex`, `grid`, `block`, `hidden`, `w-full`, `h-screen`
+- Typography: `font-bold`, `text-lg`, `leading-tight`, `tracking-wide`
+- Effects: `shadow`, `rounded`, `opacity-50`, `transition`
+- Zero and 1px spacing: `p-0`, `m-0`, `gap-0`, `p-1px`
+- Arbitrary values: `w-[28px]`, `bg-[#123]`, `p-[10px]`
+
+Only **raw numeric spacing** and **default-palette colors** are flagged.
+
+## Escape Hatches
+
+Sometimes you genuinely need a raw value. Use one of:
+
+1. **Arbitrary values**: `p-[14px]` — explicit, searchable, reviewer-visible
+2. **Ignore comment**: `{/* design-token-lint-ignore */}` on the preceding line — see [ignore syntax](../ignore-syntax/index.md)
+3. **Allowlist**: add the class to your config's `allowed` array
+
+Prefer arbitrary values for one-offs. Reserve allowlist for legitimate exceptions that repeat.
+
+## Further Reading
+
+This linter is a concrete enforcement of the broader [zcss methodology](https://takazudomodular.com/pj/zcss/docs/methodology/) — a set of patterns for building consistent, maintainable design systems with Tailwind CSS. Read that page for the full theoretical background.

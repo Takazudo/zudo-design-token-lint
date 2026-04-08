@@ -58,12 +58,12 @@ Create a `.design-token-lint.json` (or `design-token-lint.config.json`) in your 
 
 ### Config Fields
 
-| Field | Type | Description |
-|---|---|---|
+| Field        | Type       | Description                                                                                         |
+| ------------ | ---------- | --------------------------------------------------------------------------------------------------- |
 | `prohibited` | `string[]` | Patterns to flag. Placeholders: `{n}` (number), `{color}` (Tailwind color name), `{shade}` (50-950) |
-| `allowed` | `string[]` | Exceptions that are always allowed, even if they match a prohibited pattern |
-| `ignore` | `string[]` | File glob patterns to skip entirely |
-| `patterns` | `string[]` | File glob patterns to scan (overrides CLI defaults when no args given) |
+| `allowed`    | `string[]` | Exceptions that are always allowed, even if they match a prohibited pattern                         |
+| `ignore`     | `string[]` | File glob patterns to skip entirely                                                                 |
+| `patterns`   | `string[]` | File glob patterns to scan (overrides CLI defaults when no args given)                              |
 
 All fields fall back to built-in defaults if omitted.
 
@@ -140,7 +140,7 @@ The extractor handles:
 
 - `className="..."` and `class="..."` (JSX/Astro)
 - `className={'...'}` and `class={'...'}` (single-quote brace)
-- `` className={`...`} `` (template literals, simple cases)
+- ``className={`...`}`` (template literals, simple cases)
 - `class:list={["...", '...']}` (Astro)
 - `cn(...)`, `clsx(...)`, `classNames(...)`, `twMerge(...)` utility calls
 

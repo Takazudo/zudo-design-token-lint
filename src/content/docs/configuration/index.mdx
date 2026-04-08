@@ -1,0 +1,99 @@
+---
+title: Configuration
+description: Configure design-token-lint with .design-token-lint.json — prohibited patterns, allowed exceptions, ignored files, and scan patterns.
+sidebar_position: 1
+category: guide
+---
+
+# Configuration
+
+Create a `.design-token-lint.json` or `design-token-lint.config.json` file at your project root. The linter loads the first file it finds, falling back to built-in defaults if neither exists.
+
+## Full Example
+
+```json
+{
+  "prohibited": [
+    "p-{n}",
+    "px-{n}",
+    "py-{n}",
+    "m-{n}",
+    "gap-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}",
+    "border-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0", "p-1px"],
+  "ignore": ["**/*.test.*", "**/*.stories.*"],
+  "patterns": [
+    "src/**/*.{tsx,jsx,astro}",
+    "components/**/*.{tsx,jsx,astro}"
+  ]
+}
+```
+
+## Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `prohibited` | `string[]` | Patterns to flag as violations |
+| `allowed` | `string[]` | Exceptions that always pass, even if they match a prohibited pattern |
+| `ignore` | `string[]` | File glob patterns to skip entirely |
+| `patterns` | `string[]` | File glob patterns to scan (used when no CLI args are given) |
+
+All fields are optional and fall back to built-in defaults.
+
+### `prohibited`
+
+An array of class name patterns to flag. Each pattern uses a placeholder syntax:
+
+- **`{n}`** — matches numeric values like `4`, `8`, `0.5`, `16`. Used for spacing (padding, margin, gap, inset, top/left/right/bottom, etc.)
+- **`{color}`** — matches standard Tailwind color names: `slate`, `gray`, `zinc`, `neutral`, `stone`, `red`, `orange`, `amber`, `yellow`, `lime`, `green`, `emerald`, `teal`, `cyan`, `sky`, `blue`, `indigo`, `violet`, `purple`, `fuchsia`, `pink`, `rose`
+- **`{shade}`** — matches 2-3 digit shade values like `50`, `100`, `500`, `950`
+
+Examples:
+
+- `p-{n}` matches `p-4`, `p-8`, `p-0.5`
+- `bg-{color}-{shade}` matches `bg-red-500`, `bg-blue-300`
+- `gap-x-{n}` matches `gap-x-2`, `gap-x-6`
+
+### `allowed`
+
+An exact-match allowlist. Any class in this array always passes, regardless of prohibited patterns. Useful for escape hatches like `p-0`, `m-0`, or `p-1px`.
+
+### `ignore`
+
+File glob patterns to skip entirely. Common patterns:
+
+```json
+{
+  "ignore": [
+    "**/*.test.*",
+    "**/*.stories.*",
+    "**/*.spec.*"
+  ]
+}
+```
+
+### `patterns`
+
+File glob patterns to scan when the CLI is called without explicit file arguments. If omitted, the CLI uses a default set (`src/**`, `components/**`, `lib/**`, `app/**`).
+
+## Built-in Defaults
+
+If no config file exists, the linter uses these defaults:
+
+- **Prohibited**: all standard spacing utilities (`p-*`, `m-*`, `gap-*`, `inset-*`, `scroll-*`) with numeric values, plus all color utilities (`bg-*`, `text-*`, `border-*`, `ring-*`, etc.) with default Tailwind color-shade combinations
+- **Allowed**: `p-0`, `m-0`, `gap-0`, `p-1px`
+- **Ignore**: `**/*.test.*`, `**/*.stories.*`
+
+See the [package README](https://github.com/zudolab/zudo-design-token-lint/blob/main/packages/design-token-lint/README.md) for the full default list.
+
+## What Passes Automatically
+
+These classes always pass without being in `allowed`:
+
+- **Semantic spacing tokens**: `p-hgap-sm`, `gap-vgap-xs`, `m-hgap-md` (classes with `hgap-*` or `vgap-*` suffixes)
+- **Non-default colors**: `bg-surface`, `text-fg`, `bg-zd-black` (any color name that isn't one of the standard Tailwind palette names)
+- **Arbitrary values**: `w-[28px]`, `bg-[#123]`, `p-[10px]`
+- **Non-spacing and non-color utilities**: `flex`, `grid`, `hidden`, `w-full`, `font-bold`, etc.

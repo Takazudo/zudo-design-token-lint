@@ -1,0 +1,192 @@
+---
+title: Examples
+description: Typical configurations and usage patterns for design-token-lint in real projects.
+sidebar_position: 5
+category: guide
+---
+
+# Examples
+
+Common configurations and usage patterns.
+
+## Minimal Config
+
+Start simple. Let the built-in defaults do the heavy lifting:
+
+```json
+{
+  "allowed": ["p-0", "m-0", "gap-0"]
+}
+```
+
+This uses all default prohibited patterns and just adds zero-spacing exceptions.
+
+## Tailwind + Design Token Project
+
+A typical Tailwind project with a semantic spacing scale and custom color palette:
+
+```json
+{
+  "prohibited": [
+    "p-{n}", "px-{n}", "py-{n}", "pt-{n}", "pr-{n}", "pb-{n}", "pl-{n}",
+    "m-{n}", "mx-{n}", "my-{n}", "mt-{n}", "mr-{n}", "mb-{n}", "ml-{n}",
+    "gap-{n}", "gap-x-{n}", "gap-y-{n}",
+    "space-x-{n}", "space-y-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}",
+    "border-{color}-{shade}",
+    "ring-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0", "p-1px"],
+  "ignore": [
+    "**/*.test.*",
+    "**/*.stories.*",
+    "**/vendor/**"
+  ],
+  "patterns": [
+    "src/**/*.{tsx,jsx,astro}",
+    "components/**/*.{tsx,jsx,astro}"
+  ]
+}
+```
+
+## Next.js App
+
+```json
+{
+  "prohibited": [
+    "p-{n}", "m-{n}", "gap-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0"],
+  "ignore": [
+    "**/*.test.*",
+    "**/*.stories.*",
+    ".next/**"
+  ],
+  "patterns": [
+    "app/**/*.{tsx,jsx}",
+    "components/**/*.{tsx,jsx}",
+    "pages/**/*.{tsx,jsx}"
+  ]
+}
+```
+
+## Astro Project
+
+```json
+{
+  "prohibited": [
+    "p-{n}", "m-{n}", "gap-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}",
+    "border-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0"],
+  "ignore": [
+    "**/*.test.*",
+    "dist/**",
+    ".astro/**"
+  ],
+  "patterns": [
+    "src/**/*.{astro,tsx,jsx}"
+  ]
+}
+```
+
+## Monorepo with Multiple Packages
+
+Place a config at the monorepo root and scan all packages:
+
+```json
+{
+  "prohibited": [
+    "p-{n}", "m-{n}", "gap-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0"],
+  "ignore": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/*.test.*"
+  ],
+  "patterns": [
+    "packages/*/src/**/*.{tsx,jsx,astro}",
+    "apps/*/src/**/*.{tsx,jsx,astro}"
+  ]
+}
+```
+
+## CI Integration — GitHub Actions
+
+Fail CI on violations:
+
+```yaml
+# .github/workflows/lint.yml
+name: Lint
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm design-token-lint
+```
+
+## Pre-commit Hook
+
+Run on staged files with [lint-staged](https://github.com/lint-staged/lint-staged):
+
+```json
+{
+  "lint-staged": {
+    "*.{tsx,jsx,astro}": "design-token-lint"
+  }
+}
+```
+
+## Custom Script
+
+Use the programmatic API to run the linter with project-specific logic:
+
+```ts
+// scripts/lint-tokens.mjs
+import { loadConfig, compileConfig, setConfig, lintFile } from '@zudolab/design-token-lint';
+import { glob } from 'glob';
+
+const config = await loadConfig(process.cwd());
+setConfig(compileConfig(config));
+
+const files = await glob('src/**/*.{tsx,jsx}');
+let totalViolations = 0;
+
+for (const file of files) {
+  const results = await lintFile(file);
+  for (const r of results) {
+    console.log(`${r.filePath}:${r.line}  ${r.className}  ${r.reason}`);
+    totalViolations++;
+  }
+}
+
+process.exit(totalViolations > 0 ? 1 : 0);
+```
+
+## Ignoring Legitimate Exceptions
+
+When integrating a third-party component that requires raw Tailwind:
+
+```tsx
+{/* design-token-lint-ignore — vendor component requires literal p-4 */}
+<VendorCalendar className="p-4 bg-gray-50" />
+```
+
+See [ignore syntax](../ignore-syntax/index.md) for all comment forms.
