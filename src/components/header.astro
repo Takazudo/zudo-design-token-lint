@@ -1,0 +1,425 @@
+---
+import SidebarToggle from "@/components/sidebar-toggle";
+import ThemeToggle from "@/components/theme-toggle";
+import { settings } from "@/config/settings";
+import { withBase, stripBase, navHref } from "@/utils/base";
+import { defaultLocale, t, type Locale } from "@/config/i18n";
+import LanguageSwitcher from "@/components/language-switcher.astro";
+import { locales } from "@/config/i18n";
+import Search from "@/components/search.astro";
+import VersionSwitcher from "@/components/version-switcher.astro";
+import type { VersionAvailability } from "@/utils/version-availability";
+
+interface Props {
+  lang?: Locale;
+  currentPath?: string;
+  currentVersion?: string;
+  currentSlug?: string;
+}
+
+const { lang, currentPath = "", currentVersion, currentSlug } = Astro.props;
+const isNonDefaultLocale = lang != null && lang !== defaultLocale;
+const pathWithoutBase = stripBase(currentPath);
+const pathForMatch = isNonDefaultLocale
+  ? pathWithoutBase.replace(new RegExp(`^/${lang}`), "")
+  : pathWithoutBase;
+
+// Collect all matchable paths: parent paths + children paths
+const allNavPaths = settings.headerNav.flatMap((item) => {
+  const paths = [item.path];
+  if (item.children) {
+    paths.push(...item.children.map((child) => child.path));
+  }
+  return paths;
+});
+const activeNavPath = allNavPaths
+  .filter((p) => pathForMatch.startsWith(p))
+  .sort((a, b) => b.length - a.length)[0];
+
+/** Check if a nav item (or any of its children) is active */
+function isNavItemActive(item: (typeof settings.headerNav)[number]): boolean {
+  if (activeNavPath === item.path) return true;
+  if (item.children?.some((child) => activeNavPath === child.path)) return true;
+  return false;
+}
+---
+
+<header
+  class="sticky top-0 z-50 flex h-[3.5rem] items-center border-b border-muted bg-surface px-hsp-lg"
+  data-header
+>
+  <SidebarToggle client:media="(max-width: 1023px)">
+    <slot name="sidebar" />
+  </SidebarToggle>
+
+  <a
+    href={withBase(isNonDefaultLocale ? `/${lang}/` : "/")}
+    class="whitespace-nowrap text-subheading font-bold text-fg hover:underline focus:underline shrink-0"
+    data-header-logo
+  >
+    {settings.siteName}
+  </a>
+
+  <nav
+    aria-label="Main"
+    class="relative ml-hsp-xl hidden min-w-0 flex-1 items-center gap-x-hsp-2xs whitespace-nowrap lg:flex"
+    data-header-nav
+  >
+    {
+      settings.headerNav.map((item) => {
+        const isActive = isNavItemActive(item);
+        const href = navHref(item.path, lang, currentVersion);
+        const label = item.labelKey ? t(item.labelKey, lang) : item.label;
+
+        if (item.children && item.children.length > 0) {
+          return (
+            <div
+              class="group relative shrink-0"
+              data-nav-item
+              data-nav-item-dropdown
+            >
+              <a
+                href={href}
+                aria-current={isActive ? "page" : undefined}
+                aria-haspopup="true"
+                aria-expanded="false"
+                class:list={[
+                  "flex items-center gap-x-hsp-xs px-hsp-md py-vsp-2xs text-small font-medium transition-colors",
+                  isActive
+                    ? "bg-fg text-bg"
+                    : "text-muted hover:underline focus:underline",
+                ]}
+              >
+                {label}
+                <svg
+                  class:list={[
+                    "h-[0.5rem] w-[0.5rem] shrink-0",
+                    isActive ? "text-bg" : "text-muted",
+                  ]}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="3"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </a>
+              <div class="absolute left-0 top-full z-50 hidden group-hover:block group-focus-within:block pt-vsp-3xs">
+                <div class="min-w-[10rem] border border-muted rounded bg-surface shadow-lg py-vsp-3xs">
+                  {item.children.map((child) => {
+                    const childHref = navHref(child.path, lang, currentVersion);
+                    const childLabel = child.labelKey
+                      ? t(child.labelKey, lang)
+                      : child.label;
+                    const childActive = activeNavPath === child.path;
+                    return (
+                      <a
+                        href={childHref}
+                        data-active={childActive ? "" : undefined}
+                        class:list={[
+                          "block px-hsp-md py-vsp-2xs text-small hover:bg-accent/10 hover:underline",
+                          childActive ? "font-bold text-accent" : "text-fg",
+                        ]}
+                      >
+                        {childLabel}
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <a
+            href={href}
+            aria-current={isActive ? "page" : undefined}
+            data-nav-item
+            class:list={[
+              "px-hsp-md py-vsp-2xs text-small font-medium transition-colors shrink-0",
+              isActive
+                ? "bg-fg text-bg"
+                : "text-muted hover:underline focus:underline",
+            ]}
+          >
+            {label}
+          </a>
+        );
+      })
+    }
+
+    <div class="relative shrink-0" data-nav-more style="display:none">
+      <button
+        type="button"
+        class="px-hsp-md py-vsp-2xs text-small font-medium text-muted hover:underline cursor-pointer"
+        data-nav-more-toggle
+        aria-expanded="false"
+      >
+        &middot;&middot;&middot;
+      </button>
+      <ul
+        class="absolute right-0 top-full z-10 mt-vsp-3xs hidden min-w-[8rem] border border-muted rounded bg-surface shadow-lg whitespace-nowrap"
+        data-nav-more-menu
+      >
+      </ul>
+    </div>
+  </nav>
+
+  <div
+    class="ml-auto flex shrink-0 items-center gap-x-hsp-md"
+    data-header-right
+  >
+
+    {
+      settings.versions && (
+        <div class="hidden lg:block">
+          <VersionSwitcher
+            currentVersion={currentVersion}
+            currentSlug={currentSlug}
+            lang={lang}
+            availability={versionAvailability}
+            idSuffix="header"
+          />
+        </div>
+      )
+    }
+    <div class="hidden lg:flex items-center gap-x-hsp-md">
+      {
+        settings.colorMode && (
+          <ThemeToggle
+            defaultMode={settings.colorMode.defaultMode}
+            client:load
+          />
+        )
+      }
+
+      {lang && <LanguageSwitcher lang={lang} locales={locales} />}
+    </div>
+    <Search />
+
+  </div>
+</header>
+
+<script>
+  let cleanupNavOverflow: (() => void) | null = null;
+
+  function initNavOverflow() {
+    cleanupNavOverflow?.();
+
+    const nav = document.querySelector<HTMLElement>("[data-header-nav]");
+    const moreContainer =
+      document.querySelector<HTMLElement>("[data-nav-more]");
+    const moreMenu = document.querySelector<HTMLElement>(
+      "[data-nav-more-menu]",
+    );
+    const moreToggle = document.querySelector<HTMLButtonElement>(
+      "[data-nav-more-toggle]",
+    );
+    if (!nav || !moreContainer || !moreMenu || !moreToggle) return;
+
+    const items = Array.from(
+      nav.querySelectorAll<HTMLElement>(":scope > [data-nav-item]"),
+    );
+    if (items.length === 0) return;
+
+    const controller = new AbortController();
+
+    function update() {
+      // Reset: show everything for measurement
+      items.forEach((el) => {
+        el.style.display = "";
+      });
+      moreContainer!.style.display = "";
+      moreMenu!.innerHTML = "";
+      moreMenu!.classList.add("hidden");
+      moreToggle!.setAttribute("aria-expanded", "false");
+
+      // Measure widths each time (accurate after font loading)
+      const itemWidths = items.map((el) => el.offsetWidth);
+      const moreWidth = moreContainer!.offsetWidth;
+      const navGap = parseFloat(getComputedStyle(nav!).columnGap) || 0;
+
+      // With flex-1 on nav, clientWidth reflects the flex-allocated space
+      const available = nav!.clientWidth;
+
+      if (available <= 0) {
+        moreContainer!.style.display = "none";
+        return;
+      }
+
+      // Check if all items fit without "..."
+      let total = 0;
+      for (let i = 0; i < itemWidths.length; i++) {
+        total += itemWidths[i] + (i > 0 ? navGap : 0);
+      }
+
+      if (total <= available) {
+        moreContainer!.style.display = "none";
+        return;
+      }
+
+      // Greedy fill: find how many items fit alongside "..."
+      let used = 0;
+      let cutoffIndex = 0;
+
+      for (let i = 0; i < items.length; i++) {
+        const w = itemWidths[i] + (i > 0 ? navGap : 0);
+        if (used + w > available - moreWidth - navGap) break;
+        used += w;
+        cutoffIndex = i + 1;
+      }
+
+      // Hide overflowed items
+      for (let i = cutoffIndex; i < items.length; i++) {
+        items[i].style.display = "none";
+      }
+
+      // Populate dropdown
+      for (let i = cutoffIndex; i < items.length; i++) {
+        const el = items[i];
+        const isDropdown = el.hasAttribute("data-nav-item-dropdown");
+
+        if (isDropdown) {
+          // Dropdown parent: show as bold label, children as indented links
+          const parentLink = el.querySelector<HTMLAnchorElement>(":scope > a");
+          const childLinks =
+            el.querySelectorAll<HTMLAnchorElement>(":scope > div a");
+          if (parentLink) {
+            const li = document.createElement("li");
+            const a = document.createElement("a");
+            a.href = parentLink.href;
+            a.textContent =
+              parentLink.textContent?.trim().replace(/\s+/g, " ") || "";
+            a.className =
+              "block px-hsp-md py-vsp-2xs text-small font-bold hover:bg-accent/10 text-fg";
+            if (parentLink.getAttribute("aria-current") === "page") {
+              a.className += " text-accent";
+            }
+            li.appendChild(a);
+            moreMenu!.appendChild(li);
+          }
+          childLinks.forEach((child) => {
+            const li = document.createElement("li");
+            const a = document.createElement("a");
+            a.href = child.href;
+            a.textContent = child.textContent?.trim() || "";
+            const isChildActive = child.hasAttribute("data-active");
+            a.className = isChildActive
+              ? "block pl-hsp-xl pr-hsp-md py-vsp-2xs text-small font-bold text-accent hover:bg-accent/10"
+              : "block pl-hsp-xl pr-hsp-md py-vsp-2xs text-small text-muted hover:bg-accent/10 hover:text-fg";
+            li.appendChild(a);
+            moreMenu!.appendChild(li);
+          });
+        } else {
+          // Simple flat item
+          const anchor = el as HTMLAnchorElement;
+          const li = document.createElement("li");
+          const a = document.createElement("a");
+          a.href = anchor.href;
+          a.textContent = anchor.textContent?.trim() || "";
+          a.className =
+            "block px-hsp-md py-vsp-2xs text-small hover:bg-accent/10 text-fg";
+          if (anchor.getAttribute("aria-current") === "page") {
+            a.className += " font-bold text-accent";
+          }
+          li.appendChild(a);
+          moreMenu!.appendChild(li);
+        }
+      }
+    }
+
+    // Toggle dropdown
+    moreToggle.addEventListener(
+      "click",
+      () => {
+        const isOpen = !moreMenu.classList.contains("hidden");
+        moreMenu.classList.toggle("hidden", isOpen);
+        moreToggle.setAttribute("aria-expanded", String(!isOpen));
+      },
+      { signal: controller.signal },
+    );
+
+    document.addEventListener(
+      "click",
+      (e) => {
+        if (!moreContainer.contains(e.target as Node)) {
+          moreMenu.classList.add("hidden");
+          moreToggle.setAttribute("aria-expanded", "false");
+        }
+      },
+      { signal: controller.signal },
+    );
+
+    // Unified Escape handler: overflow menu takes priority, then CSS dropdowns
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.key !== "Escape") return;
+        // Priority 1: close overflow "..." menu if open
+        if (!moreMenu.classList.contains("hidden")) {
+          moreMenu.classList.add("hidden");
+          moreToggle.setAttribute("aria-expanded", "false");
+          moreToggle.focus();
+          return;
+        }
+        // Priority 2: close CSS-only dropdown by blurring
+        const active = document.activeElement as HTMLElement | null;
+        const dropdown = active?.closest("[data-nav-item-dropdown]");
+        if (dropdown) {
+          active?.blur();
+        }
+      },
+      { signal: controller.signal },
+    );
+
+    // Toggle aria-expanded on dropdown triggers for screen readers
+    const dropdowns = nav.querySelectorAll<HTMLElement>(
+      "[data-nav-item-dropdown]",
+    );
+    for (const dd of dropdowns) {
+      const trigger = dd.querySelector<HTMLElement>(":scope > a");
+      if (!trigger) continue;
+      const setExpanded = (v: boolean) =>
+        trigger.setAttribute("aria-expanded", String(v));
+      dd.addEventListener("mouseenter", () => setExpanded(true), {
+        signal: controller.signal,
+      });
+      dd.addEventListener("mouseleave", () => setExpanded(false), {
+        signal: controller.signal,
+      });
+      dd.addEventListener("focusin", () => setExpanded(true), {
+        signal: controller.signal,
+      });
+      dd.addEventListener(
+        "focusout",
+        (e) => {
+          if (!dd.contains((e as FocusEvent).relatedTarget as Node)) {
+            setExpanded(false);
+          }
+        },
+        { signal: controller.signal },
+      );
+    }
+
+    // ResizeObserver on nav catches: window resize, client component mounting
+    const ro = new ResizeObserver(update);
+    ro.observe(nav);
+    controller.signal.addEventListener("abort", () => ro.disconnect());
+
+    // Recalculate after fonts load (item widths may change)
+    document.fonts.ready.then(update);
+
+    update();
+
+    cleanupNavOverflow = () => controller.abort();
+  }
+
+  initNavOverflow();
+  document.addEventListener("astro:after-swap", initNavOverflow);
+</script>
