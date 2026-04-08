@@ -45,6 +45,8 @@ export function extractClasses(content: string): ExtractedClass[] {
   // Patterns to match class attributes
   // className="..." or class="..."
   const doubleQuoteAttr = /(?:className|class)\s*=\s*"([^"]+)"/g;
+  // class='...' (single-quote HTML attribute, common in Astro/HTML)
+  const singleQuoteAttr = /(?:className|class)\s*=\s*'([^']+)'/g;
   // className={'...'} or class={'...'}
   const singleQuoteBrace = /(?:className|class)\s*=\s*\{\s*'([^']+)'\s*\}/g;
   // className={`...`} template literal (simple, no expressions)
@@ -62,6 +64,11 @@ export function extractClasses(content: string): ExtractedClass[] {
 
     // Extract from double-quote class/className attributes
     for (const match of line.matchAll(doubleQuoteAttr)) {
+      addClasses(results, match[1], lineNum);
+    }
+
+    // Extract from single-quote class/className attributes (HTML/Astro)
+    for (const match of line.matchAll(singleQuoteAttr)) {
       addClasses(results, match[1], lineNum);
     }
 

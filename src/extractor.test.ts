@@ -21,6 +21,15 @@ describe('extractClasses', () => {
     ]);
   });
 
+  it("extracts from class='...' (single-quote HTML)", () => {
+    const content = "<div class='p-4 flex'>";
+    const result = extractClasses(content);
+    expect(result).toEqual([
+      { className: 'p-4', line: 1 },
+      { className: 'flex', line: 1 },
+    ]);
+  });
+
   it("extracts from className={'...'}", () => {
     const content = "<div className={'gap-4 hidden'}>";
     const result = extractClasses(content);
