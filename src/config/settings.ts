@@ -24,13 +24,13 @@ export const settings = {
     darkScheme: "Default Dark",
     respectPrefersColorScheme: true,
   } satisfies ColorModeConfig,
-  siteName: "Zudo Design Token Lint",
-  siteDescription: "" as string,
-  base: "/",
+  siteName: "Design Token Lint",
+  siteDescription: "Lint Tailwind CSS class names against design system tokens. Enforce semantic spacing and color tokens instead of raw numeric utilities.",
+  base: "/pj/zudo-design-token-lint/",
   trailingSlash: false as boolean,
   noindex: false as boolean,
-  editUrl: false as string | false,
-  siteUrl: "" as string,
+  editUrl: "https://github.com/zudolab/zudo-design-token-lint/edit/main/" as string | false,
+  siteUrl: "https://takazudomodular.com" as string,
   docsDir: "src/content/docs",
   locales: {
     ja: { label: "JA", dir: "src/content/docs-ja" },
@@ -57,14 +57,25 @@ export const settings = {
       {
         title: "Docs",
         items: [
-          { label: "Getting Started", href: "/docs/getting-started" },
+          { label: "Getting Started", href: "/pj/zudo-design-token-lint/docs/getting-started" },
+          { label: "Configuration", href: "/pj/zudo-design-token-lint/docs/configuration" },
+          { label: "CLI", href: "/pj/zudo-design-token-lint/docs/cli" },
+        ],
+      },
+      {
+        title: "More",
+        items: [
+          { label: "GitHub", href: "https://github.com/zudolab/zudo-design-token-lint" },
+          { label: "npm", href: "https://www.npmjs.com/package/@zudolab/design-token-lint" },
         ],
       },
     ],
-    copyright: "Copyright © 2026 Your Name. Built with zudo-doc.",
+    copyright: "Copyright © 2026 zudolab. Built with zudo-doc.",
   } satisfies FooterConfig as FooterConfig | false,
   headerNav: [
     { label: "Getting Started", path: "/docs/getting-started", categoryMatch: "getting-started" },
+    { label: "Guide", path: "/docs/configuration", categoryMatch: "guide" },
+    { label: "API", path: "/docs/api", categoryMatch: "api" },
     { label: "Changelog", path: "/docs/changelog", categoryMatch: "changelog" },
   ] satisfies HeaderNavItem[],
 };

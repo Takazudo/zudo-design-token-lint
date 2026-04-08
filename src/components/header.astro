@@ -15,9 +15,10 @@ interface Props {
   currentPath?: string;
   currentVersion?: string;
   currentSlug?: string;
+  versionAvailability?: VersionAvailability;
 }
 
-const { lang, currentPath = "", currentVersion, currentSlug } = Astro.props;
+const { lang, currentPath = "", currentVersion, currentSlug, versionAvailability } = Astro.props;
 const isNonDefaultLocale = lang != null && lang !== defaultLocale;
 const pathWithoutBase = stripBase(currentPath);
 const pathForMatch = isNonDefaultLocale
