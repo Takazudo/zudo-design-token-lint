@@ -1,0 +1,32 @@
+# CLAUDE.md
+
+## Package
+
+`@zudolab/design-token-lint` — lint Tailwind CSS class names against design system tokens. Enforces semantic spacing and color tokens instead of raw numeric utilities.
+
+## Commands
+
+```bash
+pnpm build          # Compile TypeScript to dist/
+pnpm test           # Run tests (vitest)
+pnpm test:watch     # Run tests in watch mode
+pnpm lint           # Check formatting (prettier)
+pnpm lint:fix       # Fix formatting
+```
+
+## File Structure
+
+```
+src/
+  cli.ts            # CLI entry point (#!/usr/bin/env node)
+  config.ts         # Config loading and pattern compilation
+  extractor.ts      # Class name extraction from source files
+  rules.ts          # Rule matching against compiled config
+  linter.ts         # Main linter combining extraction + rules
+  index.ts          # Public API exports
+  *.test.ts         # Tests (colocated)
+```
+
+## Commit Messages
+
+Use conventional format: `feat:`, `fix:`, `docs:`, `chore:`, `test:`, `refactor:`
