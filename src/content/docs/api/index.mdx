@@ -50,43 +50,60 @@ import {
 
 ### `lintFile(filePath)`
 
-Read a file from disk and return all violations.
+Read a file from disk and return an array of lint results — one entry per violation.
 
 ```ts
-const result = await lintFile('src/App.tsx');
-console.log(result.violations);
-// [{ className: 'p-4', line: 12, column: 14, reason: '...' }, ...]
+const results = await lintFile('src/App.tsx');
+for (const r of results) {
+  console.log(`${r.filePath}:${r.line}  ${r.className}  ${r.reason}`);
+}
 ```
 
-Returns a `LintResult` object:
+Returns `Promise<LintResult[]>`:
 
 ```ts
 interface LintResult {
   filePath: string;
-  violations: Violation[];
+  line: number;
+  className: string;
+  reason: string;
 }
 ```
 
+Each entry is a flat record for one violation. If the file has no violations, the returned array is empty.
+
 ### `lintContent(filePath, content)`
 
-Lint a string directly — useful for editor plugins or in-memory content.
+Lint a string directly — useful for editor plugins or in-memory content. Returns `LintResult[]` (same shape as above).
 
 ```ts
-const result = lintContent('file.tsx', '<div className="p-4 bg-gray-500">');
-console.log(result.violations);
+const results = lintContent('file.tsx', '<div className="p-4 bg-gray-500">');
+// [
+//   { filePath: 'file.tsx', line: 1, className: 'p-4', reason: '...' },
+//   { filePath: 'file.tsx', line: 1, className: 'bg-gray-500', reason: '...' }
+// ]
 ```
 
 ## Checking a Single Class
 
 ### `checkClass(className)`
 
-Check one class name against the active config. Returns a `Violation` if the class is prohibited, or `undefined` if it passes.
+Check one class name against the active config. Returns a `Violation` if the class is prohibited, or `null` if it passes.
 
 ```ts
 const violation = checkClass('p-4');
 if (violation) {
   console.error(violation.reason);
   // "Numeric spacing \"p-4\" — use semantic token (hgap-*/vgap-*) or arbitrary value"
+}
+```
+
+Returns `Violation | null`:
+
+```ts
+interface Violation {
+  className: string;
+  reason: string;
 }
 ```
 
@@ -140,21 +157,30 @@ Compile a single pattern string (like `p-{n}`) into a `CompiledRule`.
 
 ```ts
 const rule = compilePattern('bg-{color}-{shade}');
-// { prefix: 'bg', valuePattern: /^(slate|gray|...)-(\d{2,3})$/, reasonTemplate: ..., isSpacingRule: false }
+// { prefix: 'bg', valuePattern: /^(slate|gray|...)-(\d{2,3})$/, reasonTemplate: '...', isSpacingRule: false }
 ```
 
 ## Extracting Classes
 
 ### `extractClasses(content)`
 
-Extract all class name tokens from a source file string. Returns an array of `ExtractedClass` with location info.
+Extract all class name tokens from a source file string, with their line numbers.
 
 ```ts
 const extracted = extractClasses('<div className="p-4 bg-red-500">');
 // [
-//   { className: 'p-4', line: 1, column: 17 },
-//   { className: 'bg-red-500', line: 1, column: 22 }
+//   { className: 'p-4', line: 1 },
+//   { className: 'bg-red-500', line: 1 }
 // ]
+```
+
+Returns `ExtractedClass[]`:
+
+```ts
+interface ExtractedClass {
+  className: string;
+  line: number;
+}
 ```
 
 Supported syntaxes:
@@ -166,17 +192,6 @@ Supported syntaxes:
 - `cn(...)`, `clsx(...)`, `classNames(...)`, `twMerge(...)` utility calls
 
 ## Types
-
-### `Violation`
-
-```ts
-interface Violation {
-  className: string;
-  line: number;
-  column: number;
-  reason: string;
-}
-```
 
 ### `LintConfig`
 
@@ -194,7 +209,18 @@ interface LintConfig {
 ```ts
 interface LintResult {
   filePath: string;
-  violations: Violation[];
+  line: number;
+  className: string;
+  reason: string;
+}
+```
+
+### `Violation`
+
+```ts
+interface Violation {
+  className: string;
+  reason: string;
 }
 ```
 
@@ -217,10 +243,10 @@ async function main() {
   let totalViolations = 0;
 
   for (const file of files) {
-    const result = await lintFile(file);
-    if (result.violations.length > 0) {
-      console.log(`${file}: ${result.violations.length} violations`);
-      totalViolations += result.violations.length;
+    const results = await lintFile(file);
+    for (const r of results) {
+      console.log(`${r.filePath}:${r.line}  ${r.className}  ${r.reason}`);
+      totalViolations++;
     }
   }
 

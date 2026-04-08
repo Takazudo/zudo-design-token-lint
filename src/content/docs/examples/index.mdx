@@ -138,7 +138,7 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-      - run: pnpm install
+      - run: pnpm install --frozen-lockfile
       - run: pnpm design-token-lint
 ```
 
@@ -170,9 +170,9 @@ const files = await glob('src/**/*.{tsx,jsx}');
 let totalViolations = 0;
 
 for (const file of files) {
-  const result = await lintFile(file);
-  for (const v of result.violations) {
-    console.log(`${file}:${v.line}:${v.column}  ${v.className}  ${v.reason}`);
+  const results = await lintFile(file);
+  for (const r of results) {
+    console.log(`${r.filePath}:${r.line}  ${r.className}  ${r.reason}`);
     totalViolations++;
   }
 }
@@ -189,4 +189,4 @@ When integrating a third-party component that requires raw Tailwind:
 <VendorCalendar className="p-4 bg-gray-50" />
 ```
 
-See [ignore syntax](/docs/ignore-syntax) for all comment forms.
+See [ignore syntax](../ignore-syntax/index.md) for all comment forms.

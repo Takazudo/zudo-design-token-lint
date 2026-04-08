@@ -26,8 +26,9 @@ design-token-lint src/App.tsx
 
 | Code | Meaning |
 |---|---|
-| `0` | No violations found |
-| `1` | Violations found, or a file failed to load |
+| `0` | No violations found (or no files matched) |
+| `1` | Violations found |
+| `2` | Unexpected error (e.g., file system failure) |
 
 Use exit code `1` in CI to fail builds when violations appear:
 
@@ -38,14 +39,19 @@ Use exit code `1` in CI to fail builds when violations appear:
 
 ## Output Format
 
-Violations are reported with file path, line number, class name, and a reason:
+Violations are grouped by file. Each line shows the line number, the offending class, and the reason:
 
 ```
-src/App.tsx:12:14  p-4  Numeric spacing "p-4" — use semantic token (hgap-*/vgap-*) or arbitrary value
-src/App.tsx:12:18  bg-gray-500  Default Tailwind color "bg-gray-500" — use design system token (zd-*, p0-p15, semantic)
+Scanning 1 file(s)...
 
-Found 2 violations in 1 file.
+src/App.tsx
+  L12: p-4 — Numeric spacing "p-4" — use semantic token (hgap-*/vgap-*) or arbitrary value
+  L12: bg-gray-500 — Default Tailwind color "bg-gray-500" — use design system token (zd-*, p0-p15, semantic)
+
+Found 2 violation(s) in 1 file(s).
 ```
+
+All output goes to stderr so it doesn't interfere with scripts that pipe stdout.
 
 ## File Pattern Resolution
 

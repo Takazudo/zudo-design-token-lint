@@ -50,43 +50,60 @@ import {
 
 ### `lintFile(filePath)`
 
-ディスクからファイルを読み込んですべての違反を返します。
+ディスクからファイルを読み込み、違反ごとに 1 エントリの配列を返します。
 
 ```ts
-const result = await lintFile('src/App.tsx');
-console.log(result.violations);
-// [{ className: 'p-4', line: 12, column: 14, reason: '...' }, ...]
+const results = await lintFile('src/App.tsx');
+for (const r of results) {
+  console.log(`${r.filePath}:${r.line}  ${r.className}  ${r.reason}`);
+}
 ```
 
-`LintResult` オブジェクトを返します:
+`Promise<LintResult[]>` を返します:
 
 ```ts
 interface LintResult {
   filePath: string;
-  violations: Violation[];
+  line: number;
+  className: string;
+  reason: string;
 }
 ```
 
+各エントリは 1 つの違反を表すフラットなレコードです。違反がない場合は空配列が返ります。
+
 ### `lintContent(filePath, content)`
 
-文字列を直接リントします — エディタプラグインやインメモリコンテンツに便利です。
+文字列を直接リントします — エディタプラグインやインメモリコンテンツに便利です。`LintResult[]` を返します(上記と同じ形)。
 
 ```ts
-const result = lintContent('file.tsx', '<div className="p-4 bg-gray-500">');
-console.log(result.violations);
+const results = lintContent('file.tsx', '<div className="p-4 bg-gray-500">');
+// [
+//   { filePath: 'file.tsx', line: 1, className: 'p-4', reason: '...' },
+//   { filePath: 'file.tsx', line: 1, className: 'bg-gray-500', reason: '...' }
+// ]
 ```
 
 ## 単一クラスのチェック
 
 ### `checkClass(className)`
 
-1 つのクラス名をアクティブな設定に対してチェックします。禁止されている場合は `Violation`、通る場合は `undefined` を返します。
+1 つのクラス名をアクティブな設定に対してチェックします。禁止されている場合は `Violation`、通る場合は `null` を返します。
 
 ```ts
 const violation = checkClass('p-4');
 if (violation) {
   console.error(violation.reason);
   // "Numeric spacing \"p-4\" — use semantic token (hgap-*/vgap-*) or arbitrary value"
+}
+```
+
+`Violation | null` を返します:
+
+```ts
+interface Violation {
+  className: string;
+  reason: string;
 }
 ```
 
@@ -140,20 +157,30 @@ const active = getConfig();
 
 ```ts
 const rule = compilePattern('bg-{color}-{shade}');
+// { prefix: 'bg', valuePattern: /^(slate|gray|...)-(\d{2,3})$/, reasonTemplate: '...', isSpacingRule: false }
 ```
 
 ## クラスの抽出
 
 ### `extractClasses(content)`
 
-ソースファイル文字列からすべてのクラス名トークンを抽出します。位置情報付きの `ExtractedClass` 配列を返します。
+ソースファイル文字列からすべてのクラス名トークンを行番号付きで抽出します。
 
 ```ts
 const extracted = extractClasses('<div className="p-4 bg-red-500">');
 // [
-//   { className: 'p-4', line: 1, column: 17 },
-//   { className: 'bg-red-500', line: 1, column: 22 }
+//   { className: 'p-4', line: 1 },
+//   { className: 'bg-red-500', line: 1 }
 // ]
+```
+
+`ExtractedClass[]` を返します:
+
+```ts
+interface ExtractedClass {
+  className: string;
+  line: number;
+}
 ```
 
 サポートされる構文:
@@ -165,17 +192,6 @@ const extracted = extractClasses('<div className="p-4 bg-red-500">');
 - `cn(...)`、`clsx(...)`、`classNames(...)`、`twMerge(...)` ユーティリティ呼び出し
 
 ## 型
-
-### `Violation`
-
-```ts
-interface Violation {
-  className: string;
-  line: number;
-  column: number;
-  reason: string;
-}
-```
 
 ### `LintConfig`
 
@@ -193,7 +209,18 @@ interface LintConfig {
 ```ts
 interface LintResult {
   filePath: string;
-  violations: Violation[];
+  line: number;
+  className: string;
+  reason: string;
+}
+```
+
+### `Violation`
+
+```ts
+interface Violation {
+  className: string;
+  reason: string;
 }
 ```
 
@@ -216,10 +243,10 @@ async function main() {
   let totalViolations = 0;
 
   for (const file of files) {
-    const result = await lintFile(file);
-    if (result.violations.length > 0) {
-      console.log(`${file}: ${result.violations.length} violations`);
-      totalViolations += result.violations.length;
+    const results = await lintFile(file);
+    for (const r of results) {
+      console.log(`${r.filePath}:${r.line}  ${r.className}  ${r.reason}`);
+      totalViolations++;
     }
   }
 

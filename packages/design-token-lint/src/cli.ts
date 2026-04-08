@@ -23,11 +23,7 @@ const DEFAULT_PATTERNS = [
   'app/**/*.{tsx,jsx}',
 ];
 
-const DEFAULT_IGNORE_PATTERNS = [
-  '**/node_modules/**',
-  '**/dist/**',
-  '**/__inbox/**',
-];
+const DEFAULT_IGNORE_PATTERNS = ['**/node_modules/**', '**/dist/**', '**/__inbox/**'];
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);

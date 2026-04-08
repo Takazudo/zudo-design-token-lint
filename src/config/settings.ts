@@ -57,9 +57,9 @@ export const settings = {
       {
         title: "Docs",
         items: [
-          { label: "Getting Started", href: "/pj/zudo-design-token-lint/docs/getting-started" },
-          { label: "Configuration", href: "/pj/zudo-design-token-lint/docs/configuration" },
-          { label: "CLI", href: "/pj/zudo-design-token-lint/docs/cli" },
+          { label: "Getting Started", href: "/docs/getting-started" },
+          { label: "Configuration", href: "/docs/configuration" },
+          { label: "CLI", href: "/docs/cli" },
         ],
       },
       {
@@ -70,12 +70,12 @@ export const settings = {
         ],
       },
     ],
-    copyright: "Copyright © 2026 zudolab. Built with zudo-doc.",
+    copyright: `Copyright © ${new Date().getFullYear()} zudolab. Built with zudo-doc.`,
   } satisfies FooterConfig as FooterConfig | false,
   headerNav: [
     { label: "Getting Started", path: "/docs/getting-started", categoryMatch: "getting-started" },
     { label: "Guide", path: "/docs/configuration", categoryMatch: "guide" },
     { label: "API", path: "/docs/api", categoryMatch: "api" },
     { label: "Changelog", path: "/docs/changelog", categoryMatch: "changelog" },
-  ] satisfies HeaderNavItem[],
+  ] as HeaderNavItem[],
 };
