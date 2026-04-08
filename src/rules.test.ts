@@ -47,6 +47,32 @@ describe('checkClass', () => {
     });
   });
 
+  describe('important modifier — prohibited', () => {
+    it.each(['!p-4', '!m-8', '!bg-gray-500', 'sm:!p-4'])('flags %s', (cls) => {
+      const result = checkClass(cls);
+      expect(result).not.toBeNull();
+    });
+  });
+
+  describe('hyphenated modifiers — prohibited', () => {
+    it.each([
+      'group-hover:p-4',
+      'peer-focus:m-8',
+      'aria-selected:bg-gray-500',
+      'data-[state=open]:p-4',
+    ])('flags %s', (cls) => {
+      const result = checkClass(cls);
+      expect(result).not.toBeNull();
+    });
+  });
+
+  describe('opacity modifier — prohibited', () => {
+    it.each(['bg-gray-500/50', 'text-blue-600/75', 'bg-red-300/[.5]'])('flags %s', (cls) => {
+      const result = checkClass(cls);
+      expect(result).not.toBeNull();
+    });
+  });
+
   describe('default Tailwind colors — prohibited', () => {
     it.each([
       'bg-gray-500',
@@ -93,9 +119,12 @@ describe('checkClass', () => {
   });
 
   describe('zero and 1px — allowed', () => {
-    it.each(['p-0', 'm-0', 'gap-0', 'p-1px', 'border-1px', 'mt-0', 'pb-0'])('allows %s', (cls) => {
-      expect(checkClass(cls)).toBeNull();
-    });
+    it.each(['p-0', 'm-0', 'gap-0', 'p-1px', 'border-1px', 'mt-0', 'pb-0', 'sm:p-0'])(
+      'allows %s',
+      (cls) => {
+        expect(checkClass(cls)).toBeNull();
+      },
+    );
   });
 
   describe('arbitrary values — allowed', () => {

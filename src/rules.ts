@@ -41,26 +41,37 @@ export function checkClass(className: string): Violation | null {
  * Check a class against a specific compiled config (for testing).
  */
 export function checkClassWithConfig(className: string, config: CompiledConfig): Violation | null {
-  // Strip responsive/state prefixes (e.g., "sm:", "hover:", "dark:", "md:hover:")
-  const stripped = className.replace(/^(?:[a-z0-9]+:)+/, '');
+  // Strip variant prefixes by taking everything after the last ":"
+  // Handles sm:, hover:, dark:, group-hover:, peer-focus:, aria-selected:, data-[state=open]:, etc.
+  const lastColon = className.lastIndexOf(':');
+  let stripped = lastColon >= 0 ? className.slice(lastColon + 1) : className;
+
+  // Strip important modifier (e.g., !p-4, sm:!p-4)
+  if (stripped.startsWith('!')) {
+    stripped = stripped.slice(1);
+  }
 
   // Handle negative prefixes (e.g., -m-4, -top-2)
   const isNegative = stripped.startsWith('-');
   const withoutNeg = isNegative ? stripped.slice(1) : stripped;
 
+  // Strip opacity modifier (e.g., bg-gray-500/50, text-blue-600/75)
+  const slashIdx = withoutNeg.indexOf('/');
+  const withoutOpacity = slashIdx >= 0 ? withoutNeg.slice(0, slashIdx) : withoutNeg;
+
   // Skip arbitrary values like w-[28px], bg-[#123]
-  if (withoutNeg.includes('[')) {
+  if (withoutOpacity.includes('[')) {
     return null;
   }
 
   // Check allowed list first (exact match on stripped class)
-  if (config.allowed.has(withoutNeg)) {
+  if (config.allowed.has(withoutOpacity)) {
     return null;
   }
 
   // Check each rule
   for (const rule of config.rules) {
-    const violation = matchRule(className, withoutNeg, rule);
+    const violation = matchRule(className, withoutOpacity, rule);
     if (violation) {
       return violation;
     }
@@ -74,6 +85,17 @@ function matchRule(
   withoutNeg: string,
   rule: CompiledRule,
 ): Violation | null {
+  // Exact-match rule (no placeholders, valuePattern is /^$/)
+  if (rule.valuePattern.source === '^$') {
+    if (withoutNeg === rule.prefix) {
+      return {
+        className: originalClassName,
+        reason: rule.reasonTemplate.replace('{CLASS}', originalClassName),
+      };
+    }
+    return null;
+  }
+
   // The class must start with the prefix followed by "-"
   if (withoutNeg === rule.prefix || !withoutNeg.startsWith(rule.prefix + '-')) {
     return null;

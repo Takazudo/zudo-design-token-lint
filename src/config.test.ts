@@ -65,6 +65,18 @@ describe('checkClassWithConfig', () => {
     expect(result).not.toBeNull();
   });
 
+  it('works with exact-match patterns (no placeholders)', () => {
+    const custom: LintConfig = {
+      prohibited: ['hidden'],
+      allowed: [],
+      ignore: [],
+    };
+    const compiled = compileConfig(custom);
+    expect(checkClassWithConfig('hidden', compiled)).not.toBeNull();
+    expect(checkClassWithConfig('hidden-foo', compiled)).toBeNull();
+    expect(checkClassWithConfig('flex', compiled)).toBeNull();
+  });
+
   it('works with custom config', () => {
     const custom: LintConfig = {
       prohibited: ['p-{n}'],
