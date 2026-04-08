@@ -1,10 +1,16 @@
 ---
 title: Changelog
 sidebar_position: 99
+category: changelog
 ---
 
 # Changelog
 
-## Unreleased
+## 0.1.0 — Initial release
 
-- Initial release
+- CLI: `design-token-lint` with file/glob arguments and default scan patterns
+- Configurable prohibited patterns, allowed exceptions, ignored files via `.design-token-lint.json`
+- Pattern placeholders: `{n}`, `{color}`, `{shade}`
+- Ignore comments: `{/* design-token-lint-ignore */}` and variants
+- Programmatic API: `lintFile`, `lintContent`, `checkClass`, `extractClasses`, config loading utilities
+- Built-in default rules for Tailwind spacing and color utilities

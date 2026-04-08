@@ -1,0 +1,230 @@
+---
+title: プログラマティック API
+description: design-token-lint を Node.js ライブラリとして使用 — 文字列、ファイル、または個別のクラス名をリント。
+sidebar_position: 1
+category: api
+---
+
+# プログラマティック API
+
+`@zudolab/design-token-lint` は、ビルドツール、エディタ、またはカスタムツールとの統合のための小さな API をエクスポートしています。
+
+## インストール
+
+```bash
+pnpm add @zudolab/design-token-lint
+```
+
+## エクスポート
+
+```ts
+import {
+  // ファイル/コンテンツのリント
+  lintFile,
+  lintContent,
+  type LintResult,
+
+  // 単一クラスのチェック
+  checkClass,
+  checkClassWithConfig,
+  type Violation,
+
+  // 設定の読み込みとコンパイル
+  loadConfig,
+  compileConfig,
+  compilePattern,
+  setConfig,
+  getConfig,
+  DEFAULT_CONFIG,
+  type LintConfig,
+  type CompiledConfig,
+  type CompiledRule,
+
+  // クラス抽出
+  extractClasses,
+  type ExtractedClass,
+} from '@zudolab/design-token-lint';
+```
+
+## ファイルとコンテンツのリント
+
+### `lintFile(filePath)`
+
+ディスクからファイルを読み込んですべての違反を返します。
+
+```ts
+const result = await lintFile('src/App.tsx');
+console.log(result.violations);
+// [{ className: 'p-4', line: 12, column: 14, reason: '...' }, ...]
+```
+
+`LintResult` オブジェクトを返します:
+
+```ts
+interface LintResult {
+  filePath: string;
+  violations: Violation[];
+}
+```
+
+### `lintContent(filePath, content)`
+
+文字列を直接リントします — エディタプラグインやインメモリコンテンツに便利です。
+
+```ts
+const result = lintContent('file.tsx', '<div className="p-4 bg-gray-500">');
+console.log(result.violations);
+```
+
+## 単一クラスのチェック
+
+### `checkClass(className)`
+
+1 つのクラス名をアクティブな設定に対してチェックします。禁止されている場合は `Violation`、通る場合は `undefined` を返します。
+
+```ts
+const violation = checkClass('p-4');
+if (violation) {
+  console.error(violation.reason);
+  // "Numeric spacing \"p-4\" — use semantic token (hgap-*/vgap-*) or arbitrary value"
+}
+```
+
+### `checkClassWithConfig(className, compiledConfig)`
+
+上記と同じですが、グローバル設定ではなく明示的なコンパイル済み設定を使用します。
+
+```ts
+import { loadConfig, compileConfig, checkClassWithConfig } from '@zudolab/design-token-lint';
+
+const config = await loadConfig(process.cwd());
+const compiled = compileConfig(config);
+
+const violation = checkClassWithConfig('bg-blue-500', compiled);
+```
+
+## 設定の操作
+
+### `loadConfig(cwd)`
+
+ディレクトリから `.design-token-lint.json` または `design-token-lint.config.json` を読み込みます。どちらも存在しない場合は `DEFAULT_CONFIG` にフォールバックします。
+
+```ts
+const config = await loadConfig(process.cwd());
+```
+
+### `compileConfig(config)`
+
+プレーンな設定オブジェクトをマッチング用の効率的なルールセットにコンパイルします。
+
+```ts
+const compiled = compileConfig({
+  prohibited: ['p-{n}', 'bg-{color}-{shade}'],
+  allowed: ['p-0'],
+  ignore: [],
+});
+```
+
+### `setConfig(compiled)` / `getConfig()`
+
+`checkClass()` と `lintFile()` が使用するグローバルなコンパイル済み設定を設定または取得します。
+
+```ts
+setConfig(compiled);
+const active = getConfig();
+```
+
+### `compilePattern(pattern)`
+
+単一のパターン文字列(`p-{n}` など)を `CompiledRule` にコンパイルします。
+
+```ts
+const rule = compilePattern('bg-{color}-{shade}');
+```
+
+## クラスの抽出
+
+### `extractClasses(content)`
+
+ソースファイル文字列からすべてのクラス名トークンを抽出します。位置情報付きの `ExtractedClass` 配列を返します。
+
+```ts
+const extracted = extractClasses('<div className="p-4 bg-red-500">');
+// [
+//   { className: 'p-4', line: 1, column: 17 },
+//   { className: 'bg-red-500', line: 1, column: 22 }
+// ]
+```
+
+サポートされる構文:
+
+- `className="..."` と `class="..."`(JSX/Astro)
+- `className={'...'}` シングルクォート中括弧
+- `` className={`...`} `` テンプレートリテラル(単純なケース)
+- `class:list={["...", '...']}` Astro class:list 配列
+- `cn(...)`、`clsx(...)`、`classNames(...)`、`twMerge(...)` ユーティリティ呼び出し
+
+## 型
+
+### `Violation`
+
+```ts
+interface Violation {
+  className: string;
+  line: number;
+  column: number;
+  reason: string;
+}
+```
+
+### `LintConfig`
+
+```ts
+interface LintConfig {
+  prohibited: string[];
+  allowed: string[];
+  ignore: string[];
+  patterns?: string[];
+}
+```
+
+### `LintResult`
+
+```ts
+interface LintResult {
+  filePath: string;
+  violations: Violation[];
+}
+```
+
+## 例: カスタムリンタースクリプト
+
+```ts
+import { glob } from 'glob';
+import {
+  loadConfig,
+  compileConfig,
+  setConfig,
+  lintFile,
+} from '@zudolab/design-token-lint';
+
+async function main() {
+  const config = await loadConfig(process.cwd());
+  setConfig(compileConfig(config));
+
+  const files = await glob('src/**/*.{tsx,jsx}');
+  let totalViolations = 0;
+
+  for (const file of files) {
+    const result = await lintFile(file);
+    if (result.violations.length > 0) {
+      console.log(`${file}: ${result.violations.length} violations`);
+      totalViolations += result.violations.length;
+    }
+  }
+
+  process.exit(totalViolations > 0 ? 1 : 0);
+}
+
+main();
+```

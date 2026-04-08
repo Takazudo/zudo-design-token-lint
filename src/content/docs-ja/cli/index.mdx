@@ -1,0 +1,98 @@
+---
+title: CLI
+description: design-token-lint のコマンドライン使用方法とオプション。
+sidebar_position: 2
+category: guide
+---
+
+# CLI
+
+`design-token-lint` CLI はファイルをスキャンして禁止された Tailwind クラス名を検出し、違反を報告します。
+
+## 基本的な使い方
+
+```bash
+# デフォルトパターンをスキャン(config.patterns または組み込みデフォルト)
+design-token-lint
+
+# 特定のファイルまたは glob をスキャン
+design-token-lint "src/**/*.tsx" "pages/**/*.tsx"
+
+# 単一ファイルをスキャン
+design-token-lint src/App.tsx
+```
+
+## 終了コード
+
+| コード | 意味 |
+|---|---|
+| `0` | 違反なし |
+| `1` | 違反あり、またはファイル読み込み失敗 |
+
+CI で違反があった場合にビルドを失敗させるには終了コード `1` を利用します:
+
+```yaml
+# .github/workflows/lint.yml
+- run: pnpm design-token-lint
+```
+
+## 出力フォーマット
+
+違反はファイルパス、行番号、クラス名、理由とともに報告されます:
+
+```
+src/App.tsx:12:14  p-4  Numeric spacing "p-4" — use semantic token (hgap-*/vgap-*) or arbitrary value
+src/App.tsx:12:18  bg-gray-500  Default Tailwind color "bg-gray-500" — use design system token (zd-*, p0-p15, semantic)
+
+Found 2 violations in 1 file.
+```
+
+## ファイルパターン解決
+
+引数なしで呼び出された場合、CLI はこの順序でファイルを解決します:
+
+1. `config.patterns` が設定されていればそれを使用
+2. それ以外は組み込みデフォルトを使用: `src/**/*.{tsx,jsx,astro}`、`components/**/*.{tsx,jsx,astro}`、`lib/**/*.{tsx,jsx}`、`app/**/*.{tsx,jsx}`
+
+引数ありで呼び出された場合、各引数はファイルパスまたは glob として扱われます。`ignore` の設定は引き続き適用されます。
+
+## package.json との統合
+
+便利な呼び出し用にスクリプトを追加:
+
+```json
+{
+  "scripts": {
+    "lint:tokens": "design-token-lint"
+  }
+}
+```
+
+実行:
+
+```bash
+pnpm lint:tokens
+```
+
+## lint-staged との統合
+
+変更されたファイルのみに実行:
+
+```json
+{
+  "lint-staged": {
+    "*.{tsx,jsx,astro}": "design-token-lint"
+  }
+}
+```
+
+## CI との統合
+
+GitHub Actions ステップを追加:
+
+```yaml
+- name: Lint design tokens
+  run: pnpm design-token-lint
+```
+
+違反があればコード `1` で終了し、ワークフローが失敗します。

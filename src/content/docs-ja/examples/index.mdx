@@ -1,0 +1,192 @@
+---
+title: 使用例
+description: 実プロジェクトでの design-token-lint の典型的な設定と使用パターン。
+sidebar_position: 5
+category: guide
+---
+
+# 使用例
+
+よくある設定と使用パターン。
+
+## 最小設定
+
+シンプルに始めましょう。組み込みのデフォルトに重労働を任せます:
+
+```json
+{
+  "allowed": ["p-0", "m-0", "gap-0"]
+}
+```
+
+これはすべてのデフォルト禁止パターンを使い、ゼロ間隔の例外だけを追加します。
+
+## Tailwind + デザイントークンプロジェクト
+
+セマンティックな間隔スケールとカスタムカラーパレットを持つ典型的な Tailwind プロジェクト:
+
+```json
+{
+  "prohibited": [
+    "p-{n}", "px-{n}", "py-{n}", "pt-{n}", "pr-{n}", "pb-{n}", "pl-{n}",
+    "m-{n}", "mx-{n}", "my-{n}", "mt-{n}", "mr-{n}", "mb-{n}", "ml-{n}",
+    "gap-{n}", "gap-x-{n}", "gap-y-{n}",
+    "space-x-{n}", "space-y-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}",
+    "border-{color}-{shade}",
+    "ring-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0", "p-1px"],
+  "ignore": [
+    "**/*.test.*",
+    "**/*.stories.*",
+    "**/vendor/**"
+  ],
+  "patterns": [
+    "src/**/*.{tsx,jsx,astro}",
+    "components/**/*.{tsx,jsx,astro}"
+  ]
+}
+```
+
+## Next.js アプリ
+
+```json
+{
+  "prohibited": [
+    "p-{n}", "m-{n}", "gap-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0"],
+  "ignore": [
+    "**/*.test.*",
+    "**/*.stories.*",
+    ".next/**"
+  ],
+  "patterns": [
+    "app/**/*.{tsx,jsx}",
+    "components/**/*.{tsx,jsx}",
+    "pages/**/*.{tsx,jsx}"
+  ]
+}
+```
+
+## Astro プロジェクト
+
+```json
+{
+  "prohibited": [
+    "p-{n}", "m-{n}", "gap-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}",
+    "border-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0"],
+  "ignore": [
+    "**/*.test.*",
+    "dist/**",
+    ".astro/**"
+  ],
+  "patterns": [
+    "src/**/*.{astro,tsx,jsx}"
+  ]
+}
+```
+
+## 複数パッケージの monorepo
+
+モノレポのルートに設定を置き、すべてのパッケージをスキャンします:
+
+```json
+{
+  "prohibited": [
+    "p-{n}", "m-{n}", "gap-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0"],
+  "ignore": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/*.test.*"
+  ],
+  "patterns": [
+    "packages/*/src/**/*.{tsx,jsx,astro}",
+    "apps/*/src/**/*.{tsx,jsx,astro}"
+  ]
+}
+```
+
+## CI 統合 — GitHub Actions
+
+違反があれば CI を失敗させる:
+
+```yaml
+# .github/workflows/lint.yml
+name: Lint
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm design-token-lint
+```
+
+## Pre-commit フック
+
+[lint-staged](https://github.com/lint-staged/lint-staged) でステージされたファイルにのみ実行:
+
+```json
+{
+  "lint-staged": {
+    "*.{tsx,jsx,astro}": "design-token-lint"
+  }
+}
+```
+
+## カスタムスクリプト
+
+プログラマティック API を使ってプロジェクト固有のロジックでリンターを実行:
+
+```ts
+// scripts/lint-tokens.mjs
+import { loadConfig, compileConfig, setConfig, lintFile } from '@zudolab/design-token-lint';
+import { glob } from 'glob';
+
+const config = await loadConfig(process.cwd());
+setConfig(compileConfig(config));
+
+const files = await glob('src/**/*.{tsx,jsx}');
+let totalViolations = 0;
+
+for (const file of files) {
+  const result = await lintFile(file);
+  for (const v of result.violations) {
+    console.log(`${file}:${v.line}:${v.column}  ${v.className}  ${v.reason}`);
+    totalViolations++;
+  }
+}
+
+process.exit(totalViolations > 0 ? 1 : 0);
+```
+
+## 正当な例外の無視
+
+生の Tailwind を要求するサードパーティコンポーネントを統合する場合:
+
+```tsx
+{/* design-token-lint-ignore — ベンダーコンポーネントがリテラル p-4 を要求 */}
+<VendorCalendar className="p-4 bg-gray-50" />
+```
+
+すべてのコメント形式については[無視構文](/docs/ignore-syntax)を参照してください。

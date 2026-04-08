@@ -1,12 +1,70 @@
 ---
-title: Welcome
+title: Getting Started
+description: Install and run design-token-lint to enforce semantic design tokens in your Tailwind CSS project.
 sidebar_position: 1
+category: getting-started
 ---
 
-# Welcome to Zudo Design Token Lint
+# Getting Started
 
-This documentation site was created with [zudo-doc](https://github.com/zudolab/zudo-doc).
+`@zudolab/design-token-lint` lints Tailwind CSS class names against design system tokens. It catches raw numeric utilities like `p-4`, `gap-6`, and default palette colors like `bg-gray-500`, and guides developers toward semantic tokens.
 
-## Getting Started
+## Why
 
-Edit the files in `src/content/docs/` to add your documentation.
+Tailwind's numeric utilities and default color palette make it easy to introduce inconsistency across a codebase. A developer writes `p-4` in one place and `p-6` in another — visually similar, semantically unrelated. Multiply this across a large codebase and design consistency breaks down.
+
+This linter enforces a simple rule: **raw numbers and default palette colors are not allowed**. Instead, use semantic tokens that describe intent: `p-hgap-md` for horizontal spacing, `bg-surface` for surfaces, `text-fg` for primary text.
+
+See the [methodology page](/docs/methodology) for the full reasoning.
+
+## Installation
+
+Install as a dev dependency in your Tailwind project:
+
+```bash
+pnpm add -D @zudolab/design-token-lint
+```
+
+Or with npm / yarn:
+
+```bash
+npm install --save-dev @zudolab/design-token-lint
+yarn add --dev @zudolab/design-token-lint
+```
+
+## First Run
+
+Run the linter with no arguments to scan the default file patterns (`src/`, `components/`, `lib/`, `app/`):
+
+```bash
+npx design-token-lint
+```
+
+The CLI exits with code `0` if no violations are found, or `1` if there are violations — suitable for use in CI.
+
+## Your First Config
+
+Create a `.design-token-lint.json` file at your project root to customize rules:
+
+```json
+{
+  "prohibited": [
+    "p-{n}",
+    "m-{n}",
+    "gap-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0"],
+  "ignore": ["**/*.test.*", "**/*.stories.*"]
+}
+```
+
+See the [configuration reference](/docs/configuration) for the full list of options.
+
+## Next Steps
+
+- Read the [configuration reference](/docs/configuration) to tailor rules to your project
+- See [CLI usage](/docs/cli) for command-line options
+- Learn about [ignore comments](/docs/ignore-syntax) for suppressing individual violations
+- Explore the [programmatic API](/docs/api) to integrate with build tools or editors
