@@ -4,15 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "// ── Doc site (Astro) ─────────────────────────────": "",
+    "predev": "lsof -ti :4321 | xargs kill 2>/dev/null; true",
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",
-    "setup:doc-skill": "bash scripts/setup-doc-skill.sh",
+    "// ── NPM package (workspace shortcuts) ────────────": "",
+    "test": "pnpm --filter @zudolab/design-token-lint test",
     "test:pkg": "pnpm --filter @zudolab/design-token-lint test",
     "build:pkg": "pnpm --filter @zudolab/design-token-lint build",
-    "test": "pnpm test:pkg",
-    "lint": "pnpm --filter @zudolab/design-token-lint lint"
+    "lint": "pnpm --filter @zudolab/design-token-lint lint",
+    "lint:fix": "pnpm --filter @zudolab/design-token-lint lint:fix",
+    "// ── Setup ────────────────────────────────────────": "",
+    "setup:doc-skill": "bash scripts/setup-doc-skill.sh"
   },
   "dependencies": {
     "@astrojs/mdx": "^4.3.0",
@@ -40,5 +45,6 @@
     "pagefind": "^1.4.0",
     "tailwindcss": "^4.2.0",
     "typescript": "^5.9.0"
-  }
+  },
+  "packageManager": "pnpm@10.32.0+sha512.9b2634bb3fed5601c33633f2d92593f506270a3963b8c51d2b2d6a828da615ce4e9deebef9614ccebbc13ac8d3c0f9c9ccceb583c69c8578436fa477dbb20d70"
 }

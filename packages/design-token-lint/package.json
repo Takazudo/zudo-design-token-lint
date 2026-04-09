@@ -20,11 +20,15 @@
     "LICENSE"
   ],
   "scripts": {
+    "// ── Build ───────────────────────────────────────": "",
     "build": "tsc",
+    "// ── Test ────────────────────────────────────────": "",
     "test": "vitest run",
     "test:watch": "vitest",
+    "// ── Lint ────────────────────────────────────────": "",
     "lint": "prettier --check .",
     "lint:fix": "prettier --write .",
+    "// ── Publish ─────────────────────────────────────": "",
     "prepublishOnly": "pnpm run build && pnpm run test"
   },
   "keywords": [
