@@ -24,11 +24,11 @@ The JA directory mirrors the EN directory structure exactly. Every EN page has a
 Use **relative `.md` paths** for cross-page links, not absolute `/docs/...` paths. The `remark-resolve-markdown-links` plugin rewrites `.md`/`.mdx` extensions and applies the base prefix; bare absolute paths bypass it.
 
 ```md
-<!-- Good -->
-See the [methodology](../methodology/index.md) page.
+<!-- Good — relative path from guide/configuration/ to reference/methodology/ -->
+See the [methodology](../../reference/methodology/index.md) page.
 
 <!-- Bad — breaks under settings.base -->
-See the [methodology](/docs/methodology) page.
+See the [methodology](/docs/reference/methodology) page.
 ```
 
 External links (`https://...`) pass through unchanged.
@@ -55,7 +55,7 @@ category: guide
 
 Categories used in this project (match `settings.headerNav.categoryMatch` in `src/config/settings.ts`):
 
-- `overview` — What is?, Getting Started
+- `overview` — Getting Started
 - `playground` — Playground
 - `guide` — Configuration, CLI, Ignore Syntax, Examples
 - `reference` — API, Methodology
