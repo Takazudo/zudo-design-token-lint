@@ -5,8 +5,6 @@ sidebar_position: 5
 category: guide
 ---
 
-# Examples
-
 Common configurations and usage patterns.
 
 ## Minimal Config
@@ -144,14 +142,15 @@ jobs:
 
 ## Pre-commit Hook
 
-Run on staged files with [lint-staged](https://github.com/lint-staged/lint-staged):
+Run on staged files with [lefthook](https://github.com/evilmartians/lefthook):
 
-```json
-{
-  "lint-staged": {
-    "*.{tsx,jsx,astro}": "design-token-lint"
-  }
-}
+```yaml
+# .lefthook.yml
+pre-commit:
+  commands:
+    design-token-lint:
+      glob: "*.{tsx,jsx,astro}"
+      run: npx design-token-lint {staged_files}
 ```
 
 ## Custom Script

@@ -5,8 +5,6 @@ sidebar_position: 2
 category: guide
 ---
 
-# CLI
-
 The `design-token-lint` CLI scans files for prohibited Tailwind class names and reports violations.
 
 ## Basic Usage
@@ -80,16 +78,17 @@ Then run:
 pnpm lint:tokens
 ```
 
-## Integration with lint-staged
+## Integration with lefthook
 
-Run only on changed files:
+Run only on staged files with [lefthook](https://github.com/evilmartians/lefthook):
 
-```json
-{
-  "lint-staged": {
-    "*.{tsx,jsx,astro}": "design-token-lint"
-  }
-}
+```yaml
+# .lefthook.yml
+pre-commit:
+  commands:
+    design-token-lint:
+      glob: "*.{tsx,jsx,astro}"
+      run: npx design-token-lint {staged_files}
 ```
 
 ## Integration with CI

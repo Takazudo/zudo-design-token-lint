@@ -29,7 +29,7 @@ export const settings = {
   base: "/pj/zudo-design-token-lint/",
   trailingSlash: false as boolean,
   noindex: false as boolean,
-  editUrl: "https://github.com/zudolab/zudo-design-token-lint/edit/main/doc/" as string | false,
+  editUrl: "https://github.com/Takazudo/zudo-design-token-lint/edit/main/doc/" as string | false,
   siteUrl: "https://takazudomodular.com" as string,
   docsDir: "src/content/docs",
   locales: {
@@ -66,7 +66,7 @@ export const settings = {
       {
         title: "More",
         items: [
-          { label: "GitHub", href: "https://github.com/zudolab/zudo-design-token-lint" },
+          { label: "GitHub", href: "https://github.com/Takazudo/zudo-design-token-lint" },
           { label: "npm", href: "https://www.npmjs.com/package/@zudolab/design-token-lint" },
         ],
       },

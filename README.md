@@ -4,7 +4,7 @@
 
 Lint Tailwind CSS class names against design system tokens. Enforce semantic spacing and color tokens instead of raw numeric utilities.
 
-Based on the [design token methodology](https://takazudomodular.com/pj/zcss/docs/methodology/) for building consistent, maintainable design systems with Tailwind CSS.
+Based on the [design token methodology](https://takazudomodular.com/pj/zudo-css-wisdom/docs/methodology/) for building consistent, maintainable design systems with Tailwind CSS.
 
 ## Why
 

@@ -5,8 +5,6 @@ sidebar_position: 2
 category: guide
 ---
 
-# CLI
-
 `design-token-lint` CLI はファイルをスキャンして禁止された Tailwind クラス名を検出し、違反を報告します。
 
 ## 基本的な使い方
@@ -80,16 +78,17 @@ Found 2 violation(s) in 1 file(s).
 pnpm lint:tokens
 ```
 
-## lint-staged との統合
+## lefthook との統合
 
-変更されたファイルのみに実行:
+[lefthook](https://github.com/evilmartians/lefthook) でステージされたファイルにのみ実行:
 
-```json
-{
-  "lint-staged": {
-    "*.{tsx,jsx,astro}": "design-token-lint"
-  }
-}
+```yaml
+# .lefthook.yml
+pre-commit:
+  commands:
+    design-token-lint:
+      glob: "*.{tsx,jsx,astro}"
+      run: npx design-token-lint {staged_files}
 ```
 
 ## CI との統合

@@ -43,7 +43,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zudolab/zudo-design-token-lint.git"
+    "url": "https://github.com/Takazudo/zudo-design-token-lint.git"
   },
   "engines": {
     "node": ">=18"
