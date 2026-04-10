@@ -60,6 +60,38 @@ Ignore comments only affect the **next line**. They do not suppress violations f
 - **Widespread use** — if you're ignoring the same class in many places, add it to the `allowed` list in config
 - **Silencing the linter entirely** — that defeats the purpose
 
+## File-level Ignore
+
+To skip an entire file, add a `design-token-lint-ignore-file` comment anywhere in the file. The linter will produce zero violations for that file regardless of its content.
+
+### JSX/TSX
+
+```tsx
+{/* design-token-lint-ignore-file */}
+```
+
+### CSS-in-JS / block comments
+
+```tsx
+/* design-token-lint-ignore-file */
+```
+
+### Line comments
+
+```tsx
+// design-token-lint-ignore-file
+```
+
+The comment can appear at the top of the file or anywhere inside it — the entire file is skipped either way.
+
+### When to use file-level ignore
+
+- **Generated files** — auto-generated output you can't or shouldn't modify (e.g. icon sprites, Storybook story files, auto-generated wrappers)
+- **Legacy files under migration** — temporarily suppress a file while you work through a large codebase migration, then remove the comment when done
+- **Test fixtures** — snapshot or fixture files that intentionally contain raw utility classes
+
+Avoid using file-level ignore as a blanket suppressor for active source files. Prefer line-level ignore or the `allowed` config list for targeted exceptions.
+
 ## Alternatives
 
 Before reaching for an ignore comment, consider:

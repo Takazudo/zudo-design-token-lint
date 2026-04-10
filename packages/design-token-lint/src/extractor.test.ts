@@ -101,6 +101,15 @@ describe('extractClasses', () => {
     expect(result).toEqual([]);
   });
 
+  it('does not treat design-token-lint-ignore-file as a line-level ignore', () => {
+    const content = `// design-token-lint-ignore-file
+<div className="p-4">
+<div className="m-8">`;
+    // file-level directive causes early return — whole file is empty
+    const result = extractClasses(content);
+    expect(result).toEqual([]);
+  });
+
   it('only ignores the next line after ignore comment', () => {
     const content = `/* design-token-lint-ignore */
 <div className="p-4">
@@ -124,5 +133,48 @@ describe('extractClasses', () => {
     const content = '<div className="">';
     const result = extractClasses(content);
     expect(result).toEqual([]);
+  });
+
+  describe('file-level ignore', () => {
+    it('respects /* design-token-lint-ignore-file */ at top of file', () => {
+      const content = `/* design-token-lint-ignore-file */
+<div className="p-4 flex">
+<div class="m-8">`;
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('respects {/* design-token-lint-ignore-file */} JSX style at top of file', () => {
+      const content = `{/* design-token-lint-ignore-file */}
+<div className="p-4 flex">
+<div class="m-8">`;
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('respects // design-token-lint-ignore-file at top of file', () => {
+      const content = `// design-token-lint-ignore-file
+<div className="p-4 flex">
+<div class="m-8">`;
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('ignores entire file when comment is mid-file', () => {
+      const content = `<div className="p-4 flex">
+/* design-token-lint-ignore-file */
+<div class="m-8">`;
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('extracts normally when no file-level ignore comment is present', () => {
+      const content = `<div className="p-4 flex">`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'flex', line: 1 },
+      ]);
+    });
   });
 });
