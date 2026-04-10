@@ -5,7 +5,7 @@
  * - className="..." and className={'...'} in TSX/JSX
  * - class="..." and class:list={[...]} in Astro
  * - Template literal classNames (simple cases)
- * - Ignore comments: design-token-lint-ignore
+ * - Ignore comments: design-token-lint-ignore (line), design-token-lint-ignore-file (file)
  */
 
 export interface ExtractedClass {
@@ -13,11 +13,18 @@ export interface ExtractedClass {
   line: number;
 }
 
-// Lines containing ignore comment
+// Lines containing line-level ignore comment
 const IGNORE_PATTERNS = [
   /\/\*\s*design-token-lint-ignore\s*\*\//,
   /\{\/\*\s*design-token-lint-ignore\s*\*\/\}/,
-  /\/\/\s*design-token-lint-ignore/,
+  /\/\/\s*design-token-lint-ignore(?!\S)/,
+];
+
+// Lines containing file-level ignore comment
+const IGNORE_FILE_PATTERNS = [
+  /\/\*\s*design-token-lint-ignore-file\s*\*\//,
+  /\{\/\*\s*design-token-lint-ignore-file\s*\*\/\}/,
+  /\/\/\s*design-token-lint-ignore-file/,
 ];
 
 /**
@@ -34,6 +41,13 @@ export function extractClasses(content: string): ExtractedClass[] {
   const lines = content.split('\n');
   const results: ExtractedClass[] = [];
   const ignoredLines = new Set<number>();
+
+  // Check for file-level ignore comment anywhere in the file
+  for (const line of lines) {
+    if (IGNORE_FILE_PATTERNS.some((p) => p.test(line))) {
+      return [];
+    }
+  }
 
   // First pass: find ignore comments, mark next line
   for (let i = 0; i < lines.length; i++) {
