@@ -35,35 +35,41 @@ jobs:
         run: pnpm -w run build:doc
 
       - name: Prepare deploy directory
+        if: github.event.pull_request.head.repo.full_name == github.repository
         run: |
           mkdir -p deploy/pj/zudo-design-token-lint
           cp -r doc/dist/* deploy/pj/zudo-design-token-lint/
           echo "/ /pj/zudo-design-token-lint/ 302" > deploy/_redirects
 
       - name: Deploy preview to Cloudflare Pages
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
           npx wrangler@4 pages deploy deploy \
             --project-name=zudo-design-token-lint \
             --branch="pr-${PR_NUMBER}" \
             --commit-hash="${GITHUB_SHA}" \
             --commit-message="PR #${PR_NUMBER} preview"
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Comment preview URL on PR
+        if: github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
           PREVIEW_URL="https://pr-${PR_NUMBER}.zudo-design-token-lint.pages.dev/pj/zudo-design-token-lint/"
           SHORT_SHA=$(echo "${GITHUB_SHA}" | head -c 7)
-          BODY="## Docs Preview
+          BODY=$(cat <<EOF
+          ## Docs Preview
 
           ${PREVIEW_URL}
 
-          Deployed from commit ${SHORT_SHA}"
+          Deployed from commit ${SHORT_SHA}
+          EOF
+          )
 
           # Check for existing preview comment
           EXISTING_ID=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
