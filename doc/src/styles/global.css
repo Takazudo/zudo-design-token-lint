@@ -157,7 +157,7 @@
 body {
   background-color: var(--color-bg);
   color: var(--color-fg);
-  font-family: var(--font-noto);
+  font-family: var(--font-sans);
 }
 
 ::selection {
@@ -205,7 +205,6 @@ body {
 
 .zd-content :where(h2) {
   --flow-space: var(--spacing-vsp-2xl);
-  font-family: var(--font-futura);
   font-size: var(--text-subheading);
   font-weight: var(--font-weight-normal);
   line-height: var(--leading-tight);
@@ -217,7 +216,6 @@ body {
 
 .zd-content :where(h3) {
   --flow-space: var(--spacing-vsp-xl);
-  font-family: var(--font-futura);
   font-size: var(--text-body);
   font-weight: var(--font-weight-normal);
   line-height: var(--leading-snug);
@@ -229,7 +227,6 @@ body {
 
 .zd-content :where(h4) {
   --flow-space: var(--spacing-vsp-lg);
-  font-family: var(--font-futura);
   font-size: var(--text-body);
   font-weight: var(--font-weight-normal);
   line-height: var(--leading-snug);
@@ -241,7 +238,6 @@ body {
 
 .zd-content :where(h5, h6) {
   --flow-space: var(--spacing-vsp-md);
-  font-family: var(--font-futura);
   font-size: var(--text-small);
   font-weight: var(--font-weight-normal);
   line-height: var(--leading-snug);
