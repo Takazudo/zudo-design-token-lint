@@ -63,6 +63,7 @@ jobs:
           PREVIEW_URL="https://pr-${PR_NUMBER}.zudo-design-token-lint.pages.dev/pj/zudo-design-token-lint/"
           SHORT_SHA=$(echo "${GITHUB_SHA}" | head -c 7)
           BODY=$(cat <<EOF
+          <!-- cf-pages-preview -->
           ## Docs Preview
 
           ${PREVIEW_URL}
@@ -71,9 +72,9 @@ jobs:
           EOF
           )
 
-          # Check for existing preview comment
+          # Check for existing preview comment (uses hidden HTML marker)
           EXISTING_ID=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
-            --jq '.[] | select(.body | contains("Docs Preview")) | .id' | head -1)
+            --jq '.[] | select(.body | contains("<!-- cf-pages-preview -->")) | .id' | head -1)
 
           if [ -n "$EXISTING_ID" ]; then
             gh api "repos/${{ github.repository }}/issues/comments/${EXISTING_ID}" \
