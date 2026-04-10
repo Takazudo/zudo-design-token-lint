@@ -1,0 +1,15 @@
+---
+title: v0.1.0
+description: Initial release of design-token-lint.
+sidebar_position: 9999
+category: changelog
+---
+
+Initial release of `@zudolab/design-token-lint`.
+
+- CLI: `design-token-lint` with file/glob arguments and default scan patterns
+- Configurable prohibited patterns, allowed exceptions, ignored files via `.design-token-lint.json`
+- Pattern placeholders: `{n}`, `{color}`, `{shade}`
+- Ignore comments: `{/* design-token-lint-ignore */}` and variants
+- Programmatic API: `lintFile`, `lintContent`, `checkClass`, `extractClasses`, config loading utilities
+- Built-in default rules for Tailwind spacing and color utilities
