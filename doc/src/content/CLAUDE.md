@@ -55,12 +55,12 @@ category: guide
 
 Categories used in this project (match `settings.headerNav.categoryMatch` in `src/config/settings.ts`):
 
-- `overview` — Getting Started
-- `playground` — Playground (coming soon)
-- `guide` — Configuration, CLI, Methodology, Ignore Syntax, Examples
-- `reference` — Programmatic API
+- `overview` — What is?, Getting Started
+- `playground` — Playground
+- `guide` — Configuration, CLI, Ignore Syntax, Examples
+- `reference` — API, Methodology
 - `changelog` — Changelog
-- `claude` — Claude Code configuration (auto-generated)
+- `claude` — auto-generated
 
 Adding a new category requires updating `headerNav` in `src/config/settings.ts`.
 

@@ -2,7 +2,7 @@
 title: メソドロジー
 description: design-token-lint の背景にある考え方 — なぜ生の Tailwind ユーティリティを禁止し、セマンティックトークンで置き換えるのか。
 sidebar_position: 3
-category: guide
+category: reference
 ---
 
 `design-token-lint` は Tailwind CSS でデザインシステムを構築するための特定のアプローチを強制します。このページではその理由を説明します。
@@ -83,7 +83,7 @@ text-p7        # プライマリパレットのスロット 7
 本当に生の値が必要な場合があります。次のいずれかを使用します:
 
 1. **任意値**: `p-[14px]` — 明示的で検索可能、レビュアーに見える
-2. **無視コメント**: 前の行に `{/* design-token-lint-ignore */}` — [無視構文](../ignore-syntax/index.md)を参照
+2. **無視コメント**: 前の行に `{/* design-token-lint-ignore */}` — [無視構文](../../guide/ignore-syntax/index.md)を参照
 3. **許可リスト**: クラスを設定の `allowed` 配列に追加
 
 一度限りのものには任意値を優先してください。繰り返される正当な例外には許可リストを予約してください。

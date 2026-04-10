@@ -2,7 +2,7 @@
 title: Methodology
 description: The reasoning behind design-token-lint — why raw Tailwind utilities are banned and what semantic tokens replace them.
 sidebar_position: 3
-category: guide
+category: reference
 ---
 
 `design-token-lint` enforces a specific approach to building design systems with Tailwind CSS. This page explains the reasoning.
@@ -83,7 +83,7 @@ Only **raw numeric spacing** and **default-palette colors** are flagged.
 Sometimes you genuinely need a raw value. Use one of:
 
 1. **Arbitrary values**: `p-[14px]` — explicit, searchable, reviewer-visible
-2. **Ignore comment**: `{/* design-token-lint-ignore */}` on the preceding line — see [ignore syntax](../ignore-syntax/index.md)
+2. **Ignore comment**: `{/* design-token-lint-ignore */}` on the preceding line — see [ignore syntax](../../guide/ignore-syntax/index.md)
 3. **Allowlist**: add the class to your config's `allowed` array
 
 Prefer arbitrary values for one-offs. Reserve allowlist for legitimate exceptions that repeat.
