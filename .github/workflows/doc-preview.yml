@@ -1,0 +1,77 @@
+name: Deploy docs preview
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: doc-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  build-and-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build documentation site
+        run: pnpm -w run build:doc
+
+      - name: Prepare deploy directory
+        run: |
+          mkdir -p deploy/pj/zudo-design-token-lint
+          cp -r doc/dist/* deploy/pj/zudo-design-token-lint/
+          echo "/ /pj/zudo-design-token-lint/ 302" > deploy/_redirects
+
+      - name: Deploy preview to Cloudflare Pages
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          npx wrangler@4 pages deploy deploy \
+            --project-name=zudo-design-token-lint \
+            --branch="pr-${PR_NUMBER}" \
+            --commit-hash="${GITHUB_SHA}" \
+            --commit-message="PR #${PR_NUMBER} preview"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Comment preview URL on PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          PREVIEW_URL="https://pr-${PR_NUMBER}.zudo-design-token-lint.pages.dev/pj/zudo-design-token-lint/"
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | head -c 7)
+          BODY="## Docs Preview
+
+          ${PREVIEW_URL}
+
+          Deployed from commit ${SHORT_SHA}"
+
+          # Check for existing preview comment
+          EXISTING_ID=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            --jq '.[] | select(.body | contains("Docs Preview")) | .id' | head -1)
+
+          if [ -n "$EXISTING_ID" ]; then
+            gh api "repos/${{ github.repository }}/issues/comments/${EXISTING_ID}" \
+              -X PATCH -f body="${BODY}"
+          else
+            gh pr comment "${PR_NUMBER}" --body "${BODY}"
+          fi

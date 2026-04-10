@@ -69,9 +69,18 @@ Keep the public documentation (`doc/src/content/docs/api/`) in sync when changin
 
 The doc site deploys to `/pj/zudo-design-token-lint/` on Cloudflare Pages. `settings.base` in `doc/src/config/settings.ts` must match.
 
+- **Production**: Push to `main` triggers `.github/workflows/doc-deploy.yml` → deploys to Cloudflare Pages (`main` branch)
+- **PR Preview**: PRs targeting `main` trigger `.github/workflows/doc-preview.yml` → deploys to `pr-<N>.zudo-design-token-lint.pages.dev`
+
+Deploy directory structure: `deploy/pj/zudo-design-token-lint/` with a `_redirects` file routing `/` → `/pj/zudo-design-token-lint/`.
+
+Required secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+
 ## CI / Publish
 
 - `.github/workflows/ci.yml` — test + build + lint on PR and push to main
+- `.github/workflows/doc-deploy.yml` — deploy doc site to Cloudflare Pages on push to main (requires `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`)
+- `.github/workflows/doc-preview.yml` — deploy doc site preview on PRs, posts preview URL as PR comment (requires `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`)
 - `.github/workflows/publish.yml` — publish to npm when a `v*.*.*` tag is pushed (requires `NPM_TOKEN` secret)
 
 ## Publishing
