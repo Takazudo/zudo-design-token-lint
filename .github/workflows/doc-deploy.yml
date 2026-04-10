@@ -1,0 +1,51 @@
+name: Deploy docs
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: doc-deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build documentation site
+        run: pnpm -w run build:doc
+
+      - name: Prepare deploy directory
+        run: |
+          mkdir -p deploy/pj/zudo-design-token-lint
+          cp -r doc/dist/* deploy/pj/zudo-design-token-lint/
+          echo "/ /pj/zudo-design-token-lint/ 302" > deploy/_redirects
+
+      - name: Deploy to Cloudflare Pages
+        run: |
+          npx wrangler@4 pages deploy deploy \
+            --project-name=zudo-design-token-lint \
+            --branch=main \
+            --commit-hash="${GITHUB_SHA}" \
+            --commit-message="Production deploy: ${GITHUB_SHA}"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
