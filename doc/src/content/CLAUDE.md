@@ -55,7 +55,7 @@ category: guide
 
 Categories used in this project (match `settings.headerNav.categoryMatch` in `src/config/settings.ts`):
 
-- `overview` — Getting Started
+- `overview` — What is?, Getting Started
 - `playground` — Playground
 - `guide` — Configuration, CLI, Ignore Syntax, Examples
 - `reference` — API, Methodology
