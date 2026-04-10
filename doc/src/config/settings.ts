@@ -29,7 +29,7 @@ export const settings = {
   base: "/pj/zudo-design-token-lint/",
   trailingSlash: false as boolean,
   noindex: false as boolean,
-  editUrl: "https://github.com/zudolab/zudo-design-token-lint/edit/main/" as string | false,
+  editUrl: "https://github.com/zudolab/zudo-design-token-lint/edit/main/doc/" as string | false,
   siteUrl: "https://takazudomodular.com" as string,
   docsDir: "src/content/docs",
   locales: {
@@ -50,7 +50,8 @@ export const settings = {
   htmlPreview: undefined as HtmlPreviewConfig | undefined,
   versions: [] as VersionConfig[],
   claudeResources: {
-    claudeDir: ".claude",
+    claudeDir: "../.claude",
+    projectRoot: "..",
   } as { claudeDir: string; projectRoot?: string } | false,
   footer: {
     links: [

@@ -54,16 +54,16 @@ ensure_symlink() {
 mkdir -p "$SKILL_DIR"
 
 # Create symlink to docs directory inside the skill
-ensure_symlink "$SKILL_DIR/docs" "$REPO_ROOT/src/content/docs"
-echo "  Created docs symlink -> $REPO_ROOT/src/content/docs"
+ensure_symlink "$SKILL_DIR/docs" "$REPO_ROOT/doc/src/content/docs"
+echo "  Created docs symlink -> $REPO_ROOT/doc/src/content/docs"
 
 # Check if Japanese docs exist and create symlink
 DOCS_JA_DIR="$ROOT_DIR/src/content/docs-ja"
 HAS_JA=""
 if [ -d "$DOCS_JA_DIR" ]; then
   HAS_JA="true"
-  ensure_symlink "$SKILL_DIR/docs-ja" "$REPO_ROOT/src/content/docs-ja"
-  echo "  Created docs-ja symlink -> $REPO_ROOT/src/content/docs-ja"
+  ensure_symlink "$SKILL_DIR/docs-ja" "$REPO_ROOT/doc/src/content/docs-ja"
+  echo "  Created docs-ja symlink -> $REPO_ROOT/doc/src/content/docs-ja"
 fi
 
 # Discover top-level doc categories dynamically
@@ -90,7 +90,7 @@ argument-hint: "[-u|--update] [topic keyword, e.g., 'configuration', 'sidebar', 
 # $PROJECT_NAME Documentation Reference
 
 Look up documentation from the $PROJECT_NAME project.
-Documentation base path: \`src/content/docs\` (relative to repo root)
+Documentation base path: \`doc/src/content/docs\` (relative to repo root)
 
 ## Mode Detection
 
