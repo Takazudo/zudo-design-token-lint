@@ -24,6 +24,29 @@ describe('compilePattern', () => {
     expect(rule.prefix).toBe('gap-x');
     expect(rule.valuePattern.test('4')).toBe(true);
   });
+
+  it('uses generic default message for spacing rules', () => {
+    const rule = compilePattern('p-{n}');
+    expect(rule.reasonTemplate).toContain('use a semantic spacing token or arbitrary value');
+    expect(rule.reasonTemplate).not.toContain('hgap-*/vgap-*');
+  });
+
+  it('uses generic default message for color rules', () => {
+    const rule = compilePattern('bg-{color}-{shade}');
+    expect(rule.reasonTemplate).toContain('use a design system color token');
+  });
+
+  it('uses custom suggestionSuffix for spacing rules', () => {
+    const rule = compilePattern('p-{n}', 'use hgap-*/vgap-* tokens');
+    expect(rule.reasonTemplate).toContain('use hgap-*/vgap-* tokens');
+    expect(rule.reasonTemplate).toContain('Numeric spacing');
+  });
+
+  it('uses custom suggestionSuffix for color rules', () => {
+    const rule = compilePattern('bg-{color}-{shade}', 'use zd-* color tokens');
+    expect(rule.reasonTemplate).toContain('use zd-* color tokens');
+    expect(rule.reasonTemplate).toContain('Default Tailwind color');
+  });
 });
 
 describe('checkClassWithConfig', () => {
@@ -91,5 +114,25 @@ describe('checkClassWithConfig', () => {
     expect(checkClassWithConfig('p-4', compiled)).not.toBeNull();
     // bg-gray-500 is NOT in the custom prohibited list, so allowed
     expect(checkClassWithConfig('bg-gray-500', compiled)).toBeNull();
+  });
+
+  it('uses custom suggestionSuffix in violation reason', () => {
+    const custom: LintConfig = {
+      prohibited: ['p-{n}', 'bg-{color}-{shade}'],
+      allowed: [],
+      ignore: [],
+      suggestionSuffix: 'use hgap-*/vgap-* or zd-* tokens',
+    };
+    const compiled = compileConfig(custom);
+
+    const spacingViolation = checkClassWithConfig('p-4', compiled);
+    expect(spacingViolation).not.toBeNull();
+    expect(spacingViolation!.reason).toContain('use hgap-*/vgap-* or zd-* tokens');
+    expect(spacingViolation!.reason).toContain('Numeric spacing');
+
+    const colorViolation = checkClassWithConfig('bg-gray-500', compiled);
+    expect(colorViolation).not.toBeNull();
+    expect(colorViolation!.reason).toContain('use hgap-*/vgap-* or zd-* tokens');
+    expect(colorViolation!.reason).toContain('Default Tailwind color');
   });
 });

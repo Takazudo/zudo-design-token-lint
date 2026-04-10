@@ -17,6 +17,8 @@ export interface LintConfig {
   ignore: string[];
   /** File glob patterns to scan (used by CLI when no args are given) */
   patterns?: string[];
+  /** Custom suffix for suggestion messages (replaces the default "use a semantic spacing token..." text) */
+  suggestionSuffix?: string;
 }
 
 // Standard Tailwind color names
@@ -140,7 +142,7 @@ export interface CompiledRule {
 /**
  * Compile a single pattern string into a rule.
  */
-export function compilePattern(pattern: string): CompiledRule {
+export function compilePattern(pattern: string, suggestionSuffix?: string): CompiledRule {
   // Find the first placeholder
   const placeholderIndex = pattern.indexOf('{');
   if (placeholderIndex === -1) {
@@ -164,12 +166,14 @@ export function compilePattern(pattern: string): CompiledRule {
 
   if (valuePart === '{n}') {
     regexStr += '\\d+(\\.\\d+)?';
-    reasonTemplate = `Numeric spacing "{CLASS}" — use semantic token (hgap-*/vgap-*) or arbitrary value`;
+    const spacingSuffix = suggestionSuffix ?? 'use a semantic spacing token or arbitrary value';
+    reasonTemplate = `Numeric spacing "{CLASS}" — ${spacingSuffix}`;
     isSpacingRule = true;
   } else if (valuePart === '{color}-{shade}') {
     const colorGroup = TAILWIND_COLORS.join('|');
     regexStr += `(${colorGroup})-(\\d{2,3})`;
-    reasonTemplate = `Default Tailwind color "{CLASS}" — use design system token (zd-*, p0-p15, semantic)`;
+    const colorSuffix = suggestionSuffix ?? 'use a design system color token';
+    reasonTemplate = `Default Tailwind color "{CLASS}" — ${colorSuffix}`;
   } else {
     // Generic placeholder handling
     regexStr += valuePart
@@ -200,7 +204,7 @@ export interface CompiledConfig {
 
 export function compileConfig(config: LintConfig): CompiledConfig {
   return {
-    rules: config.prohibited.map(compilePattern),
+    rules: config.prohibited.map((p) => compilePattern(p, config.suggestionSuffix)),
     allowed: new Set(config.allowed),
     ignore: config.ignore,
   };
@@ -222,6 +226,7 @@ export async function loadConfig(cwd: string): Promise<LintConfig> {
         allowed: parsed.allowed ?? DEFAULT_CONFIG.allowed,
         ignore: parsed.ignore ?? DEFAULT_CONFIG.ignore,
         patterns: parsed.patterns,
+        suggestionSuffix: parsed.suggestionSuffix,
       };
     } catch {
       // File doesn't exist or is invalid, try next

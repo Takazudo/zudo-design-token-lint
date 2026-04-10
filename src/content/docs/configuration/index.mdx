@@ -40,6 +40,7 @@ Create a `.design-token-lint.json` or `design-token-lint.config.json` file at yo
 | `allowed` | `string[]` | Exceptions that always pass, even if they match a prohibited pattern |
 | `ignore` | `string[]` | File glob patterns to skip entirely |
 | `patterns` | `string[]` | File glob patterns to scan (used when no CLI args are given) |
+| `suggestionSuffix` | `string` | Custom suffix for violation messages (replaces the default suggestion text) |
 
 All fields are optional and fall back to built-in defaults.
 
@@ -78,6 +79,23 @@ File glob patterns to skip entirely. Common patterns:
 ### `patterns`
 
 File glob patterns to scan when the CLI is called without explicit file arguments. If omitted, the CLI uses a default set (`src/**`, `components/**`, `lib/**`, `app/**`).
+
+### `suggestionSuffix`
+
+A string appended to violation messages after the `—` separator, replacing the default suggestion text. Use this to point developers toward your project's specific token naming convention.
+
+**Default messages (no `suggestionSuffix`):**
+- Spacing: `Numeric spacing "p-4" — use a semantic spacing token or arbitrary value`
+- Color: `Default Tailwind color "bg-gray-500" — use a design system color token`
+
+**With `suggestionSuffix`:**
+```json
+{
+  "suggestionSuffix": "use hgap-*/vgap-* or zd-* tokens"
+}
+```
+- Spacing: `Numeric spacing "p-4" — use hgap-*/vgap-* or zd-* tokens`
+- Color: `Default Tailwind color "bg-gray-500" — use hgap-*/vgap-* or zd-* tokens`
 
 ## Built-in Defaults
 

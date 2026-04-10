@@ -58,14 +58,27 @@ Create a `.design-token-lint.json` (or `design-token-lint.config.json`) in your 
 
 ### Config Fields
 
-| Field        | Type       | Description                                                                                         |
-| ------------ | ---------- | --------------------------------------------------------------------------------------------------- |
-| `prohibited` | `string[]` | Patterns to flag. Placeholders: `{n}` (number), `{color}` (Tailwind color name), `{shade}` (50-950) |
-| `allowed`    | `string[]` | Exceptions that are always allowed, even if they match a prohibited pattern                         |
-| `ignore`     | `string[]` | File glob patterns to skip entirely                                                                 |
-| `patterns`   | `string[]` | File glob patterns to scan (overrides CLI defaults when no args given)                              |
+| Field              | Type       | Description                                                                                         |
+| ------------------ | ---------- | --------------------------------------------------------------------------------------------------- |
+| `prohibited`       | `string[]` | Patterns to flag. Placeholders: `{n}` (number), `{color}` (Tailwind color name), `{shade}` (50-950) |
+| `allowed`          | `string[]` | Exceptions that are always allowed, even if they match a prohibited pattern                         |
+| `ignore`           | `string[]` | File glob patterns to skip entirely                                                                 |
+| `patterns`         | `string[]` | File glob patterns to scan (overrides CLI defaults when no args given)                              |
+| `suggestionSuffix` | `string`   | Custom suffix for violation messages (replaces the default suggestion text)                         |
 
 All fields fall back to built-in defaults if omitted.
+
+#### `suggestionSuffix`
+
+Point developers toward your project's specific token naming convention by customising the violation message suffix:
+
+```json
+{
+  "suggestionSuffix": "use hgap-*/vgap-* or zd-* tokens"
+}
+```
+
+This turns `Numeric spacing "p-4" — use a semantic spacing token or arbitrary value` into `Numeric spacing "p-4" — use hgap-*/vgap-* or zd-* tokens`.
 
 ### Pattern Placeholders
 

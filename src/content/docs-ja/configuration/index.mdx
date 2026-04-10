@@ -40,6 +40,7 @@ category: guide
 | `allowed` | `string[]` | 禁止パターンに一致しても常に通す例外 |
 | `ignore` | `string[]` | 完全にスキップするファイル glob パターン |
 | `patterns` | `string[]` | スキャン対象の glob パターン(CLI 引数がない場合に使用) |
+| `suggestionSuffix` | `string` | 違反メッセージのカスタムサフィックス(デフォルトの提案テキストを置き換えます) |
 
 すべてのフィールドはオプションで、省略時は組み込みのデフォルトにフォールバックします。
 
@@ -78,6 +79,23 @@ category: guide
 ### `patterns`
 
 CLI が明示的なファイル引数なしで呼び出されたときにスキャンするファイル glob パターン。省略時はデフォルトセット(`src/**`、`components/**`、`lib/**`、`app/**`)を使用します。
+
+### `suggestionSuffix`
+
+違反メッセージの `—` セパレーターの後に付加される文字列で、デフォルトの提案テキストを置き換えます。プロジェクト固有のトークン命名規則を開発者に案内するために使用します。
+
+**デフォルトメッセージ(`suggestionSuffix` なし):**
+- 間隔: `Numeric spacing "p-4" — use a semantic spacing token or arbitrary value`
+- カラー: `Default Tailwind color "bg-gray-500" — use a design system color token`
+
+**`suggestionSuffix` を設定した場合:**
+```json
+{
+  "suggestionSuffix": "use hgap-*/vgap-* or zd-* tokens"
+}
+```
+- 間隔: `Numeric spacing "p-4" — use hgap-*/vgap-* or zd-* tokens`
+- カラー: `Default Tailwind color "bg-gray-500" — use hgap-*/vgap-* or zd-* tokens`
 
 ## 組み込みのデフォルト
 
