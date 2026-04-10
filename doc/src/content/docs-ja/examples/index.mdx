@@ -1,29 +1,175 @@
 ---
 title: 使用例
-description: 実プロジェクトでの design-token-lint の典型的な設定と使用パターン。
+description: タイトトークン戦略を使ったデザイントークン適用の具体的な例。
 sidebar_position: 5
 category: guide
 ---
 
 # 使用例
 
-よくある設定と使用パターン。
+実際のプロジェクトで使える設定と使用パターン — 汎用的なプレースホルダーではなく、具体的なトークンを使います。
 
-## 最小設定
+## このツールが解決する問題
 
-シンプルに始めましょう。組み込みのデフォルトに重労働を任せます:
+Tailwind のデフォルトの spacing スケールには30以上の数値ステップがあります（`p-1`、`p-2`、`p-3`、`p-4` … `p-96`）。あらゆる値が有効な状態では、開発者はそれぞれ微妙に異なる値を選んでしまいます：
+
+```tsx
+// 開発者 A のコンポーネント — p-4 を使用
+<div className="p-4 bg-gray-200">
+
+// 開発者 B のコンポーネント — 「中くらいのパディング」のつもりで p-5 を使用
+<div className="p-5 bg-gray-100">
+
+// 開発者 C のコンポーネント — p-6 を使用
+<div className="p-6 bg-gray-300">
+```
+
+3つともコンパイルは通ります。UIは少しずつズレていきます。
+
+`design-token-lint` はこれらの数値ユーティリティを検出し、プロジェクト定義のセマンティックトークンのみが使われるようにします。1つのlintルールで、全体のスペーシングが統一されます。
+
+## 具体的なトークンシステム
+
+このページの例では、実際のトークンシステムを使います — このドキュメントサイト自体が使っているものと同じです。
+
+### スペーシングトークン
+
+単一の数値スケールの代わりに、2つのセマンティック軸を使います：
+
+**水平スペーシング**（`hsp-*`）— インラインギャップ、水平方向のパディング：
+
+| トークン | 値 | 用途 |
+| --- | --- | --- |
+| `hsp-2xs` | 2px | タイトなインラインスペーシング |
+| `hsp-xs` | 6px | コンパクトなインライン |
+| `hsp-sm` | 8px | 小さなパディング |
+| `hsp-md` | 12px | デフォルトのギャップ |
+| `hsp-lg` | 16px | 標準的なパディング |
+| `hsp-xl` | 24px | 余裕のあるパディング |
+| `hsp-2xl` | 32px | 大きなパディング |
+
+**垂直スペーシング**（`vsp-*`）— セクションギャップ、垂直方向のパディング：
+
+| トークン | 値 | 用途 |
+| --- | --- | --- |
+| `vsp-2xs` | 7px | タイトなギャップ |
+| `vsp-xs` | 14px | 小さなギャップ |
+| `vsp-sm` | 20px | コンパクトなギャップ |
+| `vsp-md` | 24px | 標準的なギャップ |
+| `vsp-lg` | 28px | セクションギャップ |
+| `vsp-xl` | 40px | 大きなセクションギャップ |
+| `vsp-2xl` | 56px | ページレベルのギャップ |
+
+### カラートークン
+
+パレットのシェードではなく、セマンティックな名前を使います：
+
+| トークン | Tailwindクラス | 意味 |
+| --- | --- | --- |
+| `surface` | `bg-surface` | カード・サイドバーの背景 |
+| `muted` | `text-muted` | 二次的な、目立たないテキスト |
+| `accent` | `bg-accent` | プライマリのインタラクティブカラー |
+| `accent-hover` | `bg-accent-hover` | アクセントのホバー状態 |
+| `code-bg` | `bg-code-bg` | インラインコードの背景 |
+| `code-fg` | `text-code-fg` | インラインコードのテキスト |
+| `success` | `text-success` | 成功状態 |
+| `danger` | `text-danger` | エラー・破壊的な操作 |
+| `warning` | `text-warning` | 注意状態 |
+| `info` | `text-info` | 情報提供 |
+
+これらはグローバルCSSの `@theme` に登録されています — `bg-gray-200` や `bg-blue-600` はそのトークンが存在しないため使用できません。使おうとするとlint違反になります。
+
+## リンターが検出するもの
+
+このトークンシステム用の設定：
 
 ```json
 {
-  "allowed": ["p-0", "m-0", "gap-0"]
+  "prohibited": [
+    "p-{n}", "px-{n}", "py-{n}", "pt-{n}", "pr-{n}", "pb-{n}", "pl-{n}",
+    "m-{n}", "mx-{n}", "my-{n}", "mt-{n}", "mr-{n}", "mb-{n}", "ml-{n}",
+    "gap-{n}", "gap-x-{n}", "gap-y-{n}",
+    "space-x-{n}", "space-y-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}",
+    "border-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0", "p-px"],
+  "patterns": ["src/**/*.{tsx,jsx,astro}"],
+  "ignore": ["**/*.test.*", "**/*.stories.*"],
+  "suggestionSuffix": "use semantic token (hsp-*/vsp-*) or arbitrary value"
 }
 ```
 
-これはすべてのデフォルト禁止パターンを使い、ゼロ間隔の例外だけを追加します。
+リンターが報告する違反：
 
-## Tailwind + デザイントークンプロジェクト
+| クラス | 理由 | 修正 |
+| --- | --- | --- |
+| `p-4` | `p-{n}` にマッチ | → `p-hsp-lg`（16px 標準パディング） |
+| `gap-2` | `gap-{n}` にマッチ | → `gap-hsp-sm`（8px 小さなギャップ） |
+| `bg-gray-200` | `bg-{color}-{shade}` にマッチ | → `bg-surface`（サーフェス背景） |
+| `text-gray-500` | `text-{color}-{shade}` にマッチ | → `text-muted`（二次的なテキスト） |
+| `bg-blue-600` | `bg-{color}-{shade}` にマッチ | → `bg-accent`（プライマリカラー） |
 
-セマンティックな間隔スケールとカスタムカラーパレットを持つ典型的な Tailwind プロジェクト:
+## 修正前後の比較
+
+生の Tailwind を使ったカードコンポーネントと、セマンティックトークンを使った同じコンポーネントを比較します。
+
+### 修正前 — 生の数値ユーティリティ
+
+```tsx
+// ArticleCard.tsx — design-token-lint に検出される
+export function ArticleCard({ title, excerpt, tag }: Props) {
+  return (
+    <div className="p-4 bg-gray-100 rounded-lg">
+      <h2 className="text-lg font-bold text-gray-900 mb-2">{title}</h2>
+      <p className="text-sm text-gray-600 mb-4">{excerpt}</p>
+      <div className="flex gap-2">
+        <span className="px-3 py-1 bg-blue-600 text-white text-xs rounded">
+          {tag}
+        </span>
+      </div>
+    </div>
+  )
+}
+```
+
+リンターが検出するクラス: `p-4`、`bg-gray-100`、`text-gray-900`、`mb-2`、`text-gray-600`、`mb-4`、`gap-2`、`px-3`、`py-1`、`bg-blue-600`。
+
+### 修正後 — セマンティックトークン
+
+```tsx
+// ArticleCard.tsx — クリーン
+export function ArticleCard({ title, excerpt, tag }: Props) {
+  return (
+    <div className="p-hsp-lg bg-surface rounded-lg">
+      <h2 className="text-subheading font-bold text-fg mb-vsp-2xs">{title}</h2>
+      <p className="text-small text-muted mb-vsp-xs">{excerpt}</p>
+      <div className="flex gap-hsp-sm">
+        <span className="px-hsp-sm py-vsp-2xs bg-accent text-bg text-caption rounded">
+          {tag}
+        </span>
+      </div>
+    </div>
+  )
+}
+```
+
+### セマンティックバージョンが優れている理由
+
+**一元的な変更** — デザインチームがアクセントカラーを変更する場合、1つのCSS変数（`--color-accent`）を更新するだけで、コードベース全体のすべての `bg-accent` が更新されます。`bg-blue-600` の場合は、何百ものファイルをgrepして置換する必要があります。
+
+**意図が伝わる** — `bg-surface` は「これはサーフェスレベルの背景」であることを伝えます。`bg-gray-100` は数値以外何も伝えません。6ヶ月後も、トークン名は意味を持ち続けます。
+
+**ズレが起きない** — `p-hsp-lg` はどこでも同じ値です。`p-4` は、誰かが Tailwind の設定を変更しない限り16pxですが、セマンティックトークンはテーマの上書きに耐えられます。
+
+**強制力がある** — リンターはスタイルガイドの脚注をCIの失敗に変えます。違反はデザインレビューではなく、PRの段階で検出されます。
+
+## 実際的な設定例
+
+### タイトトークンプロジェクト（推奨）
+
+Tailwind のデフォルトをセマンティックトークンで完全に置き換えたプロジェクト：
 
 ```json
 {
@@ -37,7 +183,7 @@ category: guide
     "border-{color}-{shade}",
     "ring-{color}-{shade}"
   ],
-  "allowed": ["p-0", "m-0", "gap-0", "p-1px"],
+  "allowed": ["p-0", "m-0", "gap-0", "p-px"],
   "ignore": [
     "**/*.test.*",
     "**/*.stories.*",
@@ -46,11 +192,31 @@ category: guide
   "patterns": [
     "src/**/*.{tsx,jsx,astro}",
     "components/**/*.{tsx,jsx,astro}"
-  ]
+  ],
+  "suggestionSuffix": "use semantic token (hsp-*/vsp-*) or arbitrary value"
 }
 ```
 
-## Next.js アプリ
+### 段階的な移行
+
+生の Tailwind を使った大規模なコードベースがある場合、まずカラーだけ始めて、後でスペーシングを追加します：
+
+```json
+{
+  "prohibited": [
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}",
+    "border-{color}-{shade}"
+  ],
+  "allowed": [],
+  "patterns": ["src/**/*.{tsx,jsx}"],
+  "suggestionSuffix": "use a semantic color token instead"
+}
+```
+
+カラーがクリーンになったら、スペーシングパターンを `prohibited` に追加します。
+
+### Next.js プロジェクト
 
 ```json
 {
@@ -73,7 +239,7 @@ category: guide
 }
 ```
 
-## Astro プロジェクト
+### Astro プロジェクト
 
 ```json
 {
@@ -97,7 +263,7 @@ category: guide
 
 ## 複数パッケージの monorepo
 
-モノレポのルートに設定を置き、すべてのパッケージをスキャンします:
+モノレポのルートに設定を置き、すべてのパッケージをスキャンします：
 
 ```json
 {
@@ -121,7 +287,7 @@ category: guide
 
 ## CI 統合 — GitHub Actions
 
-違反があれば CI を失敗させる:
+違反があれば CI を失敗させる：
 
 ```yaml
 # .github/workflows/lint.yml
@@ -144,7 +310,7 @@ jobs:
 
 ## Pre-commit フック
 
-[lint-staged](https://github.com/lint-staged/lint-staged) でステージされたファイルにのみ実行:
+[lint-staged](https://github.com/lint-staged/lint-staged) でステージされたファイルにのみ実行：
 
 ```json
 {
@@ -156,7 +322,7 @@ jobs:
 
 ## カスタムスクリプト
 
-プログラマティック API を使ってプロジェクト固有のロジックでリンターを実行:
+プログラマティック API を使ってプロジェクト固有のロジックでリンターを実行：
 
 ```ts
 // scripts/lint-tokens.mjs
@@ -182,7 +348,7 @@ process.exit(totalViolations > 0 ? 1 : 0);
 
 ## 正当な例外の無視
 
-生の Tailwind を要求するサードパーティコンポーネントを統合する場合:
+生の Tailwind を要求するサードパーティコンポーネントを統合する場合：
 
 ```tsx
 {/* design-token-lint-ignore — ベンダーコンポーネントがリテラル p-4 を要求 */}
