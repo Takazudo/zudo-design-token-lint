@@ -308,14 +308,14 @@ jobs:
 
 ## Pre-commit フック
 
-[lint-staged](https://github.com/lint-staged/lint-staged) でステージされたファイルにのみ実行：
+[lefthook](https://github.com/evilmartians/lefthook) でプッシュ前に実行：
 
-```json
-{
-  "lint-staged": {
-    "*.{tsx,jsx,astro}": "design-token-lint"
-  }
-}
+```yaml
+# lefthook.yml
+pre-push:
+  commands:
+    design-token-lint:
+      run: npx design-token-lint
 ```
 
 ## カスタムスクリプト
