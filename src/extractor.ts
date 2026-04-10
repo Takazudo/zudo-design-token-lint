@@ -20,11 +20,11 @@ const IGNORE_PATTERNS = [
   /\/\/\s*design-token-lint-ignore(?!\S)/,
 ];
 
-// Lines containing file-level ignore comment
+// Lines containing file-level ignore comment (anchored to comment-only lines)
 const IGNORE_FILE_PATTERNS = [
-  /\/\*\s*design-token-lint-ignore-file\s*\*\//,
-  /\{\/\*\s*design-token-lint-ignore-file\s*\*\/\}/,
-  /\/\/\s*design-token-lint-ignore-file/,
+  /^\s*\/\*\s*design-token-lint-ignore-file\s*\*\/\s*$/,
+  /^\s*\{\/\*\s*design-token-lint-ignore-file\s*\*\/\}\s*$/,
+  /^\s*\/\/\s*design-token-lint-ignore-file\s*$/,
 ];
 
 /**

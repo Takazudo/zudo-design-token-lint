@@ -7,7 +7,7 @@ import {
 } from "@/lib/lint-browser";
 
 const DEFAULT_CODE = `<div className="p-4 bg-gray-200">
-  <h1 className="text-xl mb-hsp-md">Title</h1>
+  <h1 className="text-xl mb-vsp-md">Title</h1>
   <p className="mt-2 text-gray-600">
     Some content here
   </p>
@@ -48,6 +48,12 @@ const TEXTAREA_CLASS =
 
 function parseLintConfig(configStr: string): LintConfig {
   const parsed = JSON.parse(configStr);
+  if (parsed.prohibited && !Array.isArray(parsed.prohibited))
+    throw new Error('"prohibited" must be an array');
+  if (parsed.allowed && !Array.isArray(parsed.allowed))
+    throw new Error('"allowed" must be an array');
+  if (parsed.ignore && !Array.isArray(parsed.ignore))
+    throw new Error('"ignore" must be an array');
   return {
     prohibited: parsed.prohibited ?? [],
     allowed: parsed.allowed ?? [],
@@ -91,6 +97,7 @@ export default function Playground() {
     INITIAL_LINT.configError,
   );
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInitialMount = useRef(true);
 
   function applyLint(codeVal: string, configVal: string) {
     const { results: r, configError: err } = runLintSync(codeVal, configVal);
@@ -99,6 +106,10 @@ export default function Playground() {
   }
 
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => applyLint(code, configStr), 300);
     return () => {
@@ -171,7 +182,7 @@ export default function Playground() {
             </span>
           )}
         </span>
-        <div className="min-h-40 rounded-lg border border-muted/30 bg-surface/50 p-hsp-md overflow-y-auto">
+        <div className="min-h-40 rounded-lg border border-muted/30 bg-surface/50 p-hsp-md overflow-y-auto" aria-live="polite">
           {configError ? (
             <p className="text-caption text-danger italic">
               Fix the configuration error to see results.

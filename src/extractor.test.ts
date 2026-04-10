@@ -176,5 +176,21 @@ describe('extractClasses', () => {
         { className: 'flex', line: 1 },
       ]);
     });
+
+    it('does not trigger on ignore-file text inside a string literal', () => {
+      const content = `<div className="p-4">
+  <p>Use /* design-token-lint-ignore-file */ to skip</p>
+</div>`;
+      const result = extractClasses(content);
+      expect(result.length).toBeGreaterThan(0);
+    });
+
+    it('does not trigger on ignore-file text inside JSX text content', () => {
+      const content = `<div className="p-4">
+  The comment design-token-lint-ignore-file skips files
+</div>`;
+      const result = extractClasses(content);
+      expect(result.length).toBeGreaterThan(0);
+    });
   });
 });

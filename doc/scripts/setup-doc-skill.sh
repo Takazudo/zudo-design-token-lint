@@ -9,8 +9,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
-# Read project name from package.json
-PROJECT_NAME=$(node -e "console.log(require('$ROOT_DIR/package.json').name || 'my-project')")
+# Read project name from the root lint package (not the doc package)
+REPO_PACKAGE_JSON="$(cd "$ROOT_DIR/.." && pwd)/package.json"
+PROJECT_NAME=$(node -e "const n = require('$REPO_PACKAGE_JSON').name || 'my-project'; console.log(n.replace(/^@[^/]+\\//, ''))")
 DEFAULT_SKILL_NAME="${PROJECT_NAME}-wisdom"
 
 # Prompt for skill name
@@ -32,6 +33,7 @@ REPO_ROOT="$(git -C "$ROOT_DIR" worktree list | head -1 | awk '{print $1}')"
 
 SKILL_DIR="$ROOT_DIR/.claude/skills/$SKILL_NAME"
 DOCS_DIR="$ROOT_DIR/src/content/docs"
+CONTENT_CLAUDE_MD="$ROOT_DIR/src/content/CLAUDE.md"
 GLOBAL_SKILLS_DIR="$HOME/.claude/skills"
 
 # Validate docs directory exists
@@ -58,7 +60,7 @@ ensure_symlink "$SKILL_DIR/docs" "$REPO_ROOT/doc/src/content/docs"
 echo "  Created docs symlink -> $REPO_ROOT/doc/src/content/docs"
 
 # Check if Japanese docs exist and create symlink
-DOCS_JA_DIR="$ROOT_DIR/src/content/docs-ja"
+DOCS_JA_DIR="$DOCS_DIR/../docs-ja"
 HAS_JA=""
 if [ -d "$DOCS_JA_DIR" ]; then
   HAS_JA="true"
@@ -120,7 +122,7 @@ The user has new information and wants to add or update documentation in this re
    the topic. Read them to understand what is already covered.
 3. **Decide create vs update**: If an existing article covers the topic, update
    it. Otherwise, create a new \`.mdx\` file in the appropriate subdirectory.
-4. **Write the content**: Follow the doc-authoring rules in the root CLAUDE.md:
+4. **Write the content**: Follow the doc-authoring rules in \`doc/src/content/CLAUDE.md\`:
    - Required frontmatter: \`title\` (string). Always set \`sidebar_position\`.
      Optional: \`description\`, \`sidebar_label\`, \`tags\`, etc.
    - Do NOT use \`# h1\` in content — the frontmatter \`title\` renders as h1.
@@ -134,7 +136,7 @@ The user has new information and wants to add or update documentation in this re
    Mermaid diagrams, and \`<HtmlPreview>\` blocks identical — only translate
    surrounding prose. Exception: pages with \`generated: true\` skip translation.
 6. **Format**: Run \`pnpm format:md\` to format the new/changed MDX files.
-7. **Verify**: Run \`pnpm build\` to confirm the site builds correctly.
+7. **Verify**: Run \`pnpm build\` from the \`doc/\` directory to confirm the site builds correctly.
 
 ## Documentation Structure
 

@@ -141,9 +141,9 @@ const IGNORE_PATTERNS = [
 ];
 
 const IGNORE_FILE_PATTERNS = [
-  /\/\*\s*design-token-lint-ignore-file\s*\*\//,
-  /\{\/\*\s*design-token-lint-ignore-file\s*\*\/\}/,
-  /\/\/\s*design-token-lint-ignore-file/,
+  /^\s*\/\*\s*design-token-lint-ignore-file\s*\*\/\s*$/,
+  /^\s*\{\/\*\s*design-token-lint-ignore-file\s*\*\/\}\s*$/,
+  /^\s*\/\/\s*design-token-lint-ignore-file\s*$/,
 ];
 
 function isIgnoreLine(line: string): boolean {
