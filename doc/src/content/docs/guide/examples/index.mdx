@@ -306,16 +306,16 @@ jobs:
       - run: pnpm design-token-lint
 ```
 
-## Pre-commit Hook
+## Pre-push Hook
 
-Run on staged files with [lint-staged](https://github.com/lint-staged/lint-staged):
+Run on every push with [lefthook](https://github.com/evilmartians/lefthook):
 
-```json
-{
-  "lint-staged": {
-    "*.{tsx,jsx,astro}": "design-token-lint"
-  }
-}
+```yaml
+# lefthook.yml
+pre-push:
+  commands:
+    design-token-lint:
+      run: npx design-token-lint
 ```
 
 ## Custom Script

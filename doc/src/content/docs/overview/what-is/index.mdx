@@ -1,0 +1,59 @@
+---
+title: What is design-token-lint?
+description: Overview of what design-token-lint does and why it exists.
+sidebar_position: 1
+category: overview
+---
+
+Tailwind CSS provides hundreds of numeric utilities — `p-1` through `p-96`, `gap-2`, `mt-8` — and a default color palette with shades like `bg-red-500`, `text-gray-300`. These utilities are convenient, but they let developers bypass any design system entirely. Anyone can pick an arbitrary spacing value or color without referencing design tokens.
+
+`@zudolab/design-token-lint` is a linter that catches this. It scans source files for Tailwind class names that match prohibited patterns and reports them as violations — pointing developers toward semantic alternatives.
+
+## The Problem
+
+A component with `p-4` and another with `p-6` may look similar, but they carry no shared semantic meaning. Multiply this across a large project: dozens of one-off spacing values, colors picked from the Tailwind palette rather than design tokens, and no tooling to enforce consistency.
+
+Design systems define semantic tokens — `spacing-md`, `color-surface`, `text-primary` — to give these values a contract. Raw utilities bypass that contract silently.
+
+See the [methodology page](../../reference/methodology/index.md) for the full reasoning.
+
+## How It Works
+
+1. **Scan files** — the linter reads source files (`.tsx`, `.jsx`, `.astro`, `.vue`, `.html`, etc.) and extracts Tailwind class names using pattern matching against `className`, `class`, `cn()`, `clsx()`, and similar syntaxes.
+
+2. **Match against rules** — each extracted class is checked against prohibited patterns defined in `.design-token-lint.json`. Patterns use placeholders:
+   - `{n}` — matches any Tailwind numeric step (`p-{n}` matches `p-4`, `p-6`, `p-12`, ...)
+   - `{color}` — matches any default Tailwind color name (`bg-{color}-{shade}` matches `bg-red-500`)
+   - `{shade}` — matches numeric shades (`50`–`950`)
+
+3. **Report violations** — violations are reported with file path, line number, class name, and a reason string that suggests the expected token category.
+
+```
+src/Button.tsx
+  L12: p-4 — Numeric spacing "p-4" — use semantic token (hgap-*/vgap-*) or arbitrary value
+
+src/Card.tsx
+  L7: bg-gray-200 — Default color "bg-gray-200" — use semantic token (bg-surface/bg-muted/...)
+```
+
+## Key Features
+
+- **CLI tool** — run `npx design-token-lint` to lint a project; exits with code `1` on violations for CI integration
+- **Configurable rules** — define prohibited patterns and an explicit allowlist in `.design-token-lint.json`
+- **Pattern placeholders** — `{n}`, `{color}`, `{shade}` let one rule cover entire families of utilities
+- **Ignore syntax** — suppress individual lines with `// design-token-lint-ignore` or entire files with `// design-token-lint-ignore-file`
+- **Programmatic API** — `lintFile()`, `lintContent()`, `checkClass()` for integration with build tools and editors
+- **Browser playground** — try patterns and classes interactively without installing anything
+
+## Tech Stack
+
+TypeScript, Node.js 18+. Distributed as an npm package with a CLI binary and an importable library. Runtime dependencies: `chalk` (terminal colors) and `glob` (file scanning). No Tailwind dependency — it works by string pattern matching, not Tailwind's internals.
+
+## Integration
+
+Works with any framework that uses Tailwind class names in source files — React, Vue, Astro, Svelte, or plain HTML. Integrate with:
+
+- **CI/CD** — run as a step in GitHub Actions or any pipeline
+- **Git hooks** — run before push with [lefthook](https://github.com/evilmartians/lefthook) or husky
+- **Build tools** — use the programmatic API in Vite plugins, webpack loaders, or custom scripts
+- **Editors** — the programmatic API supports editor plugin authors

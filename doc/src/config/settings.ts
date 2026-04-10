@@ -58,9 +58,9 @@ export const settings = {
       {
         title: "Docs",
         items: [
-          { label: "Getting Started", href: "/docs/getting-started" },
-          { label: "Configuration", href: "/docs/configuration" },
-          { label: "CLI", href: "/docs/cli" },
+          { label: "Getting Started", href: "/docs/overview/getting-started" },
+          { label: "Configuration", href: "/docs/guide/configuration" },
+          { label: "CLI", href: "/docs/guide/cli" },
         ],
       },
       {
@@ -74,10 +74,10 @@ export const settings = {
     copyright: `Copyright © ${new Date().getFullYear()} zudolab. Built with zudo-doc.`,
   } satisfies FooterConfig as FooterConfig | false,
   headerNav: [
-    { label: "Overview", path: "/docs/getting-started", categoryMatch: "overview" },
+    { label: "Overview", path: "/docs/overview", categoryMatch: "overview" },
     { label: "Playground", path: "/docs/playground", categoryMatch: "playground" },
-    { label: "Guide", path: "/docs/configuration", categoryMatch: "guide" },
-    { label: "Reference", path: "/docs/api", categoryMatch: "reference" },
+    { label: "Guide", path: "/docs/guide", categoryMatch: "guide" },
+    { label: "Reference", path: "/docs/reference", categoryMatch: "reference" },
     { label: "Changelog", path: "/docs/changelog", categoryMatch: "changelog" },
     { label: "Claude", path: "/docs/claude", categoryMatch: "claude" },
   ] as HeaderNavItem[],

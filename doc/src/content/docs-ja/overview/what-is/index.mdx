@@ -1,0 +1,59 @@
+---
+title: design-token-lint とは？
+description: design-token-lint が何をするか、なぜ存在するかの概要。
+sidebar_position: 1
+category: overview
+---
+
+Tailwind CSS は数百もの数値ユーティリティ — `p-1` から `p-96`、`gap-2`、`mt-8` — と、`bg-red-500`、`text-gray-300` のようなシェードを持つデフォルトカラーパレットを提供しています。これらのユーティリティは便利ですが、デザインシステムを完全に無視することを可能にします。開発者はデザイントークンを参照せず、任意のスペーシング値や色を選ぶことができてしまいます。
+
+`@zudolab/design-token-lint` はこれを検出するリンターです。禁止パターンに一致する Tailwind クラス名をソースファイルからスキャンし、違反として報告します — セマンティックな代替案へと開発者を導きます。
+
+## 問題点
+
+`p-4` を使ったコンポーネントと `p-6` を使ったコンポーネントは見た目が似ていても、共有されたセマンティックな意味を持ちません。これが大きなプロジェクト全体に広がると、場当たり的なスペーシング値が無数に生まれ、デザイントークンではなく Tailwind のパレットから色が選ばれ、一貫性を強制するツールも存在しない状態になります。
+
+デザインシステムは `spacing-md`、`color-surface`、`text-primary` のようなセマンティックなトークンを定義することで、それらの値に契約を与えます。生のユーティリティはその契約を無言で回避します。
+
+詳しい考え方は[メソドロジーのページ](../../reference/methodology/index.md)を参照してください。
+
+## 仕組み
+
+1. **ファイルのスキャン** — リンターはソースファイル（`.tsx`、`.jsx`、`.astro`、`.vue`、`.html` など）を読み込み、`className`、`class`、`cn()`、`clsx()` などの構文に対してパターンマッチングで Tailwind クラス名を抽出します。
+
+2. **ルールとの照合** — 抽出された各クラスは `.design-token-lint.json` で定義された禁止パターンと照合されます。パターンにはプレースホルダーを使用します:
+   - `{n}` — 任意の Tailwind 数値ステップにマッチ（`p-{n}` は `p-4`、`p-6`、`p-12` などにマッチ）
+   - `{color}` — 任意のデフォルト Tailwind カラー名にマッチ（`bg-{color}-{shade}` は `bg-red-500` にマッチ）
+   - `{shade}` — 数値シェード（`50`〜`950`）にマッチ
+
+3. **違反の報告** — 違反はファイルパス、行番号、クラス名、そして期待されるトークンカテゴリを示す理由文字列とともに報告されます。
+
+```
+src/Button.tsx
+  L12: p-4 — Numeric spacing "p-4" — use semantic token (hgap-*/vgap-*) or arbitrary value
+
+src/Card.tsx
+  L7: bg-gray-200 — Default color "bg-gray-200" — use semantic token (bg-surface/bg-muted/...)
+```
+
+## 主な機能
+
+- **CLI ツール** — `npx design-token-lint` でプロジェクトをリント。CI 統合のため違反があればコード `1` で終了
+- **設定可能なルール** — `.design-token-lint.json` で禁止パターンと明示的な許可リストを定義
+- **パターンプレースホルダー** — `{n}`、`{color}`、`{shade}` により 1 つのルールでユーティリティファミリー全体をカバー
+- **無視構文** — `// design-token-lint-ignore` で個別行を、`// design-token-lint-ignore-file` でファイル全体を抑制
+- **プログラマティック API** — ビルドツールやエディタとの統合のための `lintFile()`、`lintContent()`、`checkClass()`
+- **ブラウザプレイグラウンド** — インストールなしでパターンとクラスをインタラクティブに試せる
+
+## 技術スタック
+
+TypeScript、Node.js 18+。CLI バイナリとインポート可能なライブラリを持つ npm パッケージとして配布。ランタイム依存関係: `chalk`（ターミナルカラー）と `glob`（ファイルスキャン）。Tailwind への依存なし — 内部ではなく文字列パターンマッチングで動作します。
+
+## インテグレーション
+
+ソースファイルで Tailwind クラス名を使用する任意のフレームワーク（React、Vue、Astro、Svelte、またはプレーン HTML）で動作します。以下と統合できます:
+
+- **CI/CD** — GitHub Actions や任意のパイプラインのステップとして実行
+- **Git フック** — [lefthook](https://github.com/evilmartians/lefthook) または husky でプッシュ前に実行
+- **ビルドツール** — Vite プラグイン、webpack ローダー、またはカスタムスクリプトでプログラマティック API を使用
+- **エディタ** — プログラマティック API はエディタプラグイン作者をサポート

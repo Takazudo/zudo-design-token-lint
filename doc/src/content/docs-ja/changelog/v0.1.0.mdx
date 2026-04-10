@@ -1,0 +1,15 @@
+---
+title: v0.1.0
+description: design-token-lint の初回リリース。
+sidebar_position: 9999
+category: changelog
+---
+
+`@zudolab/design-token-lint` の初回リリース。
+
+- CLI: `design-token-lint` ファイル/glob 引数とデフォルトスキャンパターン
+- `.design-token-lint.json` で禁止パターン、許可例外、無視ファイルを設定可能
+- パターンプレースホルダー: `{n}`、`{color}`、`{shade}`
+- 無視コメント: `{/* design-token-lint-ignore */}` とそのバリアント
+- プログラマティック API: `lintFile`、`lintContent`、`checkClass`、`extractClasses`、設定読み込みユーティリティ
+- Tailwind の間隔とカラーユーティリティ用の組み込みデフォルトルール
