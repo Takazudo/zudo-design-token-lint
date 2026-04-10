@@ -203,6 +203,11 @@ body {
 
 /* ── Headings ── */
 
+/* h1 inherits font-size/line-height from base; only weight reset needed */
+.zd-content :where(h1) {
+  font-weight: var(--font-weight-normal);
+}
+
 .zd-content :where(h2) {
   --flow-space: var(--spacing-vsp-2xl);
   font-size: var(--text-subheading);
