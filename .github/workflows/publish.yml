@@ -3,7 +3,7 @@ name: Publish to npm
 on:
   push:
     tags:
-      - "v*.*.*"
+      - 'v*.*.*'
   workflow_dispatch:
 
 concurrency:
@@ -32,13 +32,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build npm package
-        run: pnpm build:pkg
+        run: pnpm -w run build
 
       - name: Run package tests
-        run: pnpm test
+        run: pnpm -w run test
 
       - name: Publish package
-        working-directory: packages/design-token-lint
         run: pnpm publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

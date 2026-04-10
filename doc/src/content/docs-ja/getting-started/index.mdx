@@ -1,0 +1,68 @@
+---
+title: はじめに
+description: Tailwind CSS プロジェクトで design-token-lint をインストールし、セマンティックなデザイントークンを強制します。
+sidebar_position: 1
+category: overview
+---
+
+`@zudolab/design-token-lint` は Tailwind CSS のクラス名をデザインシステムのトークンに対してリントします。`p-4`、`gap-6` のような生の数値ユーティリティや、`bg-gray-500` のようなデフォルトパレットの色を検出し、セマンティックなトークンへの移行を促します。
+
+## なぜ必要か
+
+Tailwind の数値ユーティリティとデフォルトカラーパレットは、コードベース全体に一貫性のなさを簡単に持ち込みます。ある開発者が `p-4` と書き、別の場所で `p-6` と書く — 見た目は似ていても意味的には無関係です。これが大規模なコードベース全体に広がると、デザインの一貫性が崩れていきます。
+
+このリンターはシンプルなルールを強制します: **生の数値とデフォルトパレットの色は禁止**。代わりに意図を表すセマンティックなトークンを使います。水平方向の間隔には `p-hgap-md`、サーフェスには `bg-surface`、基本テキストには `text-fg` といった具合に。
+
+詳しい理由は[メソドロジーのページ](../methodology/index.md)を参照してください。
+
+## インストール
+
+Tailwind プロジェクトに dev dependency としてインストールします:
+
+```bash
+pnpm add -D @zudolab/design-token-lint
+```
+
+npm / yarn の場合:
+
+```bash
+npm install --save-dev @zudolab/design-token-lint
+yarn add --dev @zudolab/design-token-lint
+```
+
+## 最初の実行
+
+引数なしでリンターを実行すると、デフォルトのファイルパターン(`src/`、`components/`、`lib/`、`app/`)をスキャンします:
+
+```bash
+npx design-token-lint
+```
+
+違反が見つからなかった場合は終了コード `0`、見つかった場合は `1` で終了します — CI での利用に適しています。
+
+## 最初の設定
+
+プロジェクトルートに `.design-token-lint.json` ファイルを作成してルールをカスタマイズします:
+
+```json
+{
+  "prohibited": [
+    "p-{n}",
+    "m-{n}",
+    "gap-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0"],
+  "ignore": ["**/*.test.*", "**/*.stories.*"]
+}
+```
+
+すべてのオプションは[設定リファレンス](../configuration/index.md)を参照してください。
+
+## 次のステップ
+
+- [設定リファレンス](../configuration/index.md)でプロジェクトに合わせたルール調整
+- [CLI の使い方](../cli/index.md)でコマンドラインオプション
+- [無視コメント](../ignore-syntax/index.md)で個別違反の抑制
+- [プログラマティック API](../api/index.md)でビルドツールやエディタとの統合

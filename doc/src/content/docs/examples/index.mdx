@@ -1,0 +1,356 @@
+---
+title: Examples
+description: Concrete examples of design token enforcement using the tight token strategy.
+sidebar_position: 5
+category: guide
+---
+
+Real-world configurations and usage patterns — with concrete tokens, not generic placeholders.
+
+## The Problem This Tool Solves
+
+Tailwind's default spacing scale has 30+ numeric steps (`p-1`, `p-2`, `p-3`, `p-4` … `p-96`). When any value is valid, every developer picks something slightly different:
+
+```tsx
+// Developer A's component — uses p-4
+<div className="p-4 bg-gray-200">
+
+// Developer B's component — uses p-5 for "medium padding"
+<div className="p-5 bg-gray-100">
+
+// Developer C's component — uses p-6
+<div className="p-6 bg-gray-300">
+```
+
+All three compile fine. The UI slowly drifts apart.
+
+`design-token-lint` flags these numeric utilities so only project-defined semantic tokens are used. One lint rule, uniform spacing everywhere.
+
+## A Concrete Token System
+
+The examples on this page use a real token system — the same one this documentation site is built with.
+
+### Spacing tokens
+
+Two semantic axes replace the single numeric scale:
+
+**Horizontal spacing** (`hsp-*`) — inline gaps, horizontal padding:
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `hsp-2xs` | 2px | tight inline spacing |
+| `hsp-xs` | 6px | compact inline |
+| `hsp-sm` | 8px | small padding |
+| `hsp-md` | 12px | default gaps |
+| `hsp-lg` | 16px | standard padding |
+| `hsp-xl` | 24px | generous padding |
+| `hsp-2xl` | 32px | large padding |
+
+**Vertical spacing** (`vsp-*`) — section gaps, vertical padding:
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `vsp-2xs` | 7px | tight gap |
+| `vsp-xs` | 14px | small gap |
+| `vsp-sm` | 20px | compact gap |
+| `vsp-md` | 24px | standard gap |
+| `vsp-lg` | 28px | section gap |
+| `vsp-xl` | 40px | large section gap |
+| `vsp-2xl` | 56px | page-level gap |
+
+### Color tokens
+
+Semantic names instead of palette shades:
+
+| Token | Tailwind class | Meaning |
+| --- | --- | --- |
+| `surface` | `bg-surface` | card/sidebar backgrounds |
+| `muted` | `text-muted` | secondary, de-emphasized text |
+| `accent` | `bg-accent` | primary interactive color |
+| `accent-hover` | `bg-accent-hover` | hover state for accent |
+| `code-bg` | `bg-code-bg` | inline code background |
+| `code-fg` | `text-code-fg` | inline code text |
+| `success` | `text-success` | positive states |
+| `danger` | `text-danger` | error / destructive states |
+| `warning` | `text-warning` | caution states |
+| `info` | `text-info` | informational states |
+
+These are registered in `@theme` in your global CSS — there is no `bg-gray-200` or `bg-blue-600` because those tokens do not exist. Attempting to use them is a lint violation.
+
+## What the Linter Catches
+
+Config for this token system:
+
+```json
+{
+  "prohibited": [
+    "p-{n}", "px-{n}", "py-{n}", "pt-{n}", "pr-{n}", "pb-{n}", "pl-{n}",
+    "m-{n}", "mx-{n}", "my-{n}", "mt-{n}", "mr-{n}", "mb-{n}", "ml-{n}",
+    "gap-{n}", "gap-x-{n}", "gap-y-{n}",
+    "space-x-{n}", "space-y-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}",
+    "border-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0", "p-px"],
+  "patterns": ["src/**/*.{tsx,jsx,astro}"],
+  "ignore": ["**/*.test.*", "**/*.stories.*"],
+  "suggestionSuffix": "use semantic token (hsp-*/vsp-*) or arbitrary value"
+}
+```
+
+Violations the linter reports:
+
+| Class | Reason | Fix |
+| --- | --- | --- |
+| `p-4` | matches `p-{n}` | → `p-hsp-lg` (16px standard padding) |
+| `gap-2` | matches `gap-{n}` | → `gap-hsp-sm` (8px small gap) |
+| `bg-gray-200` | matches `bg-{color}-{shade}` | → `bg-surface` (surface background) |
+| `text-gray-500` | matches `text-{color}-{shade}` | → `text-muted` (secondary text) |
+| `bg-blue-600` | matches `bg-{color}-{shade}` | → `bg-accent` (primary color) |
+
+## Before and After
+
+A card component using raw Tailwind, then the same component with semantic tokens.
+
+### Before — raw numeric utilities
+
+```tsx
+// ArticleCard.tsx — flagged by design-token-lint
+export function ArticleCard({ title, excerpt, tag }: Props) {
+  return (
+    <div className="p-4 bg-gray-100 rounded-lg">
+      <h2 className="text-lg font-bold text-gray-900 mb-2">{title}</h2>
+      <p className="text-sm text-gray-600 mb-4">{excerpt}</p>
+      <div className="flex gap-2">
+        <span className="px-3 py-1 bg-blue-600 text-white text-xs rounded">
+          {tag}
+        </span>
+      </div>
+    </div>
+  )
+}
+```
+
+The linter flags: `p-4`, `bg-gray-100`, `text-gray-900`, `mb-2`, `text-gray-600`, `mb-4`, `gap-2`, `px-3`, `py-1`, `bg-blue-600`, `text-xs` (if numeric text sizes are prohibited).
+
+### After — semantic tokens
+
+```tsx
+// ArticleCard.tsx — clean
+export function ArticleCard({ title, excerpt, tag }: Props) {
+  return (
+    <div className="p-hsp-lg bg-surface rounded-lg">
+      <h2 className="text-subheading font-bold text-fg mb-vsp-2xs">{title}</h2>
+      <p className="text-small text-muted mb-vsp-xs">{excerpt}</p>
+      <div className="flex gap-hsp-sm">
+        <span className="px-hsp-sm py-vsp-2xs bg-accent text-bg text-caption rounded">
+          {tag}
+        </span>
+      </div>
+    </div>
+  )
+}
+```
+
+### Why the semantic version is better
+
+**Centralized changes** — when the design team adjusts the accent color, updating one CSS variable (`--color-accent`) updates every `bg-accent` usage across the entire codebase. With `bg-blue-600`, you have to grep and replace across hundreds of files.
+
+**Readable intent** — `bg-surface` tells you "this is a surface-level background". `bg-gray-100` tells you nothing except a number. Six months later, the token name still makes sense.
+
+**No drift** — `p-hsp-lg` is the same value everywhere. `p-4` is only 16px if nobody changed the Tailwind config. Semantic tokens survive theme overrides.
+
+**Enforceable** — the linter turns a style-guide footnote into a CI failure. Violations are caught at PR time, not in design review.
+
+## Realistic Config Examples
+
+### Tight token project (recommended)
+
+A project where Tailwind defaults are fully replaced by semantic tokens:
+
+```json
+{
+  "prohibited": [
+    "p-{n}", "px-{n}", "py-{n}", "pt-{n}", "pr-{n}", "pb-{n}", "pl-{n}",
+    "m-{n}", "mx-{n}", "my-{n}", "mt-{n}", "mr-{n}", "mb-{n}", "ml-{n}",
+    "gap-{n}", "gap-x-{n}", "gap-y-{n}",
+    "space-x-{n}", "space-y-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}",
+    "border-{color}-{shade}",
+    "ring-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0", "p-px"],
+  "ignore": [
+    "**/*.test.*",
+    "**/*.stories.*",
+    "**/vendor/**"
+  ],
+  "patterns": [
+    "src/**/*.{tsx,jsx,astro}",
+    "components/**/*.{tsx,jsx,astro}"
+  ],
+  "suggestionSuffix": "use semantic token (hsp-*/vsp-*) or arbitrary value"
+}
+```
+
+### Gradual migration
+
+Already have a large codebase with raw Tailwind? Start with colors only, then add spacing:
+
+```json
+{
+  "prohibited": [
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}",
+    "border-{color}-{shade}"
+  ],
+  "allowed": [],
+  "patterns": ["src/**/*.{tsx,jsx}"],
+  "suggestionSuffix": "use a semantic color token instead"
+}
+```
+
+Once colors are clean, add spacing patterns to `prohibited`.
+
+### Next.js project
+
+```json
+{
+  "prohibited": [
+    "p-{n}", "m-{n}", "gap-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0"],
+  "ignore": [
+    "**/*.test.*",
+    "**/*.stories.*",
+    ".next/**"
+  ],
+  "patterns": [
+    "app/**/*.{tsx,jsx}",
+    "components/**/*.{tsx,jsx}",
+    "pages/**/*.{tsx,jsx}"
+  ]
+}
+```
+
+### Astro project
+
+```json
+{
+  "prohibited": [
+    "p-{n}", "m-{n}", "gap-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}",
+    "border-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0"],
+  "ignore": [
+    "**/*.test.*",
+    "dist/**",
+    ".astro/**"
+  ],
+  "patterns": [
+    "src/**/*.{astro,tsx,jsx}"
+  ]
+}
+```
+
+## Monorepo with Multiple Packages
+
+Place a config at the monorepo root and scan all packages:
+
+```json
+{
+  "prohibited": [
+    "p-{n}", "m-{n}", "gap-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0"],
+  "ignore": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/*.test.*"
+  ],
+  "patterns": [
+    "packages/*/src/**/*.{tsx,jsx,astro}",
+    "apps/*/src/**/*.{tsx,jsx,astro}"
+  ]
+}
+```
+
+## CI Integration — GitHub Actions
+
+Fail CI on violations:
+
+```yaml
+# .github/workflows/lint.yml
+name: Lint
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm design-token-lint
+```
+
+## Pre-commit Hook
+
+Run on staged files with [lint-staged](https://github.com/lint-staged/lint-staged):
+
+```json
+{
+  "lint-staged": {
+    "*.{tsx,jsx,astro}": "design-token-lint"
+  }
+}
+```
+
+## Custom Script
+
+Use the programmatic API to run the linter with project-specific logic:
+
+```ts
+// scripts/lint-tokens.mjs
+import { loadConfig, compileConfig, setConfig, lintFile } from '@zudolab/design-token-lint';
+import { glob } from 'glob';
+
+const config = await loadConfig(process.cwd());
+setConfig(compileConfig(config));
+
+const files = await glob('src/**/*.{tsx,jsx}');
+let totalViolations = 0;
+
+for (const file of files) {
+  const results = await lintFile(file);
+  for (const r of results) {
+    console.log(`${r.filePath}:${r.line}  ${r.className}  ${r.reason}`);
+    totalViolations++;
+  }
+}
+
+process.exit(totalViolations > 0 ? 1 : 0);
+```
+
+## Ignoring Legitimate Exceptions
+
+When integrating a third-party component that requires raw Tailwind:
+
+```tsx
+{/* design-token-lint-ignore — vendor component requires literal p-4 */}
+<VendorCalendar className="p-4 bg-gray-50" />
+```
+
+See [ignore syntax](../ignore-syntax/index.md) for all comment forms.

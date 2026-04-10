@@ -1,50 +1,62 @@
 {
-  "name": "zudo-design-token-lint",
-  "version": "0.0.1",
-  "private": true,
+  "name": "@zudolab/design-token-lint",
+  "version": "0.1.0",
+  "description": "Lint Tailwind CSS class names against design system tokens. Enforce semantic spacing and color tokens instead of raw numeric utilities.",
   "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "design-token-lint": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "// ── Doc site (Astro) ─────────────────────────────": "",
-    "predev": "lsof -ti :4321 | xargs kill 2>/dev/null; true",
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview",
-    "check": "astro check",
-    "// ── NPM package (workspace shortcuts) ────────────": "",
-    "test": "pnpm --filter @zudolab/design-token-lint test",
-    "test:pkg": "pnpm --filter @zudolab/design-token-lint test",
-    "build:pkg": "pnpm --filter @zudolab/design-token-lint build",
-    "lint": "pnpm --filter @zudolab/design-token-lint lint",
-    "lint:fix": "pnpm --filter @zudolab/design-token-lint lint:fix",
-    "// ── Setup ────────────────────────────────────────": "",
-    "setup:doc-skill": "bash scripts/setup-doc-skill.sh"
+    "// ── Lint package ────────────────────────────────": "",
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "prettier --check .",
+    "lint:fix": "prettier --write .",
+    "prepublishOnly": "pnpm run build && pnpm run test",
+    "// ── Doc site (workspace shortcuts) ──────────────": "",
+    "dev:doc": "pnpm --filter @zudolab/design-token-lint-doc dev",
+    "build:doc": "pnpm --filter @zudolab/design-token-lint-doc build",
+    "preview:doc": "pnpm --filter @zudolab/design-token-lint-doc preview",
+    "check:doc": "pnpm --filter @zudolab/design-token-lint-doc check"
+  },
+  "keywords": [
+    "design-system",
+    "lint",
+    "tailwind",
+    "css",
+    "design-tokens"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Takazudo/zudo-design-token-lint.git"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
-    "@astrojs/mdx": "^4.3.0",
-    "@astrojs/preact": "^4.1.0",
-    "@shikijs/transformers": "^4.0.0",
-    "astro": "^5.18.0",
-    "clsx": "^2.1.0",
-    "diff": "^8.0.3",
-    "github-slugger": "^2.0.0",
-    "gray-matter": "^4.0.0",
-    "mermaid": "^11.14.0",
-    "minisearch": "^7.2.0",
-    "preact": "^10.26.0",
-    "remark-directive": "^3.0.0",
-    "shiki": "^4.0.2",
-    "unist-util-visit": "^5.1.0"
+    "chalk": "^5.3.0",
+    "glob": "^11.0.2"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.0",
-    "@tailwindcss/vite": "^4.2.0",
-    "@types/hast": "^3.0.4",
-    "@types/mdast": "^4.0.4",
-    "@types/node": "^22.0.0",
-    "@types/react": "^19.2.0",
-    "pagefind": "^1.4.0",
-    "tailwindcss": "^4.2.0",
-    "typescript": "^5.9.0"
+    "@types/node": "^25.5.2",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.3"
   },
   "packageManager": "pnpm@10.32.0+sha512.9b2634bb3fed5601c33633f2d92593f506270a3963b8c51d2b2d6a828da615ce4e9deebef9614ccebbc13ac8d3c0f9c9ccceb583c69c8578436fa477dbb20d70"
 }
