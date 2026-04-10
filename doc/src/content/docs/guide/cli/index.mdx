@@ -80,15 +80,14 @@ pnpm lint:tokens
 
 ## Integration with lefthook
 
-Run only on staged files with [lefthook](https://github.com/evilmartians/lefthook):
+Run on push with [lefthook](https://github.com/evilmartians/lefthook):
 
 ```yaml
-# .lefthook.yml
-pre-commit:
+# lefthook.yml
+pre-push:
   commands:
     design-token-lint:
-      glob: "*.{tsx,jsx,astro}"
-      run: npx design-token-lint {staged_files}
+      run: npx design-token-lint
 ```
 
 ## Integration with CI
