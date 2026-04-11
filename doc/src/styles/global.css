@@ -191,13 +191,19 @@ body {
   line-height: var(--leading-relaxed);
 }
 
-/* ── Flow spacing (vertical rhythm via --flow-space) ── */
+/* ── Flow spacing (vertical rhythm via --flow-space) ──
+ *
+ * NOTE: the `>` combinator must live OUTSIDE `:where()`. A selector inside
+ * `:where()` must start with a compound selector, not a combinator — only
+ * `:has()` accepts relative selectors. Writing `:where(> * + *)` silently
+ * matches nothing and the entire flow-space rhythm becomes dead code.
+ */
 
-.zd-content :where(> * + *) {
+.zd-content > :where(* + *) {
   margin-top: var(--flow-space, var(--spacing-vsp-md));
 }
 
-.zd-content :where(> :first-child) {
+.zd-content > :where(:first-child) {
   margin-top: 0;
 }
 
