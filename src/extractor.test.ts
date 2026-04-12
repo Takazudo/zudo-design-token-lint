@@ -188,6 +188,123 @@ describe('extractClasses', () => {
     });
   });
 
+  describe('should extract from multiline className attributes', () => {
+    it('basic multiline with double quotes (3 lines)', () => {
+      const content = `<div
+  className="p-4
+    bg-gray-500
+    m-8"
+/>`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 2 },
+        { className: 'bg-gray-500', line: 2 },
+        { className: 'm-8', line: 2 },
+      ]);
+    });
+
+    it('basic multiline with single quotes', () => {
+      const content = `<div
+  class='p-4
+    flex
+    gap-2'
+/>`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 2 },
+        { className: 'flex', line: 2 },
+        { className: 'gap-2', line: 2 },
+      ]);
+    });
+
+    it('multiline spanning 4+ lines', () => {
+      const content = `<div className="p-4
+  m-2
+  flex
+  items-center
+  gap-4"
+/>`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'm-2', line: 1 },
+        { className: 'flex', line: 1 },
+        { className: 'items-center', line: 1 },
+        { className: 'gap-4', line: 1 },
+      ]);
+    });
+
+    it('multiline className with indentation (Prettier-style)', () => {
+      const content = `<div
+  className="
+    p-4
+    bg-gray-500
+    m-8
+  "
+/>`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 2 },
+        { className: 'bg-gray-500', line: 2 },
+        { className: 'm-8', line: 2 },
+      ]);
+    });
+
+    it('single-line still works (regression check)', () => {
+      const content = '<div className="p-4 flex bg-gray-500">';
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'flex', line: 1 },
+        { className: 'bg-gray-500', line: 1 },
+      ]);
+    });
+
+    it('line numbers reference the opening line', () => {
+      const content = `<div>
+  <span>text</span>
+  <div
+    className="p-4
+      m-8"
+  />
+</div>`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 4 },
+        { className: 'm-8', line: 4 },
+      ]);
+    });
+
+    it('mix of single-line and multiline in the same file', () => {
+      const content = `<div className="p-4 flex">
+  <span
+    className="m-8
+      gap-2"
+  >
+    <p className="text-sm">hi</p>
+  </span>
+</div>`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'flex', line: 1 },
+        { className: 'm-8', line: 3 },
+        { className: 'gap-2', line: 3 },
+        { className: 'text-sm', line: 6 },
+      ]);
+    });
+
+    it('skips multiline block when opening line has ignore comment on previous line', () => {
+      const content = `// design-token-lint-ignore
+<div className="p-4
+  m-8"
+/>
+<span className="flex">text</span>`;
+      const result = extractClasses(content);
+      expect(result).toEqual([{ className: 'flex', line: 5 }]);
+    });
+  });
+
   describe('file-level ignore', () => {
     it('respects /* design-token-lint-ignore-file */ at top of file', () => {
       const content = `/* design-token-lint-ignore-file */

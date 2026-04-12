@@ -69,6 +69,14 @@ export function extractClasses(content: string): ExtractedClass[] {
   const classListPattern = /class:list\s*=\s*\{\s*\[([^\]]+)\]\s*\}/g;
   // clsx/cn/classNames function calls: cn("...", '...'), clsx("...", '...')
   const utilFnPattern = /(?:cn|clsx|classNames|twMerge)\s*\(\s*([^)]+)\)/g;
+  // Multiline: className="... or class="... without closing quote on same line.
+  // These are mutually exclusive with the single-line patterns above: single-line
+  // patterns require a closing quote ([^"]+"), so they only match closed attributes;
+  // these require no closing quote before end-of-line ([^"]*$), so they only match
+  // unclosed openings. Known limitation: attributes on the same closing line after
+  // the closing quote are not re-processed (extremely rare in practice).
+  const multilineDoubleStart = /(?:className|class)\s*=\s*"([^"]*$)/;
+  const multilineSingleStart = /(?:className|class)\s*=\s*'([^']*$)/;
 
   for (let i = 0; i < lines.length; i++) {
     if (ignoredLines.has(i)) continue;
@@ -111,6 +119,33 @@ export function extractClasses(content: string): ExtractedClass[] {
       for (const strMatch of argsContent.matchAll(/['"]([^'"]+)['"]/g)) {
         addClasses(results, strMatch[1], lineNum);
       }
+    }
+
+    // Detect unclosed multiline class/className attribute and accumulate across lines
+    const multilineDoubleMatch = multilineDoubleStart.exec(line);
+    const multilineSingleMatch = multilineDoubleMatch ? null : multilineSingleStart.exec(line);
+    const multilineMatch = multilineDoubleMatch ?? multilineSingleMatch;
+
+    if (multilineMatch) {
+      const quoteChar = multilineDoubleMatch ? '"' : "'";
+      let accumulated = multilineMatch[1]; // content after opening quote on opening line
+      const openLineNum = lineNum;
+
+      // Accumulate subsequent lines until the closing quote is found
+      while (i + 1 < lines.length) {
+        i++;
+        const nextLine = lines[i];
+        const closeIdx = nextLine.indexOf(quoteChar);
+        if (closeIdx !== -1) {
+          // Take everything before the closing quote
+          accumulated += ' ' + nextLine.substring(0, closeIdx);
+          break;
+        } else {
+          accumulated += ' ' + nextLine;
+        }
+      }
+
+      addClasses(results, accumulated, openLineNum);
     }
   }
 
