@@ -1,6 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { compilePattern, compileConfig, DEFAULT_CONFIG, type LintConfig } from './config.js';
+import {
+  compilePattern,
+  compileConfig,
+  DEFAULT_CONFIG,
+  type LintConfig,
+  type CompiledConfig,
+} from './config.js';
 import { checkClassWithConfig } from './rules.js';
+
+describe('DEFAULT_CONFIG', () => {
+  it('has semanticPrefixes defaulting to hgap- and vgap-', () => {
+    expect(DEFAULT_CONFIG.semanticPrefixes).toEqual(['hgap-', 'vgap-']);
+  });
+});
 
 describe('compilePattern', () => {
   it('compiles numeric spacing pattern', () => {
@@ -114,6 +126,38 @@ describe('checkClassWithConfig', () => {
     expect(checkClassWithConfig('p-4', compiled)).not.toBeNull();
     // bg-gray-500 is NOT in the custom prohibited list, so allowed
     expect(checkClassWithConfig('bg-gray-500', compiled)).toBeNull();
+  });
+
+  it('uses custom semanticPrefixes from config', () => {
+    const custom: LintConfig = {
+      prohibited: ['p-{n}'],
+      allowed: [],
+      ignore: [],
+      semanticPrefixes: ['hsp-', 'vsp-'],
+    };
+    const compiled: CompiledConfig = compileConfig(custom);
+    expect(compiled.semanticPrefixes).toEqual(['hsp-', 'vsp-']);
+  });
+
+  it('falls back to default semanticPrefixes when not specified', () => {
+    const custom: LintConfig = {
+      prohibited: ['p-{n}'],
+      allowed: [],
+      ignore: [],
+    };
+    const compiled: CompiledConfig = compileConfig(custom);
+    expect(compiled.semanticPrefixes).toEqual(['hgap-', 'vgap-']);
+  });
+
+  it('allows empty semanticPrefixes array', () => {
+    const custom: LintConfig = {
+      prohibited: ['p-{n}'],
+      allowed: [],
+      ignore: [],
+      semanticPrefixes: [],
+    };
+    const compiled: CompiledConfig = compileConfig(custom);
+    expect(compiled.semanticPrefixes).toEqual([]);
   });
 
   it('uses custom suggestionSuffix in violation reason', () => {

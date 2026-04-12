@@ -19,6 +19,8 @@ export interface LintConfig {
   patterns?: string[];
   /** Custom suffix for suggestion messages (replaces the default "use a semantic spacing token..." text) */
   suggestionSuffix?: string;
+  /** Value prefixes that indicate a semantic spacing token and bypass spacing rules. Default: ["hgap-", "vgap-"] */
+  semanticPrefixes?: string[];
 }
 
 // Standard Tailwind color names
@@ -121,6 +123,7 @@ export const DEFAULT_CONFIG: LintConfig = {
   ],
   allowed: ['p-0', 'm-0', 'gap-0', 'p-1px'],
   ignore: ['**/*.test.*', '**/*.stories.*'],
+  semanticPrefixes: ['hgap-', 'vgap-'],
 };
 
 /**
@@ -200,6 +203,8 @@ export interface CompiledConfig {
   rules: CompiledRule[];
   allowed: Set<string>;
   ignore: string[];
+  /** Value prefixes that bypass spacing rules (e.g. semantic token names) */
+  semanticPrefixes: string[];
 }
 
 export function compileConfig(config: LintConfig): CompiledConfig {
@@ -207,6 +212,7 @@ export function compileConfig(config: LintConfig): CompiledConfig {
     rules: config.prohibited.map((p) => compilePattern(p, config.suggestionSuffix)),
     allowed: new Set(config.allowed),
     ignore: config.ignore,
+    semanticPrefixes: config.semanticPrefixes ?? (DEFAULT_CONFIG.semanticPrefixes as string[]),
   };
 }
 
@@ -227,6 +233,7 @@ export async function loadConfig(cwd: string): Promise<LintConfig> {
         ignore: parsed.ignore ?? DEFAULT_CONFIG.ignore,
         patterns: parsed.patterns,
         suggestionSuffix: parsed.suggestionSuffix,
+        semanticPrefixes: parsed.semanticPrefixes,
       };
     } catch {
       // File doesn't exist or is invalid, try next

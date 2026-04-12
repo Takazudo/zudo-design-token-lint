@@ -71,7 +71,7 @@ export function checkClassWithConfig(className: string, config: CompiledConfig):
 
   // Check each rule
   for (const rule of config.rules) {
-    const violation = matchRule(className, withoutOpacity, rule);
+    const violation = matchRule(className, withoutOpacity, rule, config.semanticPrefixes);
     if (violation) {
       return violation;
     }
@@ -84,6 +84,7 @@ function matchRule(
   originalClassName: string,
   withoutNeg: string,
   rule: CompiledRule,
+  semanticPrefixes: string[],
 ): Violation | null {
   // Exact-match rule (no placeholders, valuePattern is /^$/)
   if (rule.valuePattern.source === '^$') {
@@ -103,8 +104,8 @@ function matchRule(
 
   const value = withoutNeg.slice(rule.prefix.length + 1);
 
-  // Allow semantic tokens (hgap-*, vgap-*) — only for spacing rules, not color rules
-  if (rule.isSpacingRule && (value.startsWith('hgap-') || value.startsWith('vgap-'))) {
+  // Allow semantic tokens — only for spacing rules, not color rules
+  if (rule.isSpacingRule && semanticPrefixes.some((prefix) => value.startsWith(prefix))) {
     return null;
   }
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { checkClass } from './rules.js';
+import { checkClass, checkClassWithConfig } from './rules.js';
+import { compileConfig, DEFAULT_CONFIG, type LintConfig } from './config.js';
 
 describe('checkClass', () => {
   describe('numeric spacing — prohibited', () => {
@@ -163,6 +164,97 @@ describe('checkClass', () => {
       'duration-300',
     ])('allows %s', (cls) => {
       expect(checkClass(cls)).toBeNull();
+    });
+  });
+
+  describe('semanticPrefixes — configurable allowlist', () => {
+    it('default prefixes still allow hgap-* and vgap-* (regression)', () => {
+      expect(checkClass('p-hgap-sm')).toBeNull();
+      expect(checkClass('gap-vgap-xs')).toBeNull();
+      expect(checkClass('m-hgap-md')).toBeNull();
+    });
+
+    it('custom prefixes allow matching tokens', () => {
+      const custom: LintConfig = {
+        prohibited: DEFAULT_CONFIG.prohibited,
+        allowed: DEFAULT_CONFIG.allowed,
+        ignore: DEFAULT_CONFIG.ignore,
+        semanticPrefixes: ['hsp-', 'vsp-'],
+      };
+      const compiled = compileConfig(custom);
+      expect(checkClassWithConfig('p-hsp-sm', compiled)).toBeNull();
+      expect(checkClassWithConfig('gap-vsp-xs', compiled)).toBeNull();
+    });
+
+    it('custom prefixes do not interfere with unrelated violations', () => {
+      const custom: LintConfig = {
+        prohibited: DEFAULT_CONFIG.prohibited,
+        allowed: DEFAULT_CONFIG.allowed,
+        ignore: DEFAULT_CONFIG.ignore,
+        semanticPrefixes: ['hsp-', 'vsp-'],
+      };
+      const compiled = compileConfig(custom);
+      const result = checkClassWithConfig('p-4', compiled);
+      expect(result).not.toBeNull();
+      expect(result!.reason).toContain('Numeric spacing');
+    });
+
+    it('empty semanticPrefixes preserves normal behavior', () => {
+      const custom: LintConfig = {
+        prohibited: DEFAULT_CONFIG.prohibited,
+        allowed: DEFAULT_CONFIG.allowed,
+        ignore: DEFAULT_CONFIG.ignore,
+        semanticPrefixes: [],
+      };
+      const compiled = compileConfig(custom);
+      // numeric spacing still flagged
+      expect(checkClassWithConfig('p-4', compiled)).not.toBeNull();
+      // colors still flagged
+      expect(checkClassWithConfig('bg-gray-500', compiled)).not.toBeNull();
+    });
+  });
+
+  describe('suggestionSuffix — configurable violation message', () => {
+    it('default spacing message is generic (no hgap/vgap mention)', () => {
+      const result = checkClass('p-4');
+      expect(result).not.toBeNull();
+      expect(result!.reason).toContain('use a semantic spacing token or arbitrary value');
+      expect(result!.reason).not.toContain('hgap-');
+      expect(result!.reason).not.toContain('vgap-');
+    });
+
+    it('default color message is generic', () => {
+      const result = checkClass('bg-gray-500');
+      expect(result).not.toBeNull();
+      expect(result!.reason).toContain('use a design system color token');
+    });
+
+    it('custom suggestionSuffix appears in spacing violation', () => {
+      const custom: LintConfig = {
+        prohibited: ['p-{n}'],
+        allowed: [],
+        ignore: [],
+        suggestionSuffix: 'use hsp-*/vsp-* tokens',
+      };
+      const compiled = compileConfig(custom);
+      const result = checkClassWithConfig('p-4', compiled);
+      expect(result).not.toBeNull();
+      expect(result!.reason).toContain('use hsp-*/vsp-* tokens');
+      expect(result!.reason).toContain('Numeric spacing');
+    });
+
+    it('custom suggestionSuffix appears in color violation', () => {
+      const custom: LintConfig = {
+        prohibited: ['bg-{color}-{shade}'],
+        allowed: [],
+        ignore: [],
+        suggestionSuffix: 'use zd-* color tokens',
+      };
+      const compiled = compileConfig(custom);
+      const result = checkClassWithConfig('bg-gray-500', compiled);
+      expect(result).not.toBeNull();
+      expect(result!.reason).toContain('use zd-* color tokens');
+      expect(result!.reason).toContain('Default Tailwind color');
     });
   });
 
