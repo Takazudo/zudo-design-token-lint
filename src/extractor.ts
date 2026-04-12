@@ -118,7 +118,8 @@ export function extractClasses(content: string): ExtractedClass[] {
 }
 
 function addClasses(results: ExtractedClass[], classString: string, line: number): void {
-  const classes = classString
+  const cleaned = classString.replace(/\/\*.*?\*\//g, ' ');
+  const classes = cleaned
     .split(/\s+/)
     .map((c) => c.trim())
     .filter((c) => c.length > 0);
