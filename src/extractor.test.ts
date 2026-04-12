@@ -160,8 +160,11 @@ describe('extractClasses', () => {
     it('strips comment with no surrounding spaces', () => {
       const content = '<div className="p-4/* no-space */m-8">';
       const result = extractClasses(content);
-      // After stripping "/* no-space */", remaining text is "p-4m-8" — one token
-      expect(result).toEqual([{ className: 'p-4m-8', line: 1 }]);
+      // Comment replaced with a space so adjacent tokens remain separate
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'm-8', line: 1 },
+      ]);
     });
   });
 
