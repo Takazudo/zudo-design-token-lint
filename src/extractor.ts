@@ -58,13 +58,13 @@ export function extractClasses(content: string): ExtractedClass[] {
 
   // Patterns to match class attributes
   // className="..." or class="..."
-  const doubleQuoteAttr = /(?:className|class)\s*=\s*"([^"]+)"/g;
+  const doubleQuoteAttr = /(?<![\w-])(?:className|class)\s*=\s*"([^"]+)"/g;
   // class='...' (single-quote HTML attribute, common in Astro/HTML)
-  const singleQuoteAttr = /(?:className|class)\s*=\s*'([^']+)'/g;
+  const singleQuoteAttr = /(?<![\w-])(?:className|class)\s*=\s*'([^']+)'/g;
   // className={'...'} or class={'...'}
-  const singleQuoteBrace = /(?:className|class)\s*=\s*\{\s*'([^']+)'\s*\}/g;
+  const singleQuoteBrace = /(?<![\w-])(?:className|class)\s*=\s*\{\s*'([^']+)'\s*\}/g;
   // className={`...`} template literal (simple, no expressions)
-  const templateLiteral = /(?:className|class)\s*=\s*\{\s*`([^`]+)`\s*\}/g;
+  const templateLiteral = /(?<![\w-])(?:className|class)\s*=\s*\{\s*`([^`]+)`\s*\}/g;
   // class:list={["...", '...']} — Astro
   const classListPattern = /class:list\s*=\s*\{\s*\[([^\]]+)\]\s*\}/g;
   // clsx/cn/classNames function calls: cn("...", '...'), clsx("...", '...')

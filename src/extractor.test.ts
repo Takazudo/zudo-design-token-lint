@@ -135,6 +135,26 @@ describe('extractClasses', () => {
     expect(result).toEqual([]);
   });
 
+  describe('should not extract from data- attributes', () => {
+    it('does not extract from data-class="..."', () => {
+      const content = '<div data-class="p-4" />';
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('does not extract from data-classes="..."', () => {
+      const content = '<div data-classes="bg-gray-500" />';
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('does not extract from aria-class="..."', () => {
+      const content = '<div aria-class="foo" />';
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+  });
+
   describe('file-level ignore', () => {
     it('respects /* design-token-lint-ignore-file */ at top of file', () => {
       const content = `/* design-token-lint-ignore-file */
