@@ -135,6 +135,36 @@ describe('extractClasses', () => {
     expect(result).toEqual([]);
   });
 
+  describe('should strip CSS comments from className', () => {
+    it('strips a trailing CSS comment', () => {
+      const content = '<div className="p-4 /* comment */">';
+      const result = extractClasses(content);
+      expect(result).toEqual([{ className: 'p-4', line: 1 }]);
+    });
+
+    it('strips multiple inline CSS comments', () => {
+      const content = '<div className="p-4 /* a */ m-8 /* b */">';
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'm-8', line: 1 },
+      ]);
+    });
+
+    it('returns nothing when className is a full comment', () => {
+      const content = '<div className="/* full comment */">';
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('strips comment with no surrounding spaces', () => {
+      const content = '<div className="p-4/* no-space */m-8">';
+      const result = extractClasses(content);
+      // After stripping "/* no-space */", remaining text is "p-4m-8" — one token
+      expect(result).toEqual([{ className: 'p-4m-8', line: 1 }]);
+    });
+  });
+
   describe('file-level ignore', () => {
     it('respects /* design-token-lint-ignore-file */ at top of file', () => {
       const content = `/* design-token-lint-ignore-file */
