@@ -26,7 +26,9 @@ Create a `.design-token-lint.json` or `design-token-lint.config.json` file at yo
   "patterns": [
     "src/**/*.{tsx,jsx,astro}",
     "components/**/*.{tsx,jsx,astro}"
-  ]
+  ],
+  "classAttributes": ["className", "class", "inputClassName", "wrapperClass"],
+  "classFunctions": ["cn", "clsx", "classNames", "twMerge", "cva", "tv"]
 }
 ```
 
@@ -39,6 +41,8 @@ Create a `.design-token-lint.json` or `design-token-lint.config.json` file at yo
 | `ignore` | `string[]` | File glob patterns to skip entirely |
 | `patterns` | `string[]` | File glob patterns to scan (used when no CLI args are given) |
 | `suggestionSuffix` | `string` | Custom suffix for violation messages (replaces the default suggestion text) |
+| `classAttributes` | `string[]` | HTML/JSX attribute names the extractor scans for class names |
+| `classFunctions` | `string[]` | Utility function names the extractor scans for class name arguments |
 
 All fields are optional and fall back to built-in defaults.
 
@@ -94,6 +98,40 @@ A string appended to violation messages after the `—` separator, replacing the
 ```
 - Spacing: `Numeric spacing "p-4" — use hgap-*/vgap-* or zd-* tokens`
 - Color: `Default Tailwind color "bg-gray-500" — use hgap-*/vgap-* or zd-* tokens`
+
+### `classAttributes`
+
+An array of attribute names the extractor scans for class names. Any JSX/HTML attribute in this list is treated as a class attribute and its string value is extracted and linted.
+
+**Default**: `["className", "class"]`
+
+Use this when your project uses component libraries that accept class names through non-standard prop names:
+
+```json
+{
+  "classAttributes": ["className", "class", "inputClassName", "wrapperClass"]
+}
+```
+
+This is useful for libraries like Headless UI, Radix UI, or custom component libraries that pass class names via multiple props.
+
+> **Note**: `class:list` (Astro's directive syntax) is always scanned regardless of this setting.
+
+### `classFunctions`
+
+An array of utility function names the extractor scans for class name arguments. Calls to these functions are extracted and their string arguments are linted.
+
+**Default**: `["cn", "clsx", "classNames", "twMerge"]`
+
+Use this to add support for additional class-merging utilities in your project:
+
+```json
+{
+  "classFunctions": ["cn", "clsx", "classNames", "twMerge", "cva", "tv", "twJoin"]
+}
+```
+
+This is useful when using libraries like `class-variance-authority` (`cva`), `tailwind-variants` (`tv`), or additional utilities from `tailwind-merge` such as `twJoin`.
 
 ## Built-in Defaults
 
