@@ -21,6 +21,10 @@ export interface LintConfig {
   suggestionSuffix?: string;
   /** Value prefixes that indicate a semantic spacing token and bypass spacing rules. Default: ["hgap-", "vgap-"] */
   semanticPrefixes?: string[];
+  /** HTML/JSX attributes to scan for class names. Default: ["className", "class"] */
+  classAttributes?: string[];
+  /** Utility function names to scan for class name arguments. Default: ["cn", "clsx", "classNames", "twMerge"] */
+  classFunctions?: string[];
 }
 
 // Standard Tailwind color names
@@ -50,7 +54,11 @@ const TAILWIND_COLORS = [
 ];
 
 /** Built-in defaults matching the original hardcoded rules */
-export const DEFAULT_CONFIG: LintConfig = {
+export const DEFAULT_CONFIG: LintConfig & {
+  classAttributes: string[];
+  classFunctions: string[];
+  semanticPrefixes: string[];
+} = {
   prohibited: [
     'p-{n}',
     'px-{n}',
@@ -124,6 +132,8 @@ export const DEFAULT_CONFIG: LintConfig = {
   allowed: ['p-0', 'm-0', 'gap-0', 'p-1px'],
   ignore: ['**/*.test.*', '**/*.stories.*'],
   semanticPrefixes: ['hgap-', 'vgap-'],
+  classAttributes: ['className', 'class'],
+  classFunctions: ['cn', 'clsx', 'classNames', 'twMerge'],
 };
 
 /**
@@ -205,6 +215,10 @@ export interface CompiledConfig {
   ignore: string[];
   /** Value prefixes that bypass spacing rules (e.g. semantic token names) */
   semanticPrefixes: string[];
+  /** HTML/JSX attributes to scan for class names */
+  classAttributes: string[];
+  /** Utility function names to scan for class name arguments */
+  classFunctions: string[];
 }
 
 export function compileConfig(config: LintConfig): CompiledConfig {
@@ -212,9 +226,11 @@ export function compileConfig(config: LintConfig): CompiledConfig {
     rules: config.prohibited.map((p) => compilePattern(p, config.suggestionSuffix)),
     allowed: new Set(config.allowed),
     ignore: config.ignore,
-    semanticPrefixes: (
-      config.semanticPrefixes ?? (DEFAULT_CONFIG.semanticPrefixes as string[])
-    ).filter((p) => p.length > 0),
+    semanticPrefixes: (config.semanticPrefixes ?? DEFAULT_CONFIG.semanticPrefixes).filter(
+      (p) => p.length > 0,
+    ),
+    classAttributes: config.classAttributes ?? DEFAULT_CONFIG.classAttributes,
+    classFunctions: config.classFunctions ?? DEFAULT_CONFIG.classFunctions,
   };
 }
 
@@ -236,6 +252,8 @@ export async function loadConfig(cwd: string): Promise<LintConfig> {
         patterns: parsed.patterns,
         suggestionSuffix: parsed.suggestionSuffix,
         semanticPrefixes: parsed.semanticPrefixes,
+        classAttributes: parsed.classAttributes,
+        classFunctions: parsed.classFunctions,
       };
     } catch {
       // File doesn't exist or is invalid, try next

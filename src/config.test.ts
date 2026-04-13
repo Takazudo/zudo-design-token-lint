@@ -2,15 +2,27 @@ import { describe, it, expect } from 'vitest';
 import {
   compilePattern,
   compileConfig,
+  loadConfig,
   DEFAULT_CONFIG,
   type LintConfig,
   type CompiledConfig,
 } from './config.js';
 import { checkClassWithConfig } from './rules.js';
+import { writeFile, unlink, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 describe('DEFAULT_CONFIG', () => {
   it('has semanticPrefixes defaulting to hgap- and vgap-', () => {
     expect(DEFAULT_CONFIG.semanticPrefixes).toEqual(['hgap-', 'vgap-']);
+  });
+
+  it('has classAttributes defaulting to className and class', () => {
+    expect(DEFAULT_CONFIG.classAttributes).toEqual(['className', 'class']);
+  });
+
+  it('has classFunctions defaulting to cn, clsx, classNames, twMerge', () => {
+    expect(DEFAULT_CONFIG.classFunctions).toEqual(['cn', 'clsx', 'classNames', 'twMerge']);
   });
 });
 
@@ -178,5 +190,131 @@ describe('checkClassWithConfig', () => {
     expect(colorViolation).not.toBeNull();
     expect(colorViolation!.reason).toContain('use hgap-*/vgap-* or zd-* tokens');
     expect(colorViolation!.reason).toContain('Default Tailwind color');
+  });
+});
+
+describe('compileConfig — classAttributes and classFunctions', () => {
+  it('includes classAttributes from config when specified', () => {
+    const custom: LintConfig = {
+      prohibited: [],
+      allowed: [],
+      ignore: [],
+      classAttributes: ['inputClassName'],
+    };
+    const compiled: CompiledConfig = compileConfig(custom);
+    expect(compiled.classAttributes).toEqual(['inputClassName']);
+  });
+
+  it('falls back to default classAttributes when not specified', () => {
+    const custom: LintConfig = {
+      prohibited: [],
+      allowed: [],
+      ignore: [],
+    };
+    const compiled: CompiledConfig = compileConfig(custom);
+    expect(compiled.classAttributes).toEqual(['className', 'class']);
+  });
+
+  it('includes classFunctions from config when specified', () => {
+    const custom: LintConfig = {
+      prohibited: [],
+      allowed: [],
+      ignore: [],
+      classFunctions: ['cva', 'tv'],
+    };
+    const compiled: CompiledConfig = compileConfig(custom);
+    expect(compiled.classFunctions).toEqual(['cva', 'tv']);
+  });
+
+  it('falls back to default classFunctions when not specified', () => {
+    const custom: LintConfig = {
+      prohibited: [],
+      allowed: [],
+      ignore: [],
+    };
+    const compiled: CompiledConfig = compileConfig(custom);
+    expect(compiled.classFunctions).toEqual(['cn', 'clsx', 'classNames', 'twMerge']);
+  });
+
+  it('allows empty classAttributes array', () => {
+    const custom: LintConfig = {
+      prohibited: [],
+      allowed: [],
+      ignore: [],
+      classAttributes: [],
+    };
+    const compiled: CompiledConfig = compileConfig(custom);
+    expect(compiled.classAttributes).toEqual([]);
+  });
+
+  it('allows empty classFunctions array', () => {
+    const custom: LintConfig = {
+      prohibited: [],
+      allowed: [],
+      ignore: [],
+      classFunctions: [],
+    };
+    const compiled: CompiledConfig = compileConfig(custom);
+    expect(compiled.classFunctions).toEqual([]);
+  });
+});
+
+describe('loadConfig — classAttributes and classFunctions', () => {
+  it('loads classAttributes from config file', async () => {
+    const dir = join(tmpdir(), `dtl-test-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const configPath = join(dir, '.design-token-lint.json');
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        prohibited: [],
+        allowed: [],
+        ignore: [],
+        classAttributes: ['inputClassName', 'wrapperClass'],
+      }),
+    );
+    try {
+      const config = await loadConfig(dir);
+      expect(config.classAttributes).toEqual(['inputClassName', 'wrapperClass']);
+    } finally {
+      await unlink(configPath);
+    }
+  });
+
+  it('loads classFunctions from config file', async () => {
+    const dir = join(tmpdir(), `dtl-test-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const configPath = join(dir, '.design-token-lint.json');
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        prohibited: [],
+        allowed: [],
+        ignore: [],
+        classFunctions: ['cva', 'tv'],
+      }),
+    );
+    try {
+      const config = await loadConfig(dir);
+      expect(config.classFunctions).toEqual(['cva', 'tv']);
+    } finally {
+      await unlink(configPath);
+    }
+  });
+
+  it('returns undefined classAttributes when not in config file (falls back in compileConfig)', async () => {
+    const dir = join(tmpdir(), `dtl-test-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const configPath = join(dir, '.design-token-lint.json');
+    await writeFile(configPath, JSON.stringify({ prohibited: [], allowed: [], ignore: [] }));
+    try {
+      const config = await loadConfig(dir);
+      expect(config.classAttributes).toBeUndefined();
+      // compileConfig should fill in the default
+      const compiled = compileConfig(config);
+      expect(compiled.classAttributes).toEqual(['className', 'class']);
+    } finally {
+      await unlink(configPath);
+    }
   });
 });

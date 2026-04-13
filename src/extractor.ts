@@ -13,6 +13,18 @@ export interface ExtractedClass {
   line: number;
 }
 
+export interface ExtractorOptions {
+  classAttributes?: string[];
+  classFunctions?: string[];
+}
+
+export const DEFAULT_CLASS_ATTRIBUTES = ['className', 'class'];
+export const DEFAULT_CLASS_FUNCTIONS = ['cn', 'clsx', 'classNames', 'twMerge'];
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Lines containing line-level ignore comment
 const IGNORE_PATTERNS = [
   /\/\*\s*design-token-lint-ignore\s*\*\//,
@@ -37,7 +49,7 @@ function isIgnoreLine(line: string): boolean {
 /**
  * Extract all class names from file content with their line numbers.
  */
-export function extractClasses(content: string): ExtractedClass[] {
+export function extractClasses(content: string, options?: ExtractorOptions): ExtractedClass[] {
   const lines = content.split('\n');
   const results: ExtractedClass[] = [];
   const ignoredLines = new Set<number>();
@@ -56,27 +68,41 @@ export function extractClasses(content: string): ExtractedClass[] {
     }
   }
 
-  // Patterns to match class attributes
-  // className="..." or class="..."
-  const doubleQuoteAttr = /(?<![\w-])(?:className|class)\s*=\s*"([^"]+)"/g;
-  // class='...' (single-quote HTML attribute, common in Astro/HTML)
-  const singleQuoteAttr = /(?<![\w-])(?:className|class)\s*=\s*'([^']+)'/g;
-  // className={'...'} or class={'...'}
-  const singleQuoteBrace = /(?<![\w-])(?:className|class)\s*=\s*\{\s*'([^']+)'\s*\}/g;
-  // className={`...`} template literal (simple, no expressions)
-  const templateLiteral = /(?<![\w-])(?:className|class)\s*=\s*\{\s*`([^`]+)`\s*\}/g;
-  // class:list={["...", '...']} — Astro
+  const attrs = options?.classAttributes ?? DEFAULT_CLASS_ATTRIBUTES;
+  const fns = options?.classFunctions ?? DEFAULT_CLASS_FUNCTIONS;
+
+  // Build attribute patterns dynamically; skip entirely when attrs is empty
+  let doubleQuoteAttr: RegExp | null = null;
+  let singleQuoteAttr: RegExp | null = null;
+  let singleQuoteBrace: RegExp | null = null;
+  let templateLiteral: RegExp | null = null;
+  let multilineDoubleStart: RegExp | null = null;
+  let multilineSingleStart: RegExp | null = null;
+
+  if (attrs.length > 0) {
+    const attrAlt = attrs.map(escapeRegExp).join('|');
+    // className="..." or class="..."
+    doubleQuoteAttr = new RegExp(`(?<![\\w-])(?:${attrAlt})\\s*=\\s*"([^"]+)"`, 'g');
+    // class='...' (single-quote HTML attribute, common in Astro/HTML)
+    singleQuoteAttr = new RegExp(`(?<![\\w-])(?:${attrAlt})\\s*=\\s*'([^']+)'`, 'g');
+    // className={'...'} or class={'...'}
+    singleQuoteBrace = new RegExp(`(?<![\\w-])(?:${attrAlt})\\s*=\\s*\\{\\s*'([^']+)'\\s*\\}`, 'g');
+    // className={`...`} template literal (simple, no expressions)
+    templateLiteral = new RegExp(`(?<![\\w-])(?:${attrAlt})\\s*=\\s*\\{\\s*\`([^\`]+)\`\\s*\\}`, 'g');
+    // Multiline: className="... without closing quote on same line
+    multilineDoubleStart = new RegExp(`(?<![\\w-])(?:${attrAlt})\\s*=\\s*"([^"]*$)`);
+    multilineSingleStart = new RegExp(`(?<![\\w-])(?:${attrAlt})\\s*=\\s*'([^']*$)`);
+  }
+
+  // class:list={["...", '...']} — Astro (always hardcoded)
   const classListPattern = /class:list\s*=\s*\{\s*\[([^\]]+)\]\s*\}/g;
-  // clsx/cn/classNames function calls: cn("...", '...'), clsx("...", '...')
-  const utilFnPattern = /(?:cn|clsx|classNames|twMerge)\s*\(\s*([^)]+)\)/g;
-  // Multiline: className="... or class="... without closing quote on same line.
-  // These are mutually exclusive with the single-line patterns above: single-line
-  // patterns require a closing quote ([^"]+"), so they only match closed attributes;
-  // these require no closing quote before end-of-line ([^"]*$), so they only match
-  // unclosed openings. Known limitation: attributes on the same closing line after
-  // the closing quote are not re-processed (extremely rare in practice).
-  const multilineDoubleStart = /(?<![\w-])(?:className|class)\s*=\s*"([^"]*$)/;
-  const multilineSingleStart = /(?<![\w-])(?:className|class)\s*=\s*'([^']*$)/;
+
+  // Build utility function pattern dynamically; skip entirely when fns is empty
+  let utilFnPattern: RegExp | null = null;
+  if (fns.length > 0) {
+    const fnAlt = fns.map(escapeRegExp).join('|');
+    utilFnPattern = new RegExp(`(?:${fnAlt})\\s*\\(\\s*([^)]+)\\)`, 'g');
+  }
 
   for (let i = 0; i < lines.length; i++) {
     if (ignoredLines.has(i)) continue;
@@ -85,23 +111,31 @@ export function extractClasses(content: string): ExtractedClass[] {
     const lineNum = i + 1; // 1-based
 
     // Extract from double-quote class/className attributes
-    for (const match of line.matchAll(doubleQuoteAttr)) {
-      addClasses(results, match[1], lineNum);
+    if (doubleQuoteAttr) {
+      for (const match of line.matchAll(doubleQuoteAttr)) {
+        addClasses(results, match[1], lineNum);
+      }
     }
 
     // Extract from single-quote class/className attributes (HTML/Astro)
-    for (const match of line.matchAll(singleQuoteAttr)) {
-      addClasses(results, match[1], lineNum);
+    if (singleQuoteAttr) {
+      for (const match of line.matchAll(singleQuoteAttr)) {
+        addClasses(results, match[1], lineNum);
+      }
     }
 
     // Extract from single-quote brace attributes
-    for (const match of line.matchAll(singleQuoteBrace)) {
-      addClasses(results, match[1], lineNum);
+    if (singleQuoteBrace) {
+      for (const match of line.matchAll(singleQuoteBrace)) {
+        addClasses(results, match[1], lineNum);
+      }
     }
 
     // Extract from template literals (simple — no interpolation)
-    for (const match of line.matchAll(templateLiteral)) {
-      addClasses(results, match[1], lineNum);
+    if (templateLiteral) {
+      for (const match of line.matchAll(templateLiteral)) {
+        addClasses(results, match[1], lineNum);
+      }
     }
 
     // Extract from class:list arrays
@@ -114,16 +148,19 @@ export function extractClasses(content: string): ExtractedClass[] {
     }
 
     // Extract from utility function calls
-    for (const match of line.matchAll(utilFnPattern)) {
-      const argsContent = match[1];
-      for (const strMatch of argsContent.matchAll(/['"]([^'"]+)['"]/g)) {
-        addClasses(results, strMatch[1], lineNum);
+    if (utilFnPattern) {
+      for (const match of line.matchAll(utilFnPattern)) {
+        const argsContent = match[1];
+        for (const strMatch of argsContent.matchAll(/['"]([^'"]+)['"]/g)) {
+          addClasses(results, strMatch[1], lineNum);
+        }
       }
     }
 
     // Detect unclosed multiline class/className attribute and accumulate across lines
-    const multilineDoubleMatch = multilineDoubleStart.exec(line);
-    const multilineSingleMatch = multilineDoubleMatch ? null : multilineSingleStart.exec(line);
+    const multilineDoubleMatch = multilineDoubleStart ? multilineDoubleStart.exec(line) : null;
+    const multilineSingleMatch =
+      !multilineDoubleMatch && multilineSingleStart ? multilineSingleStart.exec(line) : null;
     const multilineMatch = multilineDoubleMatch ?? multilineSingleMatch;
 
     if (multilineMatch) {

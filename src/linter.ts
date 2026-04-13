@@ -4,7 +4,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { extractClasses } from './extractor.js';
-import { checkClass } from './rules.js';
+import { checkClass, getConfig } from './rules.js';
 
 export interface LintResult {
   filePath: string;
@@ -25,7 +25,11 @@ export async function lintFile(filePath: string): Promise<LintResult[]> {
  * Lint content string (for testing without file I/O).
  */
 export function lintContent(filePath: string, content: string): LintResult[] {
-  const classes = extractClasses(content);
+  const config = getConfig();
+  const classes = extractClasses(content, {
+    classAttributes: config.classAttributes,
+    classFunctions: config.classFunctions,
+  });
   const results: LintResult[] = [];
 
   for (const { className, line } of classes) {
