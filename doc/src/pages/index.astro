@@ -7,8 +7,6 @@ import { loadLocaleDocs } from "@/utils/locale-docs";
 import { getCategoryOrder } from "@/utils/nav-scope";
 import SiteTreeNav from "@/components/site-tree-nav.tsx";
 
-const ctaNav = settings.headerNav[0] ?? null;
-const overview = ctaNav ? withBase(ctaNav.path) : null;
 const logoUrl = withBase("/img/logo.svg");
 const categoryOrder = getCategoryOrder();
 
@@ -39,16 +37,22 @@ const groupedTree = groupSatelliteNodes(tree, categoryOrder);
         <div
           class="flex items-center justify-center lg:justify-start gap-hsp-md text-small"
         >
-          {
-            overview && (
-              <>
-                <a href={overview} class="text-fg underline hover:text-accent">
-                  Overview
-                </a>
-                <span class="text-muted">/</span>
-              </>
-            )
-          }
+          <a
+            href="https://www.npmjs.com/package/@takazudo/zudo-design-token-lint"
+            class="inline-flex items-center gap-[0.3em] text-fg underline hover:text-accent"
+            target="_blank"
+            rel="noopener noreferrer"
+            ><svg
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+              class="w-[1em] h-[1em] shrink-0"
+              ><path
+                fill="currentColor"
+                d="M0 0v16h16V0H0zm13 13h-2V5H8v8H3V3h10v10z"
+              ></path></svg
+            >npm</a
+          >
+          <span class="text-muted">/</span>
           <a
             href="https://github.com/Takazudo/zudo-design-token-lint"
             class="inline-flex items-center gap-[0.3em] text-fg underline hover:text-accent"
