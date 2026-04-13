@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractClasses } from './extractor.js';
+import { extractClasses, DEFAULT_CLASS_ATTRIBUTES, DEFAULT_CLASS_FUNCTIONS } from './extractor.js';
 
 describe('extractClasses', () => {
   it('extracts from className="..."', () => {
@@ -361,6 +361,132 @@ describe('extractClasses', () => {
 </div>`;
       const result = extractClasses(content);
       expect(result.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('ExtractorOptions — custom classAttributes', () => {
+    it('exports DEFAULT_CLASS_ATTRIBUTES containing className and class', () => {
+      expect(DEFAULT_CLASS_ATTRIBUTES).toContain('className');
+      expect(DEFAULT_CLASS_ATTRIBUTES).toContain('class');
+    });
+
+    it('does not extract from custom attribute by default', () => {
+      const content = '<div inputClassName="p-4">';
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('extracts from custom attribute when specified', () => {
+      const content = '<div inputClassName="p-4">';
+      const result = extractClasses(content, { classAttributes: ['inputClassName'] });
+      expect(result).toEqual([{ className: 'p-4', line: 1 }]);
+    });
+
+    it('extracts from multiple custom attributes in one file', () => {
+      const content = '<div inputClassName="p-4" wrapperClass="m-8">';
+      const result = extractClasses(content, {
+        classAttributes: ['inputClassName', 'wrapperClass'],
+      });
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'm-8', line: 1 },
+      ]);
+    });
+
+    it('handles empty classAttributes array (matches nothing)', () => {
+      const content = '<div className="p-4" class="m-8">';
+      const result = extractClasses(content, { classAttributes: [] });
+      expect(result).toEqual([]);
+    });
+
+    it('handles single-item classAttributes array', () => {
+      const content = '<div myClass="p-4" className="m-8">';
+      const result = extractClasses(content, { classAttributes: ['myClass'] });
+      expect(result).toEqual([{ className: 'p-4', line: 1 }]);
+    });
+
+    it('extracts from multiline custom attribute', () => {
+      const content = `<div
+  inputClassName="p-4
+    m-8"
+/>`;
+      const result = extractClasses(content, { classAttributes: ['inputClassName'] });
+      expect(result).toEqual([
+        { className: 'p-4', line: 2 },
+        { className: 'm-8', line: 2 },
+      ]);
+    });
+
+    it('class:list still works regardless of classAttributes option', () => {
+      const content = `<div class:list={["p-4 flex", 'bg-gray-500']}>`;
+      const result = extractClasses(content, { classAttributes: [] });
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'flex', line: 1 },
+        { className: 'bg-gray-500', line: 1 },
+      ]);
+    });
+
+    it('preserves backward compatibility when no options passed (className and class)', () => {
+      const content = '<div className="p-4" class="m-8">';
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'm-8', line: 1 },
+      ]);
+    });
+  });
+
+  describe('ExtractorOptions — custom classFunctions', () => {
+    it('exports DEFAULT_CLASS_FUNCTIONS containing cn, clsx, classNames, twMerge', () => {
+      expect(DEFAULT_CLASS_FUNCTIONS).toContain('cn');
+      expect(DEFAULT_CLASS_FUNCTIONS).toContain('clsx');
+      expect(DEFAULT_CLASS_FUNCTIONS).toContain('classNames');
+      expect(DEFAULT_CLASS_FUNCTIONS).toContain('twMerge');
+    });
+
+    it('does not extract from custom function by default', () => {
+      const content = `const cls = cva("p-4");`;
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('extracts from custom function when specified', () => {
+      const content = `const cls = cva("p-4");`;
+      const result = extractClasses(content, { classFunctions: ['cva'] });
+      expect(result).toEqual([{ className: 'p-4', line: 1 }]);
+    });
+
+    it('extracts from multiple custom functions in one file', () => {
+      const content = `const a = cva("p-4"); const b = tv("m-8");`;
+      const result = extractClasses(content, { classFunctions: ['cva', 'tv'] });
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'm-8', line: 1 },
+      ]);
+    });
+
+    it('handles empty classFunctions array (matches nothing for functions)', () => {
+      const content = `const cls = cn("p-4");`;
+      const result = extractClasses(content, { classFunctions: [] });
+      expect(result).toEqual([]);
+    });
+
+    it('handles single-item classFunctions array', () => {
+      const content = `const a = cva("p-4"); const b = cn("m-8");`;
+      const result = extractClasses(content, { classFunctions: ['cva'] });
+      expect(result).toEqual([{ className: 'p-4', line: 1 }]);
+    });
+
+    it('preserves backward compatibility when no options passed (cn, clsx, classNames, twMerge)', () => {
+      const content = `cn("p-4") clsx("m-8") classNames("gap-4") twMerge("flex")`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'm-8', line: 1 },
+        { className: 'gap-4', line: 1 },
+        { className: 'flex', line: 1 },
+      ]);
     });
   });
 });

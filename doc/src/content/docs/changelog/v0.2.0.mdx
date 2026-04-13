@@ -1,0 +1,15 @@
+---
+title: v0.2.0
+description: Configurable extraction — classAttributes and classFunctions options.
+sidebar_position: 9998
+category: changelog
+---
+
+Adds configurable class extraction — you can now specify which attribute names and utility functions the extractor scans.
+
+- `classAttributes` config option: specify the attribute names (e.g. `inputClassName`, `wrapperClass`) the extractor should scan, replacing the defaults (`className` and `class` — include them in your list to keep them)
+- `classFunctions` config option: specify the utility function names (e.g. `cva`, `tv`, `twJoin`) the extractor should scan, replacing the defaults (`cn`, `clsx`, `classNames`, and `twMerge` — include them in your list to keep them)
+- `ExtractorOptions` type added to public API
+- `extractClasses()` now accepts an optional second parameter (`options?: ExtractorOptions`) to override attributes and functions per-call
+- `DEFAULT_CLASS_ATTRIBUTES` and `DEFAULT_CLASS_FUNCTIONS` constants exported for reference
+- Backwards compatible — no breaking changes; existing configs and code continue to work without modification

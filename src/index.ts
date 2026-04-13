@@ -1,5 +1,11 @@
 export { checkClass, checkClassWithConfig, setConfig, getConfig, type Violation } from './rules.js';
-export { extractClasses, type ExtractedClass } from './extractor.js';
+export {
+  extractClasses,
+  type ExtractedClass,
+  type ExtractorOptions,
+  DEFAULT_CLASS_ATTRIBUTES,
+  DEFAULT_CLASS_FUNCTIONS,
+} from './extractor.js';
 export { lintFile, lintContent, type LintResult } from './linter.js';
 export {
   loadConfig,

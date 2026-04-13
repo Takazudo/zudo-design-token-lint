@@ -40,7 +40,10 @@ import {
 
   // Class extraction
   extractClasses,
+  DEFAULT_CLASS_ATTRIBUTES,
+  DEFAULT_CLASS_FUNCTIONS,
   type ExtractedClass,
+  type ExtractorOptions,
 } from '@takazudo/zudo-design-token-lint';
 ```
 
@@ -160,7 +163,7 @@ const rule = compilePattern('bg-{color}-{shade}');
 
 ## Extracting Classes
 
-### `extractClasses(content)`
+### `extractClasses(content, options?)`
 
 Extract all class name tokens from a source file string, with their line numbers.
 
@@ -172,6 +175,15 @@ const extracted = extractClasses('<div className="p-4 bg-red-500">');
 // ]
 ```
 
+Accepts an optional `options` parameter to customize which attributes and functions are scanned:
+
+```ts
+const extracted = extractClasses(content, {
+  classAttributes: ['className', 'class', 'inputClassName'],
+  classFunctions: ['cn', 'clsx', 'cva', 'tv'],
+});
+```
+
 Returns `ExtractedClass[]`:
 
 ```ts
@@ -181,13 +193,31 @@ interface ExtractedClass {
 }
 ```
 
-Supported syntaxes:
+Supported syntaxes by default:
 
 - `className="..."` and `class="..."` (JSX/Astro)
 - `className={'...'}` single-quote brace
 - `` className={`...`} `` template literals (simple cases)
-- `class:list={["...", '...']}` Astro class:list arrays
+- `class:list={["...", '...']}` Astro class:list arrays (always scanned)
 - `cn(...)`, `clsx(...)`, `classNames(...)`, `twMerge(...)` utility calls
+
+### `DEFAULT_CLASS_ATTRIBUTES`
+
+The default list of attribute names scanned by `extractClasses`:
+
+```ts
+const DEFAULT_CLASS_ATTRIBUTES: string[];
+// ["className", "class"]
+```
+
+### `DEFAULT_CLASS_FUNCTIONS`
+
+The default list of utility function names scanned by `extractClasses`:
+
+```ts
+const DEFAULT_CLASS_FUNCTIONS: string[];
+// ["cn", "clsx", "classNames", "twMerge"]
+```
 
 ## Types
 
@@ -200,8 +230,23 @@ interface LintConfig {
   ignore: string[];
   patterns?: string[];
   suggestionSuffix?: string;
+  classAttributes?: string[];
+  classFunctions?: string[];
 }
 ```
+
+### `ExtractorOptions`
+
+Options passed to `extractClasses()` to customize which attributes and functions are scanned.
+
+```ts
+interface ExtractorOptions {
+  classAttributes?: string[];
+  classFunctions?: string[];
+}
+```
+
+Both fields are optional. When omitted, `DEFAULT_CLASS_ATTRIBUTES` and `DEFAULT_CLASS_FUNCTIONS` are used respectively.
 
 ### `LintResult`
 
