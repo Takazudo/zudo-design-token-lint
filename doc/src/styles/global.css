@@ -216,35 +216,14 @@ body {
 
 .zd-content :where(h2) {
   --flow-space: var(--spacing-vsp-2xl);
-  font-size: var(--text-subheading);
-  font-weight: var(--font-weight-normal);
-  line-height: var(--leading-tight);
-  margin-bottom: var(--spacing-vsp-xs);
-  padding-top: var(--spacing-vsp-sm);
-  border-top: 3px solid transparent;
-  border-image: linear-gradient(to right, var(--color-fg), transparent) 1;
 }
 
 .zd-content :where(h3) {
   --flow-space: var(--spacing-vsp-xl);
-  font-size: var(--text-body);
-  font-weight: var(--font-weight-normal);
-  line-height: var(--leading-snug);
-  margin-bottom: var(--spacing-vsp-xs);
-  padding-top: var(--spacing-vsp-xs);
-  border-top: 2px solid transparent;
-  border-image: linear-gradient(to right, var(--color-muted), transparent) 1;
 }
 
 .zd-content :where(h4) {
   --flow-space: var(--spacing-vsp-lg);
-  font-size: var(--text-body);
-  font-weight: var(--font-weight-normal);
-  line-height: var(--leading-snug);
-  margin-bottom: var(--spacing-vsp-xs);
-  padding-top: var(--spacing-vsp-xs);
-  border-top: 1px solid transparent;
-  border-image: linear-gradient(to right, var(--color-muted), transparent) 1;
 }
 
 .zd-content :where(h5, h6) {
@@ -289,44 +268,7 @@ body {
   --flow-space: var(--spacing-vsp-xs);
 }
 
-/* ── Paragraphs ── */
-
-.zd-content :where(p) {
-  margin-top: 0;
-  margin-bottom: var(--spacing-vsp-md);
-}
-
-/* ── Links ── */
-
-.zd-content :where(a:not(.block):not([data-site-nav] *)) {
-  color: var(--color-accent);
-  text-decoration: underline;
-}
-
-.zd-content :where(a:not(.block):not([data-site-nav] *):hover) {
-  color: var(--color-accent-hover);
-}
-
-/* ── Bold / Strong ── */
-
-.zd-content :where(strong) {
-  font-weight: var(--font-weight-bold);
-  color: var(--color-fg);
-}
-
 /* ── Lists ── */
-
-.zd-content :where(ul) {
-  list-style-type: disc;
-  padding-left: var(--spacing-hsp-xl);
-  margin-bottom: var(--spacing-vsp-md);
-}
-
-.zd-content :where(ol) {
-  list-style-type: decimal;
-  padding-left: var(--spacing-hsp-xl);
-  margin-bottom: var(--spacing-vsp-md);
-}
 
 .zd-content :where(li) {
   margin-bottom: var(--spacing-vsp-xs);
@@ -342,14 +284,6 @@ body {
 }
 
 /* ── Blockquotes ── */
-
-.zd-content :where(blockquote) {
-  border-left: 3px solid var(--color-muted);
-  padding-left: var(--spacing-hsp-lg);
-  color: var(--color-muted);
-  font-style: italic;
-  margin-bottom: var(--spacing-vsp-md);
-}
 
 .zd-content :where(blockquote p) {
   margin-bottom: var(--spacing-vsp-xs);
@@ -387,13 +321,6 @@ body {
 }
 
 /* ── Tables ── */
-
-.zd-content :where(table) {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--text-small);
-  margin-bottom: var(--spacing-vsp-md);
-}
 
 .zd-content :where(th),
 .zd-content :where(td) {

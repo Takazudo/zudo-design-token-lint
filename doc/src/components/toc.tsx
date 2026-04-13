@@ -24,7 +24,7 @@ export function Toc({ headings }: TocProps) {
         "w-[280px] shrink-0",
         "sticky top-[3.5rem] self-start z-10",
         "pt-vsp-xl lg:pt-vsp-2xl",
-        "max-h-[calc(100vh-3.5rem)] overflow-y-auto",
+        "h-[calc(100vh-3.5rem)] overflow-y-auto",
       )}
     >
       <ul className="border-l border-muted pl-hsp-lg">
