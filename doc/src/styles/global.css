@@ -258,11 +258,6 @@ body {
   outline-offset: 2px;
 }
 
-/* Tighten spacing after headings */
-.zd-content :where(h2 + *, h3 + *, h4 + *, h5 + *, h6 + *) {
-  --flow-space: 0;
-}
-
 /* Consecutive headings: tighter gap */
 .zd-content :where(h2 + h3, h3 + h4, h4 + h5) {
   --flow-space: var(--spacing-vsp-xs);
@@ -600,6 +595,28 @@ pre.astro-code .line .highlighted-word {
   }
   to {
     opacity: 0;
+  }
+}
+
+/* Sidebar hide/show animation */
+@media (min-width: 1024px) {
+  #desktop-sidebar {
+    transition:
+      transform 200ms ease-in-out,
+      visibility 200ms;
+  }
+
+  html[data-sidebar-hidden] #desktop-sidebar {
+    transform: translateX(calc(-1 * var(--zd-sidebar-w)));
+    visibility: hidden;
+  }
+
+  .zd-sidebar-content-wrapper {
+    transition: margin-left 200ms ease-in-out;
+  }
+
+  html[data-sidebar-hidden] .zd-sidebar-content-wrapper {
+    margin-left: 0;
   }
 }
 
