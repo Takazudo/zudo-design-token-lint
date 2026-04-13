@@ -45,11 +45,13 @@ Astro の `class:list` オブジェクト構文はサポートされています
 
 エクストラクターは `className` や `class` に直接割り当てられた文字列リテラルを探します。三項演算子の構文にはマッチしないため、クラスは抽出されず、違反も報告されません。
 
-つまり、三項演算子の中にある禁止クラスは、誤検知を出すのではなく、リンターに静かにスルーされます。回避策はありません。代わりに静的なクラス名と条件ロジックの使用を検討してください:
+つまり、三項演算子の中にある禁止クラスは、誤検知を出すのではなく、リンターに静かにスルーされます。三項演算子の中をリンターにチェックさせる回避策はありません。これらのクラスをリントする必要がある場合は、静的な変数に抽出してください:
 
 ```tsx
-// Linted correctly
-<div className={isActive ? "p-hgap-sm" : "m-vgap-md"}>
+// These static strings are linted
+const activeClass = "p-hgap-sm";
+const inactiveClass = "m-vgap-md";
+<div className={isActive ? activeClass : inactiveClass}>
 ```
 
 ## 制限事項: テンプレート補間

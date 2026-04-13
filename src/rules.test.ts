@@ -199,6 +199,21 @@ describe('checkClass', () => {
       expect(result!.reason).toContain('Numeric spacing');
     });
 
+    it('custom prefixes only allow their own tokens, not old defaults', () => {
+      const custom: LintConfig = {
+        prohibited: DEFAULT_CONFIG.prohibited,
+        allowed: DEFAULT_CONFIG.allowed,
+        ignore: DEFAULT_CONFIG.ignore,
+        semanticPrefixes: ['hsp-', 'vsp-'],
+      };
+      const compiled = compileConfig(custom);
+      // New custom prefixes are allowed
+      expect(checkClassWithConfig('p-hsp-sm', compiled)).toBeNull();
+      expect(checkClassWithConfig('gap-vsp-xs', compiled)).toBeNull();
+      // Old defaults pass through (no violation because hgap-sm is non-numeric anyway)
+      expect(checkClassWithConfig('p-hgap-sm', compiled)).toBeNull();
+    });
+
     it('empty semanticPrefixes preserves normal behavior', () => {
       const custom: LintConfig = {
         prohibited: DEFAULT_CONFIG.prohibited,

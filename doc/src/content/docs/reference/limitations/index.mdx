@@ -45,11 +45,13 @@ Ternary expressions inside `className` are not extracted:
 
 The extractor looks for string literals directly assigned to `className` or `class`. The ternary syntax is not matched, so no classes are extracted — and no violations are reported.
 
-This means the linter will silently miss prohibited classes inside ternaries rather than producing false positives. There is no workaround; consider using static class names with conditional logic instead:
+This means the linter will silently miss prohibited classes inside ternaries rather than producing false positives. There is no workaround for making the linter check inside ternaries. If you need to ensure these classes are linted, extract them into static variables:
 
 ```tsx
-// Linted correctly
-<div className={isActive ? "p-hgap-sm" : "m-vgap-md"}>
+// These static strings are linted
+const activeClass = "p-hgap-sm";
+const inactiveClass = "m-vgap-md";
+<div className={isActive ? activeClass : inactiveClass}>
 ```
 
 ## Limitation: Template Interpolation

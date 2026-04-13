@@ -75,8 +75,8 @@ export function extractClasses(content: string): ExtractedClass[] {
   // these require no closing quote before end-of-line ([^"]*$), so they only match
   // unclosed openings. Known limitation: attributes on the same closing line after
   // the closing quote are not re-processed (extremely rare in practice).
-  const multilineDoubleStart = /(?:className|class)\s*=\s*"([^"]*$)/;
-  const multilineSingleStart = /(?:className|class)\s*=\s*'([^']*$)/;
+  const multilineDoubleStart = /(?<![\w-])(?:className|class)\s*=\s*"([^"]*$)/;
+  const multilineSingleStart = /(?<![\w-])(?:className|class)\s*=\s*'([^']*$)/;
 
   for (let i = 0; i < lines.length; i++) {
     if (ignoredLines.has(i)) continue;
@@ -131,9 +131,13 @@ export function extractClasses(content: string): ExtractedClass[] {
       let accumulated = multilineMatch[1]; // content after opening quote on opening line
       const openLineNum = lineNum;
 
-      // Accumulate subsequent lines until the closing quote is found
-      while (i + 1 < lines.length) {
+      // Accumulate subsequent lines until the closing quote is found.
+      // Safety limit: stop after 50 lines to avoid consuming entire file on malformed input.
+      const maxLines = 50;
+      let linesConsumed = 0;
+      while (i + 1 < lines.length && linesConsumed < maxLines) {
         i++;
+        linesConsumed++;
         const nextLine = lines[i];
         const closeIdx = nextLine.indexOf(quoteChar);
         if (closeIdx !== -1) {
@@ -153,7 +157,7 @@ export function extractClasses(content: string): ExtractedClass[] {
 }
 
 function addClasses(results: ExtractedClass[], classString: string, line: number): void {
-  const cleaned = classString.replace(/\/\*.*?\*\//g, ' ');
+  const cleaned = classString.replace(/\/\*[\s\S]*?\*\//g, ' ');
   const classes = cleaned
     .split(/\s+/)
     .map((c) => c.trim())
