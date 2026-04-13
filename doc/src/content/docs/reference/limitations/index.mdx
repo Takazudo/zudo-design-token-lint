@@ -5,7 +5,7 @@ sidebar_position: 4
 category: reference
 ---
 
-`design-token-lint` uses regex-based static analysis to extract class names from source files. This approach is fast and requires no build step, but it cannot evaluate code at runtime. As a result, some dynamic patterns are not extracted and will not be linted.
+`design-token-lint` uses regex-based static analysis to extract class names from source files. This approach is fast and requires no build step, but it cannot evaluate code at runtime. As a result, some dynamic patterns are not correctly analyzed.
 
 These are not bugs — they are inherent to static analysis.
 
@@ -24,36 +24,52 @@ Multiline `className` values are supported:
 
 Classes spread across multiple lines are extracted correctly.
 
+## Supported: Object Keys in class:list
+
+Astro's `class:list` object syntax is supported — class names in quoted keys are extracted:
+
+```astro
+<div class:list={[{ "p-4": true, "m-8": isActive }]}>
+```
+
+Both `p-4` and `m-8` are extracted and linted.
+
 ## Limitation: Conditional Expressions
 
 Ternary expressions inside `className` are not extracted:
 
 ```tsx
-// Not linted — classes inside ternaries are not extracted
+// Not linted — classes inside ternaries are silently skipped
 <div className={isActive ? "p-4" : "m-8"}>
 ```
 
-The extractor looks for string literals directly assigned to `className` or `class`. The ternary syntax is not matched.
+The extractor looks for string literals directly assigned to `className` or `class`. The ternary syntax is not matched, so no classes are extracted — and no violations are reported.
 
-**Workaround**: Use an ignore comment if the class would otherwise be flagged:
+This means the linter will silently miss prohibited classes inside ternaries rather than producing false positives. There is no workaround; consider using static class names with conditional logic instead:
 
 ```tsx
-{/* design-token-lint-ignore */}
-<div className={isActive ? "p-4" : "m-8"}>
+// Linted correctly
+<div className={isActive ? "p-hgap-sm" : "m-vgap-md"}>
 ```
 
 ## Limitation: Template Interpolation
 
-Template literals with dynamic expressions are not extracted:
+Template literals with dynamic expressions produce garbled class names that never match any linting rules:
 
 ```tsx
-// Not linted — dynamic template literals cannot be statically analyzed
+// Not linted — `p-${size}` is extracted as a literal string, matches no rules
 <div className={`p-${size} bg-${color}-500`}>
 ```
 
-Static portions are not reliably separable from dynamic ones in all cases.
+The extractor captures the raw template content including `${...}` expressions. The resulting strings (`p-${size}`, `bg-${color}-500`) don't match any pattern, so violations inside them are never reported.
 
-**Workaround**: Use ignore comments or restructure to use static class names with conditional logic.
+**Workaround**: Add an ignore comment or refactor to use static class names:
+
+```tsx
+// Use ignore comment to acknowledge this is intentional
+{/* design-token-lint-ignore */}
+<div className={`p-${size}`}>
+```
 
 ## Limitation: Escaped Quotes
 
@@ -72,24 +88,6 @@ The regex parser does not handle escaped quote sequences inside string literals.
 <div className={'p-4 m-8'}>
 ```
 
-## Limitation: Object Keys in class:list
-
-Astro's `class:list` directive supports object syntax where keys are class names. These are not extracted:
-
-```astro
-// Not linted — object key syntax is not extracted
-<div class:list={[{ "p-4": true, "m-8": isActive }]}>
-```
-
-Only array string literals in `class:list` are supported:
-
-```astro
-// This is supported
-<div class:list={["p-4", "m-8"]}>
-```
-
-**Workaround**: Use ignore comments or restructure to use the array string form.
-
 ## Summary
 
 | Pattern | Supported |
@@ -97,7 +95,7 @@ Only array string literals in `class:list` are supported:
 | Multiline `className` | Yes |
 | Static string literals | Yes |
 | Template literals (static only) | Yes |
-| Ternary expressions | No |
-| Template literals with interpolation | No |
-| Escaped quotes in class strings | No |
-| Object keys in `class:list` | No |
+| Object keys in `class:list` | Yes |
+| Ternary expressions | No — silently skipped |
+| Template literals with interpolation | No — dynamic parts not linted |
+| Escaped quotes in class strings | No — may extract incorrectly |
