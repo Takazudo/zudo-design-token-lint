@@ -193,15 +193,6 @@ interface ExtractedClass {
 }
 ```
 
-### `ExtractorOptions`
-
-```ts
-interface ExtractorOptions {
-  classAttributes?: string[];
-  classFunctions?: string[];
-}
-```
-
 省略時は `DEFAULT_CLASS_ATTRIBUTES` と `DEFAULT_CLASS_FUNCTIONS` が使用されます。
 
 サポートされる構文:
@@ -242,10 +233,10 @@ interface ExtractorOptions {
 抽出に使用するデフォルトの属性名と関数名の定数です。
 
 ```ts
-const DEFAULT_CLASS_ATTRIBUTES: readonly string[];
+const DEFAULT_CLASS_ATTRIBUTES: string[];
 // ['className', 'class']
 
-const DEFAULT_CLASS_FUNCTIONS: readonly string[];
+const DEFAULT_CLASS_FUNCTIONS: string[];
 // ['cn', 'clsx', 'classNames', 'twMerge']
 ```
 
