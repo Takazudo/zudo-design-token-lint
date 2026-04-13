@@ -34,6 +34,8 @@ import {
   setConfig,
   getConfig,
   DEFAULT_CONFIG,
+  DEFAULT_CLASS_ATTRIBUTES,
+  DEFAULT_CLASS_FUNCTIONS,
   type LintConfig,
   type CompiledConfig,
   type CompiledRule,
@@ -41,6 +43,7 @@ import {
   // クラス抽出
   extractClasses,
   type ExtractedClass,
+  type ExtractorOptions,
 } from '@takazudo/zudo-design-token-lint';
 ```
 
@@ -160,9 +163,9 @@ const rule = compilePattern('bg-{color}-{shade}');
 
 ## クラスの抽出
 
-### `extractClasses(content)`
+### `extractClasses(content, options?)`
 
-ソースファイル文字列からすべてのクラス名トークンを行番号付きで抽出します。
+ソースファイル文字列からすべてのクラス名トークンを行番号付きで抽出します。オプションで `ExtractorOptions` を渡すと、抽出対象の属性名や関数名をカスタマイズできます。
 
 ```ts
 const extracted = extractClasses('<div className="p-4 bg-red-500">');
@@ -170,6 +173,15 @@ const extracted = extractClasses('<div className="p-4 bg-red-500">');
 //   { className: 'p-4', line: 1 },
 //   { className: 'bg-red-500', line: 1 }
 // ]
+```
+
+カスタム属性や関数名を指定する場合:
+
+```ts
+const extracted = extractClasses('<div myClass="p-4">', {
+  classAttributes: ['className', 'class', 'myClass'],
+  classFunctions: ['cn', 'clsx', 'myMerge'],
+});
 ```
 
 `ExtractedClass[]` を返します:
@@ -180,6 +192,17 @@ interface ExtractedClass {
   line: number;
 }
 ```
+
+### `ExtractorOptions`
+
+```ts
+interface ExtractorOptions {
+  classAttributes?: string[];
+  classFunctions?: string[];
+}
+```
+
+省略時は `DEFAULT_CLASS_ATTRIBUTES` と `DEFAULT_CLASS_FUNCTIONS` が使用されます。
 
 サポートされる構文:
 
@@ -200,7 +223,30 @@ interface LintConfig {
   ignore: string[];
   patterns?: string[];
   suggestionSuffix?: string;
+  classAttributes?: string[];
+  classFunctions?: string[];
 }
+```
+
+### `ExtractorOptions`
+
+```ts
+interface ExtractorOptions {
+  classAttributes?: string[];
+  classFunctions?: string[];
+}
+```
+
+### `DEFAULT_CLASS_ATTRIBUTES` / `DEFAULT_CLASS_FUNCTIONS`
+
+抽出に使用するデフォルトの属性名と関数名の定数です。
+
+```ts
+const DEFAULT_CLASS_ATTRIBUTES: readonly string[];
+// ['className', 'class']
+
+const DEFAULT_CLASS_FUNCTIONS: readonly string[];
+// ['cn', 'clsx', 'classNames', 'twMerge']
 ```
 
 ### `LintResult`
