@@ -2,7 +2,7 @@
 
 ## Project
 
-`@zudolab/design-token-lint` — a linter that enforces semantic design tokens instead of raw Tailwind numeric utilities.
+`@takazudo/zudo-design-token-lint` — a linter that enforces semantic design tokens instead of raw Tailwind numeric utilities.
 
 - **Root**: The npm package (TypeScript + vitest)
 - **`doc/`**: Astro-based documentation site (zudo-doc) deployed at `/pj/zudo-design-token-lint/`
@@ -89,7 +89,7 @@ Triggered by pushing a `v*.*.*` tag to main. The `.github/workflows/publish.yml`
 
 ## Dogfooding
 
-`.design-token-lint.json` at root configures the linter on its own source code. Run `pnpm dlx @zudolab/design-token-lint` (after publish) or `node dist/cli.js` to lint.
+`.design-token-lint.json` at root configures the linter on its own source code. Run `pnpm dlx @takazudo/zudo-design-token-lint` (after publish) or `node dist/cli.js` to lint.
 
 ## Commit Messages
 

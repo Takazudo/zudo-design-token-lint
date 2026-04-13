@@ -25,11 +25,11 @@ export const settings = {
     respectPrefersColorScheme: true,
   } satisfies ColorModeConfig,
   siteName: "Design Token Lint",
-  siteDescription: "Lint Tailwind CSS class names against design system tokens. Enforce semantic spacing and color tokens instead of raw numeric utilities.",
+  siteDescription: "Forbids Tailwind classes that violate design token rules",
   base: "/pj/zudo-design-token-lint/",
   trailingSlash: false as boolean,
   noindex: false as boolean,
-  editUrl: "https://github.com/Takazudo/zudo-design-token-lint/edit/main/doc/" as string | false,
+  editUrl: false as string | false,
   siteUrl: "https://takazudomodular.com" as string,
   docsDir: "src/content/docs",
   locales: {
@@ -67,11 +67,11 @@ export const settings = {
         title: "More",
         items: [
           { label: "GitHub", href: "https://github.com/Takazudo/zudo-design-token-lint" },
-          { label: "npm", href: "https://www.npmjs.com/package/@zudolab/design-token-lint" },
+          { label: "npm", href: "https://www.npmjs.com/package/@takazudo/zudo-design-token-lint" },
         ],
       },
     ],
-    copyright: `Copyright © ${new Date().getFullYear()} zudolab. Built with zudo-doc.`,
+    copyright: `Copyright © ${new Date().getFullYear()} takazudo. Built with zudo-doc.`,
   } satisfies FooterConfig as FooterConfig | false,
   headerNav: [
     { label: "Overview", path: "/docs/overview", categoryMatch: "overview" },

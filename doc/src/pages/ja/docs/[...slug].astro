@@ -34,6 +34,7 @@ import { settings } from "@/config/settings";
 import DocMetainfo from "@/components/doc-metainfo.astro";
 import DocTags from "@/components/doc-tags.astro";
 import type { DocsEntry } from "@/types/docs-entry";
+import { htmlOverrides } from "@/components/content/component-map";
 
 export async function getStaticPaths() {
   const localeDocs = await getDocsCollection("docs-ja");
@@ -148,6 +149,7 @@ const {
 } = Astro.props;
 
 const components = {
+  ...htmlOverrides,
   Note,
   Tip,
   Info,

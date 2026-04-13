@@ -1,5 +1,5 @@
 {
-  "name": "@zudolab/design-token-lint",
+  "name": "@takazudo/zudo-design-token-lint",
   "version": "0.1.0",
   "description": "Lint Tailwind CSS class names against design system tokens. Enforce semantic spacing and color tokens instead of raw numeric utilities.",
   "type": "module",
@@ -28,10 +28,10 @@
     "lint:fix": "prettier --write .",
     "prepublishOnly": "pnpm run build && pnpm run test",
     "// ── Doc site (workspace shortcuts) ──────────────": "",
-    "dev:doc": "pnpm --filter @zudolab/design-token-lint-doc dev",
-    "build:doc": "pnpm --filter @zudolab/design-token-lint-doc build",
-    "preview:doc": "pnpm --filter @zudolab/design-token-lint-doc preview",
-    "check:doc": "pnpm --filter @zudolab/design-token-lint-doc check"
+    "dev:doc": "pnpm --filter @takazudo/zudo-design-token-lint-doc dev",
+    "build:doc": "pnpm --filter @takazudo/zudo-design-token-lint-doc build",
+    "preview:doc": "pnpm --filter @takazudo/zudo-design-token-lint-doc preview",
+    "check:doc": "pnpm --filter @takazudo/zudo-design-token-lint-doc check"
   },
   "keywords": [
     "design-system",

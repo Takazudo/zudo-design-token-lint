@@ -5,12 +5,12 @@ sidebar_position: 1
 category: reference
 ---
 
-`@zudolab/design-token-lint` は、ビルドツール、エディタ、またはカスタムツールとの統合のための小さな API をエクスポートしています。
+`@takazudo/zudo-design-token-lint` は、ビルドツール、エディタ、またはカスタムツールとの統合のための小さな API をエクスポートしています。
 
 ## インストール
 
 ```bash
-pnpm add @zudolab/design-token-lint
+pnpm add @takazudo/zudo-design-token-lint
 ```
 
 ## エクスポート
@@ -41,7 +41,7 @@ import {
   // クラス抽出
   extractClasses,
   type ExtractedClass,
-} from '@zudolab/design-token-lint';
+} from '@takazudo/zudo-design-token-lint';
 ```
 
 ## ファイルとコンテンツのリント
@@ -110,7 +110,7 @@ interface Violation {
 上記と同じですが、グローバル設定ではなく明示的なコンパイル済み設定を使用します。
 
 ```ts
-import { loadConfig, compileConfig, checkClassWithConfig } from '@zudolab/design-token-lint';
+import { loadConfig, compileConfig, checkClassWithConfig } from '@takazudo/zudo-design-token-lint';
 
 const config = await loadConfig(process.cwd());
 const compiled = compileConfig(config);
@@ -232,7 +232,7 @@ import {
   compileConfig,
   setConfig,
   lintFile,
-} from '@zudolab/design-token-lint';
+} from '@takazudo/zudo-design-token-lint';
 
 async function main() {
   const config = await loadConfig(process.cwd());

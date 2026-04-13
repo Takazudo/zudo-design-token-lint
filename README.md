@@ -1,6 +1,6 @@
-# @zudolab/design-token-lint
+# @takazudo/zudo-design-token-lint
 
-[![npm version](https://img.shields.io/npm/v/@zudolab/design-token-lint.svg)](https://www.npmjs.com/package/@zudolab/design-token-lint)
+[![npm version](https://img.shields.io/npm/v/@takazudo/zudo-design-token-lint.svg)](https://www.npmjs.com/package/@takazudo/zudo-design-token-lint)
 
 Lint Tailwind CSS class names against design system tokens. Enforce semantic spacing and color tokens instead of raw numeric utilities.
 
@@ -14,7 +14,7 @@ Tailwind's numeric utilities (`p-4`, `m-8`, `gap-6`) and default color palette (
 
 ```bash
 # Install
-pnpm add -D @zudolab/design-token-lint
+pnpm add -D @takazudo/zudo-design-token-lint
 
 # Run
 npx design-token-lint
@@ -140,7 +140,7 @@ import {
   loadConfig,
   compileConfig,
   setConfig,
-} from '@zudolab/design-token-lint';
+} from '@takazudo/zudo-design-token-lint';
 
 // Lint a string
 const results = lintContent('file.tsx', '<div className="p-4 bg-gray-500">');
