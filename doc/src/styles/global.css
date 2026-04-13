@@ -598,6 +598,28 @@ pre.astro-code .line .highlighted-word {
   }
 }
 
+/* Sidebar hide/show animation */
+@media (min-width: 1024px) {
+  #desktop-sidebar {
+    transition:
+      transform 200ms ease-in-out,
+      visibility 200ms;
+  }
+
+  html[data-sidebar-hidden] #desktop-sidebar {
+    transform: translateX(calc(-1 * var(--zd-sidebar-w)));
+    visibility: hidden;
+  }
+
+  .zd-sidebar-content-wrapper {
+    transition: margin-left 200ms ease-in-out;
+  }
+
+  html[data-sidebar-hidden] .zd-sidebar-content-wrapper {
+    margin-left: 0;
+  }
+}
+
 /* Sidebar toggle button — left position uses CSS variable */
 @media (min-width: 1024px) {
   .zd-desktop-sidebar-toggle {
