@@ -65,8 +65,21 @@ Create a `.design-token-lint.json` (or `design-token-lint.config.json`) in your 
 | `ignore`           | `string[]` | File glob patterns to skip entirely                                                                 |
 | `patterns`         | `string[]` | File glob patterns to scan (overrides CLI defaults when no args given)                              |
 | `suggestionSuffix` | `string`   | Custom suffix for violation messages (replaces the default suggestion text)                         |
+| `semanticPrefixes` | `string[]` | Value prefixes that bypass spacing rules (default: `["hgap-", "vgap-"]`)                            |
 
 All fields fall back to built-in defaults if omitted.
+
+#### `semanticPrefixes`
+
+Override the default semantic token prefixes to match your project's naming convention:
+
+```json
+{
+  "semanticPrefixes": ["hsp-", "vsp-"]
+}
+```
+
+Classes like `p-hsp-sm` or `gap-vsp-md` will be allowed instead of the default `hgap-`/`vgap-` prefixes. Set to `[]` to disable the prefix allowlist entirely.
 
 #### `suggestionSuffix`
 
