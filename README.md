@@ -162,7 +162,7 @@ The extractor handles:
 This linter uses static analysis (regex-based extraction), which has inherent limitations:
 
 - **Conditional expressions**: Ternaries like `isActive ? "p-4" : "m-8"` are not extracted — classes inside ternaries are silently skipped
-- **Template interpolation**: `` className={`p-${size}`} `` extracts the literal string `p-${size}`, which matches no rules, so dynamic classes are never linted
+- **Template interpolation**: ``className={`p-${size}`}`` extracts the literal string `p-${size}`, which matches no rules, so dynamic classes are never linted
 - **Escaped quotes**: `className="p-4 \"m-8\""` may extract incorrectly due to unhandled escape sequences
 
 These are inherent to the static analysis approach and are not bugs.

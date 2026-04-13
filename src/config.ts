@@ -212,9 +212,9 @@ export function compileConfig(config: LintConfig): CompiledConfig {
     rules: config.prohibited.map((p) => compilePattern(p, config.suggestionSuffix)),
     allowed: new Set(config.allowed),
     ignore: config.ignore,
-    semanticPrefixes: (config.semanticPrefixes ?? (DEFAULT_CONFIG.semanticPrefixes as string[])).filter(
-      (p) => p.length > 0,
-    ),
+    semanticPrefixes: (
+      config.semanticPrefixes ?? (DEFAULT_CONFIG.semanticPrefixes as string[])
+    ).filter((p) => p.length > 0),
   };
 }
 
