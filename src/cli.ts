@@ -64,6 +64,19 @@ export function readPackageVersion(): string {
   return pkg.version;
 }
 
+/**
+ * Treat env vars as truthy only for the conventional boolean-true spellings.
+ * Accepts: "1", "true", "yes", "on" (case-insensitive). Everything else,
+ * including "0", "false", "no", "off", and the empty string, is falsy. This
+ * avoids the surprise that any non-empty string (e.g. "0") would otherwise
+ * count as truthy.
+ */
+function isTruthyEnv(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
+}
+
 export function helpText(): string {
   return [
     'Usage: design-token-lint [options] [glob patterns...]',
@@ -82,9 +95,9 @@ export function helpText(): string {
     ...DEFAULT_PATTERNS.map((p) => `    ${p}`),
     '',
     'Environment:',
-    '  TOKEN_LINT_ALLOW_EMPTY  When set to a non-empty value, exit 0 (instead',
-    '                          of 2) when no files match. Useful as a',
-    '                          first-run / bootstrap escape hatch.',
+    '  TOKEN_LINT_ALLOW_EMPTY  When set to 1/true/yes/on (case-insensitive),',
+    '                          exit 0 (instead of 2) when no files match.',
+    '                          Useful as a first-run / bootstrap escape hatch.',
   ].join('\n');
 }
 
@@ -138,7 +151,7 @@ export async function runMain(opts: MainOptions): Promise<number> {
 
   const sortedFiles = [...files].sort();
   if (sortedFiles.length === 0) {
-    const allowEmpty = (env.TOKEN_LINT_ALLOW_EMPTY ?? '') !== '';
+    const allowEmpty = isTruthyEnv(env.TOKEN_LINT_ALLOW_EMPTY);
     const lines = [
       'No files matched any of the configured patterns:',
       ...patterns.map((p) => `  - ${p}`),

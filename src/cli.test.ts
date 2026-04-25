@@ -198,6 +198,36 @@ describe('runMain — empty match handling', () => {
     });
     expect(code).toBe(2);
   });
+
+  it.each(['0', 'false', 'no', 'off', '  '])(
+    'treats TOKEN_LINT_ALLOW_EMPTY=%j as falsy (still exits 2)',
+    async (value) => {
+      const io = makeIO();
+      const code = await runMain({
+        args: ['nonexistent/**/*.tsx'],
+        env: { TOKEN_LINT_ALLOW_EMPTY: value },
+        cwd: tmpDir,
+        stdout: io.write.stdout,
+        stderr: io.write.stderr,
+      });
+      expect(code).toBe(2);
+    },
+  );
+
+  it.each(['1', 'true', 'TRUE', 'yes', 'on', ' true '])(
+    'treats TOKEN_LINT_ALLOW_EMPTY=%j as truthy (exits 0)',
+    async (value) => {
+      const io = makeIO();
+      const code = await runMain({
+        args: ['nonexistent/**/*.tsx'],
+        env: { TOKEN_LINT_ALLOW_EMPTY: value },
+        cwd: tmpDir,
+        stdout: io.write.stdout,
+        stderr: io.write.stderr,
+      });
+      expect(code).toBe(0);
+    },
+  );
 });
 
 describe('runMain — happy path still works', () => {
