@@ -3,7 +3,7 @@
 /**
  * CLI for design-token-lint.
  *
- * Usage: design-token-lint [glob patterns...]
+ * Usage: design-token-lint [options] [glob patterns...]
  *
  * Default patterns scan src/, components/, lib/, and app/ for .tsx, .jsx, .astro files.
  * Loads config from .design-token-lint.json in the current directory (falls back to defaults).
@@ -12,6 +12,9 @@
 
 import { glob } from 'glob';
 import chalk from 'chalk';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join, isAbsolute, resolve } from 'node:path';
 import { loadConfig, compileConfig } from './config.js';
 import { setConfig } from './rules.js';
 import { lintFile, type LintResult } from './linter.js';
@@ -25,16 +28,101 @@ const DEFAULT_PATTERNS = [
 
 const DEFAULT_IGNORE_PATTERNS = ['**/node_modules/**', '**/dist/**', '**/__inbox/**'];
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+export type ParsedArgs =
+  | { kind: 'help' }
+  | { kind: 'version' }
+  | { kind: 'run'; patterns: string[] };
+
+/**
+ * Parse CLI argv (process.argv.slice(2)).
+ *
+ * Recognizes -h/--help and -V/--version as flags. Any other args are treated
+ * as glob patterns. Flags take precedence; if both --help and --version are
+ * present, --help wins (it appears earlier in conventional CLIs).
+ */
+export function parseArgs(args: string[]): ParsedArgs {
+  if (args.includes('-h') || args.includes('--help')) {
+    return { kind: 'help' };
+  }
+  if (args.includes('-V') || args.includes('--version')) {
+    return { kind: 'version' };
+  }
+  return { kind: 'run', patterns: args };
+}
+
+/**
+ * Read this package's version from its package.json.
+ *
+ * Resolves package.json relative to this file's location. Works for both the
+ * compiled `dist/cli.js` (one level up from dist/) and for tests that import
+ * from `src/` (also one level up from src/).
+ */
+export function readPackageVersion(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const pkgPath = join(here, '..', 'package.json');
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version: string };
+  return pkg.version;
+}
+
+export function helpText(): string {
+  return [
+    'Usage: design-token-lint [options] [glob patterns...]',
+    '',
+    'Lint Tailwind class names against design system tokens.',
+    'Reports raw numeric utilities and default colors that should be replaced',
+    'with semantic design tokens.',
+    '',
+    'Options:',
+    '  -h, --help     Show this help message and exit',
+    '  -V, --version  Print the package version and exit',
+    '',
+    'Patterns:',
+    '  When no patterns are passed, the linter reads `patterns` from',
+    '  .design-token-lint.json in the current directory, or falls back to:',
+    ...DEFAULT_PATTERNS.map((p) => `    ${p}`),
+    '',
+    'Environment:',
+    '  TOKEN_LINT_ALLOW_EMPTY  When set to a non-empty value, exit 0 (instead',
+    '                          of 2) when no files match. Useful as a',
+    '                          first-run / bootstrap escape hatch.',
+  ].join('\n');
+}
+
+export interface MainOptions {
+  args: string[];
+  env: NodeJS.ProcessEnv;
+  cwd: string;
+  stdout: (msg: string) => void;
+  stderr: (msg: string) => void;
+}
+
+/**
+ * Run the CLI and return the desired exit code.
+ *
+ * Factored out from the entry point so it can be unit-tested without
+ * spawning a child process.
+ */
+export async function runMain(opts: MainOptions): Promise<number> {
+  const { args, env, cwd, stdout, stderr } = opts;
+
+  const parsed = parseArgs(args);
+  if (parsed.kind === 'help') {
+    stdout(helpText());
+    return 0;
+  }
+  if (parsed.kind === 'version') {
+    stdout(readPackageVersion());
+    return 0;
+  }
 
   // Load and apply config
-  const config = await loadConfig(process.cwd());
+  const config = await loadConfig(cwd);
   const compiled = compileConfig(config);
   setConfig(compiled);
 
   // Resolve patterns: CLI args > config file > defaults
-  const patterns = args.length > 0 ? args : (config.patterns ?? DEFAULT_PATTERNS);
+  const patterns =
+    parsed.patterns.length > 0 ? parsed.patterns : (config.patterns ?? DEFAULT_PATTERNS);
 
   // Merge ignore patterns: CLI defaults + config ignore patterns
   const ignorePatterns = [...DEFAULT_IGNORE_PATTERNS, ...compiled.ignore];
@@ -42,7 +130,7 @@ async function main(): Promise<void> {
   // Resolve files
   const files = new Set<string>();
   for (const pattern of patterns) {
-    const matched = await glob(pattern, { ignore: ignorePatterns });
+    const matched = await glob(pattern, { ignore: ignorePatterns, cwd });
     for (const f of matched) {
       files.add(f);
     }
@@ -50,21 +138,34 @@ async function main(): Promise<void> {
 
   const sortedFiles = [...files].sort();
   if (sortedFiles.length === 0) {
-    console.error(chalk.yellow('No files matched the given patterns.'));
-    process.exit(0);
+    const allowEmpty = (env.TOKEN_LINT_ALLOW_EMPTY ?? '') !== '';
+    const lines = [
+      'No files matched any of the configured patterns:',
+      ...patterns.map((p) => `  - ${p}`),
+      'This usually means the `patterns` config is wrong or no source files exist yet.',
+      'Set TOKEN_LINT_ALLOW_EMPTY=1 to suppress this error (e.g. for first-run/bootstrap).',
+    ];
+    stderr(chalk.yellow(lines.join('\n')));
+    return allowEmpty ? 0 : 2;
   }
 
-  console.error(chalk.dim(`Scanning ${sortedFiles.length} file(s)...\n`));
+  stderr(chalk.dim(`Scanning ${sortedFiles.length} file(s)...\n`));
 
   const allResults: LintResult[] = [];
   for (const filePath of sortedFiles) {
-    const results = await lintFile(filePath);
-    allResults.push(...results);
+    // glob returns paths relative to `cwd`; resolve against `cwd` so reads
+    // work even when `cwd` differs from process.cwd() (e.g. in tests).
+    const readPath = isAbsolute(filePath) ? filePath : resolve(cwd, filePath);
+    const results = await lintFile(readPath);
+    // Keep the displayed path relative for normal CLI output.
+    for (const r of results) {
+      allResults.push({ ...r, filePath });
+    }
   }
 
   if (allResults.length === 0) {
-    console.error(chalk.green('No design token violations found.'));
-    process.exit(0);
+    stderr(chalk.green('No design token violations found.'));
+    return 0;
   }
 
   // Group by file
@@ -76,21 +177,40 @@ async function main(): Promise<void> {
   }
 
   for (const [filePath, results] of byFile) {
-    console.error(chalk.underline(filePath));
+    stderr(chalk.underline(filePath));
     for (const r of results) {
-      console.error(
-        `  ${chalk.dim(`L${r.line}`)}: ${chalk.red(r.className)} — ${chalk.yellow(r.reason)}`,
-      );
+      stderr(`  ${chalk.dim(`L${r.line}`)}: ${chalk.red(r.className)} — ${chalk.yellow(r.reason)}`);
     }
-    console.error('');
+    stderr('');
   }
 
   const fileCount = byFile.size;
-  console.error(chalk.red(`Found ${allResults.length} violation(s) in ${fileCount} file(s).`));
-  process.exit(1);
+  stderr(chalk.red(`Found ${allResults.length} violation(s) in ${fileCount} file(s).`));
+  return 1;
 }
 
-main().catch((err) => {
-  console.error(chalk.red('Error:'), err);
-  process.exit(2);
-});
+// Detect if this module is being run directly (vs imported by tests).
+const isMain = (() => {
+  try {
+    return process.argv[1] === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+})();
+
+if (isMain) {
+  runMain({
+    args: process.argv.slice(2),
+    env: process.env,
+    cwd: process.cwd(),
+    stdout: (msg) => console.log(msg),
+    stderr: (msg) => console.error(msg),
+  })
+    .then((code) => {
+      process.exit(code);
+    })
+    .catch((err) => {
+      console.error(chalk.red('Error:'), err);
+      process.exit(2);
+    });
+}
