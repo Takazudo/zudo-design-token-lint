@@ -55,6 +55,9 @@ const fullTitle =
   title === settings.siteName ? title : `${title} | ${settings.siteName}`;
 const navSection = currentSlug ? getNavSectionForSlug(currentSlug) : undefined;
 const currentPath = Astro.url.pathname;
+// Social crawlers do not resolve relative paths, so og:url / og:image must be absolute.
+const ogUrl = `${settings.siteUrl}${currentPath}`;
+const ogImageUrl = `${settings.siteUrl}${withBase("/img/ogp.png")}`;
 const htmlColorAttrs = settings.colorMode
   ? {
       "data-theme": settings.colorMode.defaultMode,
@@ -89,8 +92,19 @@ const contentTransition = {
     {description && <meta name="description" content={description} />}
     {settings.noindex && <meta name="robots" content="noindex, nofollow" />}
     {!settings.noindex && unlisted && <meta name="robots" content="noindex" />}
+    <meta property="og:type" content="website" />
     <meta property="og:title" content={fullTitle} />
     {description && <meta property="og:description" content={description} />}
+    <meta property="og:url" content={ogUrl} />
+    <meta property="og:site_name" content={settings.siteName} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={settings.siteName} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={fullTitle} />
+    {description && <meta name="twitter:description" content={description} />}
+    <meta name="twitter:image" content={ogImageUrl} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
