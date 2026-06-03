@@ -186,6 +186,8 @@ git push origin main
 BUMP_SHA=$(git rev-parse HEAD)
 ```
 
+> **Assumption:** `main` is unprotected, so the bump commit can be pushed directly (this also mirrors how CI fires on push to `main`). If branch protection is ever added to `main`, this step must change to a PR-based flow — open a branch, push the bump there, open a PR, merge it, and use the merge commit as `BUMP_SHA`.
+
 ## Step 7: Wait for CI on the Bump Commit
 
 Delegate CI polling to `/watch-ci` — do NOT reimplement polling:
