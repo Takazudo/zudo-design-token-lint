@@ -1,6 +1,6 @@
 {
   "name": "@takazudo/zudo-design-token-lint",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Lint Tailwind CSS class names against design system tokens. Enforce semantic spacing and color tokens instead of raw numeric utilities.",
   "type": "module",
   "main": "dist/index.js",
