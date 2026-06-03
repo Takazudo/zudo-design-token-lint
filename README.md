@@ -20,6 +20,8 @@ pnpm add -D @takazudo/zudo-design-token-lint
 npx design-token-lint
 ```
 
+> Bleeding-edge builds are published under the `next` dist-tag: `pnpm add -D @takazudo/zudo-design-token-lint@next`.
+
 ## CLI Usage
 
 ```bash

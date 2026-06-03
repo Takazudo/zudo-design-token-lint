@@ -37,7 +37,25 @@ jobs:
       - name: Run package tests
         run: pnpm -w run test
 
+      # Dist-tag policy:
+      #   prerelease versions (matching -next./-beta./-rc.) → npm dist-tag "next"
+      #   stable versions                                   → "latest", then also
+      #   advance "next" to the same version so `pkg@next` always resolves to the
+      #   newest published version.
+      # NPM_TOKEN MUST be an Automation-type token: scoped publish (@takazudo/*)
+      # requires 2FA, and only an Automation (or 2FA-bypassing granular) token can
+      # publish unattended in CI. A standard user token fails with an OTP/EOTP error.
       - name: Publish package
-        run: pnpm publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "Publishing @takazudo/zudo-design-token-lint@$VERSION"
+          if echo "$VERSION" | grep -Eq -- '-(next|beta|rc)\.'; then
+            echo "Prerelease → dist-tag 'next'"
+            pnpm publish --tag next --access public --no-git-checks
+          else
+            echo "Stable → dist-tag 'latest' (also advancing 'next')"
+            pnpm publish --access public --no-git-checks
+            npm dist-tag add "@takazudo/zudo-design-token-lint@$VERSION" next
+          fi
