@@ -216,7 +216,7 @@ publishes @takazudo/zudo-design-token-lint to npm.
 
 Dist-tag (handled automatically by the workflow):
   - prerelease (…-next.N) → published under the "next" dist-tag
-  - stable (X.Y.Z)        → published under "latest" (and "next" is advanced too)
+  - stable (X.Y.Z)        → published under "latest"
 
 After pushing the tag, watch the run and verify:
 
@@ -227,12 +227,14 @@ After pushing the tag, watch the run and verify:
 
 ## Dist-tag policy
 
-Implemented in `.github/workflows/publish.yml` — documented here so the version strategy in Step 2 makes sense:
+Implemented in `.github/workflows/publish.yml` — the dist-tag is derived purely
+from the version string (the workflow always passes `--tag` explicitly), documented
+here so the version strategy in Step 2 makes sense:
 
 - **Prerelease** versions (matching `-next.`, `-beta.`, or `-rc.`) publish to the npm `next` dist-tag. `npm i @takazudo/zudo-design-token-lint@next` installs the latest prerelease.
-- **Stable** versions publish to `latest` AND also advance `next` to the same version, so `@next` always resolves to the newest published version (prerelease or stable).
+- **Stable** versions (clean `X.Y.Z`) publish to `latest`. `next` is **not** auto-advanced, so a tagless `npm i @takazudo/zudo-design-token-lint` always gets the newest stable.
 
-This assumes a **linear release flow** (prereleases lead up to the stable that supersedes them). Edge case: cutting a stable hotfix on an older line *while* a newer prerelease holds `next` would regress `next` back to the older stable. If that happens, re-point it manually:
+`next` is an opt-in **preview side-channel**, kept distinct from `latest` and never mirrored onto it. After a stable ships, `@next` may still point at the previous prerelease (older than `latest`) until the next prerelease is published — this is expected and harmless: consumers on `@next` are opting into previews, and the next prerelease moves the tag forward. To jump `@next` ahead manually if ever needed:
 
 ```bash
 npm dist-tag add @takazudo/zudo-design-token-lint@<newest-prerelease> next
