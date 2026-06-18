@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseArgs, readPackageVersion, helpText, runMain } from './cli.js';
+import { pathToFileURL } from 'node:url';
+import { parseArgs, readPackageVersion, helpText, runMain, isCliEntrypoint } from './cli.js';
 import { setConfig } from './rules.js';
 import { compileConfig, DEFAULT_CONFIG } from './config.js';
 
@@ -84,6 +85,36 @@ describe('helpText', () => {
     expect(text).toContain('-V, --version');
     expect(text).toContain('.design-token-lint.json');
     expect(text).toContain('TOKEN_LINT_ALLOW_EMPTY');
+  });
+});
+
+describe('isCliEntrypoint', () => {
+  it('treats symlinked bin paths as the CLI entrypoint', () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-bin-'));
+    try {
+      const realCli = join(tmpDir, 'cli.js');
+      const linkedCli = join(tmpDir, 'design-token-lint');
+      writeFileSync(realCli, '#!/usr/bin/env node\n');
+      symlinkSync(realCli, linkedCli);
+
+      expect(isCliEntrypoint(linkedCli, pathToFileURL(realCli).href)).toBe(true);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('returns false when argv path differs from the module path', () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-bin-'));
+    try {
+      const argvPath = join(tmpDir, 'argv.js');
+      const modulePath = join(tmpDir, 'cli.js');
+      writeFileSync(argvPath, '');
+      writeFileSync(modulePath, '');
+
+      expect(isCliEntrypoint(argvPath, pathToFileURL(modulePath).href)).toBe(false);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 
