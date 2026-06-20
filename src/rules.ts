@@ -55,7 +55,10 @@ export function checkClassWithConfig(className: string, config: CompiledConfig):
   const isNegative = stripped.startsWith('-');
   const withoutNeg = isNegative ? stripped.slice(1) : stripped;
 
-  // Strip opacity modifier (e.g., bg-gray-500/50, text-blue-600/75)
+  // Strip opacity modifier (e.g., bg-gray-500/50, text-blue-600/75).
+  // Used for the arbitrary-value guard and allowed-list check; spacing rules
+  // receive the pre-strip form so that fraction utilities like w-1/2 are not
+  // misread as the numeric value "1".
   const slashIdx = withoutNeg.indexOf('/');
   const withoutOpacity = slashIdx >= 0 ? withoutNeg.slice(0, slashIdx) : withoutNeg;
 
@@ -71,7 +74,12 @@ export function checkClassWithConfig(className: string, config: CompiledConfig):
 
   // Check each rule
   for (const rule of config.rules) {
-    const violation = matchRule(className, withoutOpacity, rule, config.semanticPrefixes);
+    // Spacing/sizing rules must see the value with any `/N` intact so that
+    // fraction utilities (e.g. w-1/2) are not confused with numeric values.
+    // Color rules receive the opacity-stripped form so bg-gray-500/50 is still
+    // matched as bg-gray-500 and flagged.
+    const candidate = rule.isSpacingRule ? withoutNeg : withoutOpacity;
+    const violation = matchRule(className, candidate, rule, config.semanticPrefixes);
     if (violation) {
       return violation;
     }

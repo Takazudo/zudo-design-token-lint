@@ -74,6 +74,22 @@ describe('checkClass', () => {
     });
   });
 
+  describe('fraction utilities — allowed (not false-positived as numeric spacing)', () => {
+    it.each([
+      'w-1/2',
+      'w-1/3',
+      'w-2/3',
+      'w-3/4',
+      'size-1/2',
+      'top-1/2',
+      'min-w-1/2',
+      'inset-1/2',
+      'inset-x-1/2',
+    ])('allows %s', (cls) => {
+      expect(checkClass(cls)).toBeNull();
+    });
+  });
+
   describe('default Tailwind colors — prohibited', () => {
     it.each([
       'bg-gray-500',
