@@ -12,7 +12,7 @@
 
 import { glob } from 'glob';
 import chalk from 'chalk';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, isAbsolute, resolve } from 'node:path';
 import { loadConfig, compileConfig } from './config.js';
@@ -202,14 +202,17 @@ export async function runMain(opts: MainOptions): Promise<number> {
   return 1;
 }
 
-// Detect if this module is being run directly (vs imported by tests).
-const isMain = (() => {
+export function isCliEntrypoint(argvPath = process.argv[1], moduleUrl = import.meta.url): boolean {
+  if (!argvPath) return false;
   try {
-    return process.argv[1] === fileURLToPath(import.meta.url);
+    return realpathSync(argvPath) === realpathSync(fileURLToPath(moduleUrl));
   } catch {
     return false;
   }
-})();
+}
+
+// Detect if this module is being run directly (vs imported by tests).
+const isMain = isCliEntrypoint();
 
 if (isMain) {
   runMain({
