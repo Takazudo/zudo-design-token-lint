@@ -67,7 +67,9 @@ export default defineConfig({
     },
   },
   vite: {
-    plugins: [tailwindcss()],
+    // Cast needed: @tailwindcss/vite uses vite@8 types; Astro bundles vite@6 — HotUpdatePluginContext mismatch
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    plugins: [tailwindcss() as any],
   },
   markdown: {
     shikiConfig,
