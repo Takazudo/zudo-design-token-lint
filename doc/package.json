@@ -20,7 +20,7 @@
     "diff": "^8.0.3",
     "github-slugger": "^2.0.0",
     "gray-matter": "^4.0.0",
-    "mermaid": "^11.14.0",
+    "mermaid": "^11.15.0",
     "minisearch": "^7.2.0",
     "preact": "^10.26.0",
     "remark-directive": "^3.0.0",
