@@ -12,7 +12,7 @@
 
 import { glob } from 'glob';
 import chalk from 'chalk';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, isAbsolute, resolve } from 'node:path';
 import { loadConfig, compileConfig } from './config.js';
@@ -202,14 +202,42 @@ export async function runMain(opts: MainOptions): Promise<number> {
   return 1;
 }
 
-// Detect if this module is being run directly (vs imported by tests).
-const isMain = (() => {
+/**
+ * Determine whether this module is the entry point (i.e. run directly vs
+ * imported by tests or other modules).
+ *
+ * Under pnpm (and other package managers that use a `.bin` shim), `argv1` is
+ * the SYMLINK path while `moduleUrl` resolves to the REALPATH of the compiled
+ * file. A plain string comparison therefore always returns false, making the
+ * CLI a silent no-op. Comparing realpaths of both sides fixes this.
+ *
+ * Each side is resolved independently: if either realpath call fails (e.g. the
+ * path is relative or extensionless) we fall back to the raw string so the
+ * comparison still returns a sensible result instead of throwing.
+ */
+export function isMainModule(argv1: string | undefined, moduleUrl: string): boolean {
+  if (!argv1) return false;
+  let resolvedArgv1: string;
   try {
-    return process.argv[1] === fileURLToPath(import.meta.url);
+    resolvedArgv1 = realpathSync(argv1);
   } catch {
-    return false;
+    resolvedArgv1 = argv1;
   }
-})();
+  let resolvedModule: string;
+  try {
+    resolvedModule = realpathSync(fileURLToPath(moduleUrl));
+  } catch {
+    try {
+      resolvedModule = fileURLToPath(moduleUrl);
+    } catch {
+      return false;
+    }
+  }
+  return resolvedArgv1 === resolvedModule;
+}
+
+// Detect if this module is being run directly (vs imported by tests).
+const isMain = isMainModule(process.argv[1], import.meta.url);
 
 if (isMain) {
   runMain({
