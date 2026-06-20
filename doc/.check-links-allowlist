@@ -1,0 +1,35 @@
+# Known exceptions for `pnpm run check:links` (consumed by
+# `scripts/check-links.js --allowlist=...`).
+#
+# Format: `<file>:<line>:<href>` per line. `#` comments and blank
+# lines are ignored. Each entry MUST match the printed report
+# verbatim (file path relative to repo root, 1-based line number,
+# href as it appeared in the source/dist).
+#
+# Add entries here when an issue cannot be fixed at the source —
+# typically: doc pages that reference EN-only siblings from JA, or
+# absolute hrefs that point at runtime-generated routes with no
+# MDX file.
+#
+# When ANY of these stops being a known exception (e.g. someone
+# writes the missing JA mirror page), DELETE the entry — the
+# strict gate then surfaces real regressions in the same category.
+#
+# ----- Broken Links in Built HTML (1 entry) -------------------------
+#
+# The EN docs/claude/index.mdx (generated: true) uses <CategoryNav> which
+# emits a nav card to the first page of claude-md when rendered under the JA
+# locale. There is no JA claude-md page (claude-resources generates EN-only
+# pages; generated: true pages are exempt from bilingual mirroring per
+# CLAUDE.md).
+# The JA /docs/claude/ page is served via i18n fallback from the EN page, so
+# the CategoryNav still fires with the JA prefix, linking to a child page that
+# has no JA mirror. This is a known structural limitation of the generated/i18n
+# interaction — not a fixable broken link.
+#
+# The line number is the 1-based line in the generated dist HTML; it shifts if
+# the generated claude/ content changes. Regenerate (`pnpm build`) and update
+# this entry if the report prints a different line.
+dist/ja/docs/claude/index.html:791:/ja/docs/claude-md/root
+
+# ----- Absolute Links Bypassing Base Path (0 entries) -------------

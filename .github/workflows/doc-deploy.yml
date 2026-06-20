@@ -1,8 +1,33 @@
+# Production deployment workflow for the doc site.
+#
+# Triggered on every push to `main`. The pipeline:
+#   1. Builds the zfb static site (full clone — needed for SSG meta dates)
+#   2. HTML validates the built doc/dist/
+#   3. Builds doc history JSONs (full clone, @takazudo/zudo-doc-history-server)
+#   4. Merges both build outputs and deploys to Cloudflare Workers
+#   5. Sends IFTTT notification with deploy status
+#
+# Inter-job data sharing uses actions/cache (not upload-artifact) to avoid
+# Actions storage accumulation. Cache keys are scoped to github.run_id so
+# each run gets a fresh, unique cache that won't be reused by other runs.
+#
+# IMPORTANT: actions/cache paths do NOT inherit working-directory — all
+# cache paths are repo-root-relative (doc/dist/, doc-history-out/).
+#
+# Concurrency: only one production deploy runs at a time.
+# We do NOT cancel in-progress runs — the earlier deploy should finish.
+#
+# Secrets:
+#   CLOUDFLARE_API_TOKEN  — Workers: Edit scope required (NOT Pages: Edit)
+#   CLOUDFLARE_ACCOUNT_ID
+#   IFTTT_PROD_NOTIFY     — optional; notify job is guarded by its presence
+
 name: Deploy docs
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 concurrency:
   group: doc-deploy-production
@@ -12,40 +37,225 @@ permissions:
   contents: read
 
 jobs:
-  build-and-deploy:
+  # ---------------------------------------------------------------------------
+  # Job 1: Build the zfb docs site (full clone — needed for SSG meta dates)
+  # ---------------------------------------------------------------------------
+  # fetch-depth: 0 is required so the doc-history preBuild step can call
+  # `git log --follow` on each content file and populate the SSG meta block
+  # with real author/date values. A shallow clone produces an empty manifest.
+  build-site:
+    name: Build Site
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
-
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+      - name: Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4
         with:
-          node-version: 20
-          cache: pnpm
+          dest: ~/setup-pnpm-${{ github.job }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build documentation site
-        run: pnpm -w run build:doc
+      - name: Build site
+        working-directory: doc
+        run: pnpm build
+
+      - name: Cache site build output
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          # actions/cache paths do NOT inherit working-directory — use repo-root-relative path
+          path: doc/dist/
+          key: dist-${{ github.run_id }}
+
+  # ---------------------------------------------------------------------------
+  # Job: HTML validate
+  # ---------------------------------------------------------------------------
+  # Gate before production deploy; catches element-permitted-content violations.
+  html-validate:
+    name: HTML validate
+    needs: [build-site]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4
+        with:
+          dest: ~/setup-pnpm-${{ github.job }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+
+      - name: Install deps (no scripts)
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Restore dist cache (built by build-site)
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          # actions/cache paths do NOT inherit working-directory — use repo-root-relative path
+          path: doc/dist/
+          key: dist-${{ github.run_id }}
+          fail-on-cache-miss: true
+
+      - name: Run html-validate
+        working-directory: doc
+        run: pnpm check:html
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Build doc history JSONs (full clone — needed to walk git log)
+  # ---------------------------------------------------------------------------
+  # @takazudo/zudo-doc-history-server is an installed dependency in the doc/
+  # workspace package. Run doc-scoped (cd doc && pnpm exec) to ensure the
+  # bin resolves from doc/node_modules/.bin (root pnpm exec may not find it).
+  build-history:
+    name: Build Doc History
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4
+        with:
+          dest: ~/setup-pnpm-${{ github.job }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate doc history
+        run: |
+          cd doc && pnpm exec doc-history-generate \
+            --content-dir src/content/docs \
+            --locale ja:src/content/docs-ja \
+            --out-dir ../doc-history-out
+
+      - name: Cache doc history output
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          # actions/cache paths do NOT inherit working-directory — use repo-root-relative path
+          path: doc-history-out/
+          key: doc-history-${{ github.run_id }}
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Deploy to Cloudflare Workers (production)
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy to Cloudflare Workers
+    needs: [build-site, html-validate, build-history]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Restore site build cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: doc/dist/
+          key: dist-${{ github.run_id }}
+          fail-on-cache-miss: true
+
+      - name: Restore doc history cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: doc-history-out/
+          key: doc-history-${{ github.run_id }}
+          fail-on-cache-miss: true
 
       - name: Prepare deploy directory
         run: |
-          mkdir -p deploy/pj/zudo-design-token-lint
-          cp -r doc/dist/* deploy/pj/zudo-design-token-lint/
-          echo "/ /pj/zudo-design-token-lint/ 302" > deploy/_redirects
+          # Merge doc history JSONs into doc/dist/doc-history/
+          if [ -d doc-history-out ] && [ "$(ls -A doc-history-out 2>/dev/null)" ]; then
+            mkdir -p doc/dist/doc-history
+            cp -r doc-history-out/. doc/dist/doc-history/
+          fi
+          # Exclude _worker.js and _zfb_inner.mjs from the public asset directory
+          # so they are not served as downloadable files (wrangler.toml documents this).
+          printf '%s\n' '_worker.js' '_zfb_inner.mjs' > doc/dist/.assetsignore
 
-      - name: Deploy to Cloudflare Pages
+      - name: Deploy to Cloudflare Workers (production)
+        # No node_modules in this job (dist-cache restore only) — use npx, but
+        # pinned to the doc/package.json devDependency version so production
+        # deploys use the wrangler the check:wrangler-pin gate validates.
+        working-directory: doc
         run: |
-          npx wrangler@4 pages deploy deploy \
-            --project-name=zudo-design-token-lint \
-            --branch=main \
-            --commit-hash="${GITHUB_SHA}" \
-            --commit-message="Production deploy: ${GITHUB_SHA}"
+          WRANGLER_VERSION=$(node -p "require('./package.json').devDependencies.wrangler")
+          npx "wrangler@${WRANGLER_VERSION}" deploy
         env:
+          # CLOUDFLARE_API_TOKEN requires Workers: Edit scope (NOT Pages: Edit)
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Send IFTTT notification with deploy status
+  # ---------------------------------------------------------------------------
+  notify:
+    name: Deploy Notification
+    needs: [build-site, build-history, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Notify via IFTTT
+        if: env.IFTTT_PROD_NOTIFY != ''
+        env:
+          IFTTT_PROD_NOTIFY: ${{ secrets.IFTTT_PROD_NOTIFY }}
+          RAW_COMMIT_MSG: ${{ github.event.head_commit.message }}
+          BUILD_SITE_RESULT: ${{ needs.build-site.result }}
+          BUILD_HISTORY_RESULT: ${{ needs.build-history.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          GITHUB_SHA_VAL: ${{ github.sha }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          if [ "$DEPLOY_RESULT" = "success" ]; then
+            STATUS="zudo-design-token-lint doc deploy succeeded!"
+          elif [ "$BUILD_SITE_RESULT" = "failure" ]; then
+            STATUS="zudo-design-token-lint doc deploy failed (site build)"
+          elif [ "$BUILD_HISTORY_RESULT" = "failure" ]; then
+            STATUS="zudo-design-token-lint doc deploy failed (history build)"
+          elif [ "$DEPLOY_RESULT" = "failure" ]; then
+            STATUS="zudo-design-token-lint doc deploy failed (deploy)"
+          else
+            STATUS="zudo-design-token-lint doc deploy cancelled"
+          fi
+
+          COMMIT_MSG=$(echo "$RAW_COMMIT_MSG" | head -1 | sed 's/"/\\"/g')
+          SHORT_SHA=$(echo "$GITHUB_SHA_VAL" | cut -c1-7)
+          RUN_URL="${SERVER_URL}/${REPO}/actions/runs/${RUN_ID}"
+
+          curl -sSf --max-time 10 -X POST "$IFTTT_PROD_NOTIFY" \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"value1\": \"${STATUS}\",
+              \"value2\": \"${SHORT_SHA} ${COMMIT_MSG}\",
+              \"value3\": \"${RUN_URL}\"
+            }" || echo "::warning::IFTTT notification failed"

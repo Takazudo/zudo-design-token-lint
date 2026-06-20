@@ -1,3 +1,10 @@
+"use client";
+
+// react → preact/compat: tsc resolves the alias via tsconfig `paths`
+// (react → ./node_modules/preact/compat/), and the bundler resolves it via
+// framework=preact + bundle.mainFields in zfb.config.ts. The "use client"
+// directive marks this as a hydrating island so zfb's scanner registers it in
+// the island manifest (the marker is set in pages/lib/_playground.tsx).
 import { useState, useRef, useEffect } from "react";
 import {
   compileConfig,
@@ -136,7 +143,7 @@ export default function Playground() {
             }
             className={TEXTAREA_CLASS}
             rows={7}
-            spellCheck={false}
+            spellcheck={false}
           />
         </div>
         <div className="flex flex-col gap-vsp-2xs">
@@ -154,7 +161,7 @@ export default function Playground() {
             }
             className={TEXTAREA_CLASS}
             rows={14}
-            spellCheck={false}
+            spellcheck={false}
           />
           {configError && (
             <p className="text-caption text-danger">

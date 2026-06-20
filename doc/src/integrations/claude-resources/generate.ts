@@ -64,7 +64,9 @@ function parseFrontmatter(content: string) {
 }
 
 function escapeTitle(s: string): string {
-  return s.replace(/"/g, '\\"');
+  // Backslashes must be escaped first — the value is embedded in
+  // double-quoted YAML frontmatter where `\d` or `C:\path` is invalid.
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 function listFiles(dir: string): string[] {
@@ -76,19 +78,50 @@ function listFiles(dir: string): string[] {
     .sort();
 }
 
-function writeCategoryMeta(
+function writeCategoryIndex(
   outputDir: string,
   label: string,
   position: number,
   description: string,
-  noPage = true,
 ) {
-  const meta: Record<string, unknown> = { label, position, description };
-  if (noPage) meta.noPage = true;
+  const mdx = `---
+title: "${escapeTitle(label)}"
+description: "${escapeTitle(description)}"
+sidebar_position: ${position}
+category_no_page: true
+generated: true
+---
+`;
+  fs.writeFileSync(path.join(outputDir, "index.mdx"), mdx);
+}
+
+/**
+ * Writes an unlisted sub-page MDX file (flat file with a custom nested slug).
+ * Used for skill references, scripts, and assets.
+ */
+function writeUnlistedSubPage(
+  outputPath: string,
+  title: string,
+  slug: string,
+  body: string,
+) {
   fs.writeFileSync(
-    path.join(outputDir, "_category_.json"),
-    JSON.stringify(meta, null, 2) + "\n",
+    outputPath,
+    `---\ntitle: "${escapeTitle(title)}"\nslug: "${slug}"\nunlisted: true\ngenerated: true\n---\n\n${body}\n`,
   );
+}
+
+/**
+ * Guards that the given name/slug is not the reserved "index" value.
+ * Throws with a contextual message if it is.
+ */
+function assertNotIndexReserved(
+  nameOrSlug: string,
+  errorMessage: string,
+) {
+  if (nameOrSlug === "index") {
+    throw new Error(errorMessage);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -101,18 +134,23 @@ function findClaudeMdFiles(dir: string, excludeDirs: string[]): string[] {
 
   for (const item of fs.readdirSync(dir)) {
     if (item === "node_modules") continue;
+    if (item.startsWith(".")) continue;
     const itemPath = path.join(dir, item);
     if (excludeDirs.some((d) => itemPath.startsWith(d))) continue;
 
+    // lstat (not stat) so symlinks aren't followed — a symlinked dir can point
+    // back into the project (e.g. e2e fixtures linking to packages/) or out to
+    // a slow mount (e.g. /mnt/c on WSL) and either turns the walk into a
+    // multi-minute hang.
     let stat: fs.Stats;
     try {
-      stat = fs.statSync(itemPath);
+      stat = fs.lstatSync(itemPath);
     } catch {
-      continue; // broken symlinks
+      continue;
     }
     if (stat.isDirectory()) {
       results.push(...findClaudeMdFiles(itemPath, excludeDirs));
-    } else if (item === "CLAUDE.md") {
+    } else if (stat.isFile() && item === "CLAUDE.md") {
       results.push(itemPath);
     }
   }
@@ -135,6 +173,12 @@ function generateClaudemdDocs(
     path.join(projectRoot, ".git"),
     path.join(projectRoot, "node_modules"),
     path.join(projectRoot, "worktrees"),
+    path.join(projectRoot, "dist"),
+    path.join(projectRoot, "out"),
+    path.join(projectRoot, "public"),
+    path.join(projectRoot, "__inbox"),
+    path.join(projectRoot, "test-results"),
+    path.join(projectRoot, "e2e", "fixtures"),
     path.join(config.docsDir),
   ];
 
@@ -145,38 +189,52 @@ function generateClaudemdDocs(
   const items: ClaudeMdItem[] = [];
 
   for (const filePath of files) {
-    const content = fs.readFileSync(filePath, "utf8");
     const relPath = path.relative(projectRoot, filePath);
     const displayPath = `/${relPath}`;
     const dirPart = path.dirname(relPath);
     const slug = dirPart === "." ? "root" : dirPart.replace(/\//g, "--");
-
     items.push({ displayPath, slug, relPath });
-
-    const pos = items.length + 1;
-    const mdx = `---
-title: "${escapeTitle(displayPath)}"
-description: "CLAUDE.md at ${escapeTitle(displayPath)}"
-sidebar_position: ${pos}
-sidebar_label: "${escapeTitle(relPath)}"
-generated: true
----
-
-**Path:** \`${relPath}\`
-
-${escapeForMdx(content.trim())}
-`;
-    fs.writeFileSync(path.join(outputDir, `${slug}.mdx`), mdx);
   }
 
-  // Sort: root first, then alphabetically
+  // Sort BEFORE writing: sidebar_position is baked into each generated .mdx,
+  // so the root-first/alphabetical order must be applied first — sorting after
+  // the write loop would leave positions in filesystem-walk order.
   items.sort((a, b) => {
     if (a.slug === "root") return -1;
     if (b.slug === "root") return 1;
     return a.displayPath.localeCompare(b.displayPath);
   });
 
-  writeCategoryMeta(outputDir, "CLAUDE.md", 900, "Project-specific instructions");
+  const emittedSlugs = new Map<string, string>();
+  items.forEach((item, index) => {
+    assertNotIndexReserved(
+      item.slug,
+      `claude-resources: "${item.relPath}" maps to the reserved slug "index", which is used for the category metadata file. Rename the directory to resolve the conflict.`,
+    );
+    const previous = emittedSlugs.get(item.slug);
+    if (previous !== undefined) {
+      throw new Error(
+        `claude-resources: slug collision — "${item.slug}" is produced by both "${previous}" and "${item.relPath}". Rename one of the directories to resolve the conflict.`,
+      );
+    }
+    emittedSlugs.set(item.slug, item.relPath);
+    const content = fs.readFileSync(path.join(projectRoot, item.relPath), "utf8");
+    const mdx = `---
+title: "${escapeTitle(item.displayPath)}"
+description: "CLAUDE.md at ${escapeTitle(item.displayPath)}"
+sidebar_position: ${index + 1}
+sidebar_label: "${escapeTitle(item.relPath)}"
+generated: true
+---
+
+**Path:** \`${item.relPath}\`
+
+${escapeForMdx(content.trim())}
+`;
+    fs.writeFileSync(path.join(outputDir, `${item.slug}.mdx`), mdx);
+  });
+
+  writeCategoryIndex(outputDir, "CLAUDE.md", 900, "Project-specific instructions");
   return items;
 }
 
@@ -204,6 +262,10 @@ function generateCommandsDocs(config: ClaudeResourcesConfig): CommandItem[] {
     if (!parsed) continue;
 
     const name = file.replace(/\.md$/, "");
+    assertNotIndexReserved(
+      name,
+      `claude-resources: ".claude/commands/index.md" uses the reserved name "index", which is used for the category metadata file. Rename the command file to resolve the conflict.`,
+    );
     const description = (parsed.data.description as string) || "";
 
     items.push({ name, description });
@@ -222,7 +284,7 @@ ${escapeForMdx(parsed.content.trim())}
 
   items.sort((a, b) => a.name.localeCompare(b.name));
 
-  writeCategoryMeta(outputDir, "Commands", 901, "Custom slash commands");
+  writeCategoryIndex(outputDir, "Commands", 901, "Custom slash commands");
   return items;
 }
 
@@ -324,6 +386,10 @@ function generateSkillsDocs(config: ClaudeResourcesConfig): SkillItem[] {
   const items: SkillItem[] = [];
 
   for (const dir of dirs) {
+    assertNotIndexReserved(
+      dir,
+      `claude-resources: skill directory ".claude/skills/index/" uses the reserved name "index", which is used for the category metadata file. Rename the skill directory to resolve the conflict.`,
+    );
     const content = fs.readFileSync(
       path.join(skillsDir, dir, "SKILL.md"),
       "utf8",
@@ -407,53 +473,50 @@ ${body}`;
     const skillSlugBase = `claude-skills/${dir}`;
 
     for (const ref of references) {
-      const subSlug = `${skillSlugBase}/ref-${ref.name}`;
-      const refMdx = `---
-title: "${escapeTitle(ref.title)}"
-slug: "${subSlug}"
-unlisted: true
-generated: true
----
-
-${escapeForMdx(ref.content.trim())}
-`;
-      fs.writeFileSync(path.join(outputDir, `${dir}--ref-${ref.name}.mdx`), refMdx);
+      writeUnlistedSubPage(
+        path.join(outputDir, `${dir}--ref-${ref.name}.mdx`),
+        ref.title,
+        `${skillSlugBase}/ref-${ref.name}`,
+        escapeForMdx(ref.content.trim()),
+      );
     }
 
     for (const f of scriptFiles.filter((s) => s.endsWith(".md"))) {
       const slug = f.replace(/\.md$/, "");
-      const subSlug = `${skillSlugBase}/script-${slug}`;
       const raw = fs.readFileSync(
         path.join(skillsDir, dir, "scripts", f),
         "utf8",
       );
       const h1Match = raw.match(/^#\s+(.+)$/m);
       const title = h1Match ? h1Match[1] : slug;
-      fs.writeFileSync(
+      writeUnlistedSubPage(
         path.join(outputDir, `${dir}--script-${slug}.mdx`),
-        `---\ntitle: "${escapeTitle(title)}"\nslug: "${subSlug}"\nunlisted: true\ngenerated: true\n---\n\n${escapeForMdx(raw.trim())}\n`,
+        title,
+        `${skillSlugBase}/script-${slug}`,
+        escapeForMdx(raw.trim()),
       );
     }
 
     for (const f of assetFiles.filter((a) => a.endsWith(".md"))) {
       const slug = f.replace(/\.md$/, "");
-      const subSlug = `${skillSlugBase}/asset-${slug}`;
       const raw = fs.readFileSync(
         path.join(skillsDir, dir, "assets", f),
         "utf8",
       );
       const h1Match = raw.match(/^#\s+(.+)$/m);
       const title = h1Match ? h1Match[1] : slug;
-      fs.writeFileSync(
+      writeUnlistedSubPage(
         path.join(outputDir, `${dir}--asset-${slug}.mdx`),
-        `---\ntitle: "${escapeTitle(title)}"\nslug: "${subSlug}"\nunlisted: true\ngenerated: true\n---\n\n${escapeForMdx(raw.trim())}\n`,
+        title,
+        `${skillSlugBase}/asset-${slug}`,
+        escapeForMdx(raw.trim()),
       );
     }
   }
 
   items.sort((a, b) => a.name.localeCompare(b.name));
 
-  writeCategoryMeta(outputDir, "Skills", 902, "Skill packages");
+  writeCategoryIndex(outputDir, "Skills", 902, "Skill packages");
   return items;
 }
 
@@ -484,6 +547,10 @@ function generateAgentsDocs(config: ClaudeResourcesConfig): AgentItem[] {
     const description = (parsed.data.description as string) || "";
     const model = (parsed.data.model as string) || "";
     const fileSlug = file.replace(/\.md$/, "");
+    assertNotIndexReserved(
+      fileSlug,
+      `claude-resources: ".claude/agents/index.md" uses the reserved name "index", which is used for the category metadata file. Rename the agent file to resolve the conflict.`,
+    );
 
     items.push({ name, file: fileSlug, description, model });
 
@@ -504,7 +571,7 @@ ${escapeForMdx(parsed.content.trim())}
 
   items.sort((a, b) => a.name.localeCompare(b.name));
 
-  writeCategoryMeta(outputDir, "Agents", 903, "Custom subagents");
+  writeCategoryIndex(outputDir, "Agents", 903, "Custom subagents");
   return items;
 }
 
@@ -512,10 +579,30 @@ ${escapeForMdx(parsed.content.trim())}
 // Main
 // ---------------------------------------------------------------------------
 
-function generateOverviewIndex(config: ClaudeResourcesConfig) {
+function generateOverviewIndex(
+  config: ClaudeResourcesConfig,
+  {
+    hasCommands,
+    hasSkills,
+    hasAgents,
+    hasClaudemd,
+  }: { hasCommands: boolean; hasSkills: boolean; hasAgents: boolean; hasClaudemd: boolean },
+) {
   const outputDir = path.join(config.docsDir, "claude");
   cleanDir(outputDir);
   ensureDir(outputDir);
+
+  // Build the explicit slug list from whichever sub-categories were generated.
+  // CategoryNav with `categories` renders cards for each slug by resolving
+  // the node in the nav tree (including noPage auto-index categories) and
+  // falling back to docsUrl(slug, locale) for the href when noPage=true.
+  const categorySlugs: string[] = [];
+  if (hasClaudemd) categorySlugs.push("claude-md");
+  if (hasSkills) categorySlugs.push("claude-skills");
+  if (hasAgents) categorySlugs.push("claude-agents");
+  if (hasCommands) categorySlugs.push("claude-commands");
+
+  const categoriesAttr = JSON.stringify(categorySlugs);
 
   const index = `---
 title: "Claude"
@@ -528,7 +615,7 @@ Claude Code configuration reference.
 
 ## Resources
 
-<CategoryTreeNav category="claude" />
+<CategoryNav categories={${categoriesAttr}} />
 `;
   fs.writeFileSync(path.join(outputDir, "index.mdx"), index);
 }
@@ -539,7 +626,12 @@ export function generateClaudeResourcesDocs(config: ClaudeResourcesConfig) {
   const skills = generateSkillsDocs(config);
   const agents = generateAgentsDocs(config);
 
-  generateOverviewIndex(config);
+  generateOverviewIndex(config, {
+    hasClaudemd: claudemds.length > 0,
+    hasCommands: commands.length > 0,
+    hasSkills: skills.length > 0,
+    hasAgents: agents.length > 0,
+  });
 
   return {
     claudemd: claudemds.length,

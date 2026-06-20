@@ -1,0 +1,19 @@
+{
+  "projectName": "zudo-design-token-lint",
+  "defaultLang": "en",
+  "colorSchemeMode": "light-dark",
+  "lightScheme": "Default Light",
+  "darkScheme": "Default Dark",
+  "defaultMode": "dark",
+  "respectPrefersColorScheme": true,
+  "features": ["search","sidebarFilter","imageEnlarge","i18n","claudeResources","sidebarResizer","sidebarToggle","docHistory","bodyFootUtil","llmsTxt","skillSymlinker","changelog","footerNavGroup","footerCopyright"],
+  "cjkFriendly": true,
+  "packageManager": "pnpm",
+  "headerRightItems": [
+    {"type":"component","component":"github-link"},
+    {"type":"component","component":"theme-toggle"},
+    {"type":"component","component":"search"},
+    {"type":"component","component":"language-switcher"}
+  ],
+  "metaTags": {"description": true, "keywords":"", "ogImage":"/img/ogp.png", "ogSiteName": true, "twitterCard":"summary_large_image", "twitterCreator":"@Takazudo"}
+}

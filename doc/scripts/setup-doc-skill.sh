@@ -7,10 +7,16 @@ set -euo pipefail
 # the user-scope skills directory (~/.claude/skills/).
 # ────────────────────────────────────────────────────────
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# This script lives in `doc/scripts/`. The zfb doc-app is `doc/`, but the
+# Claude resources (`.claude/`) live one level ABOVE, at the REPO ROOT — this
+# repo is a hybrid (root = npm package, doc/ = doc site). So every `.claude`
+# read/write must target the repo root, NOT `doc/`. We must never create
+# `doc/.claude`.
+DOC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_PARENT="$(cd "$DOC_DIR/.." && pwd)"
 
 # Read project name from the root lint package (not the doc package)
-REPO_PACKAGE_JSON="$(cd "$ROOT_DIR/.." && pwd)/package.json"
+REPO_PACKAGE_JSON="$REPO_PARENT/package.json"
 PROJECT_NAME=$(node -e "const n = require('$REPO_PACKAGE_JSON').name || 'my-project'; console.log(n.replace(/^@[^/]+\\//, ''))")
 DEFAULT_SKILL_NAME="${PROJECT_NAME}-wisdom"
 
@@ -29,11 +35,13 @@ fi
 
 # Resolve the main repo root (handles git worktrees correctly)
 # Use the main worktree path so symlinks survive worktree removal
-REPO_ROOT="$(git -C "$ROOT_DIR" worktree list | head -1 | awk '{print $1}')"
+REPO_ROOT="$(git -C "$DOC_DIR" worktree list | head -1 | awk '{print $1}')"
 
-SKILL_DIR="$ROOT_DIR/.claude/skills/$SKILL_NAME"
-DOCS_DIR="$ROOT_DIR/src/content/docs"
-CONTENT_CLAUDE_MD="$ROOT_DIR/src/content/CLAUDE.md"
+# The skill is written to the REPO-ROOT `.claude/skills/` (one level above
+# `doc/`), so it is never created under `doc/.claude`.
+SKILL_DIR="$REPO_PARENT/.claude/skills/$SKILL_NAME"
+DOCS_DIR="$DOC_DIR/src/content/docs"
+CONTENT_CLAUDE_MD="$DOC_DIR/src/content/CLAUDE.md"
 GLOBAL_SKILLS_DIR="$HOME/.claude/skills"
 
 # Validate docs directory exists
@@ -162,9 +170,11 @@ fi
 
 echo "  Generated SKILL.md"
 
-# Symlink into global skills directory
+# Symlink into global skills directory.
+# Point at the main-worktree repo-root path so the global link survives
+# worktree removal.
 mkdir -p "$GLOBAL_SKILLS_DIR"
-ensure_symlink "$GLOBAL_SKILLS_DIR/$SKILL_NAME" "$SKILL_DIR"
+ensure_symlink "$GLOBAL_SKILLS_DIR/$SKILL_NAME" "$REPO_ROOT/.claude/skills/$SKILL_NAME"
 
 echo ""
 echo "Done! Skill '$SKILL_NAME' is ready."

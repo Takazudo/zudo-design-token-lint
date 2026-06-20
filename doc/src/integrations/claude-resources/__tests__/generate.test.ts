@@ -91,7 +91,7 @@ describe("generateClaudeResourcesDocs", () => {
       expect(fs.existsSync(path.join(docsDir, "claude-agents"))).toBe(true);
     });
 
-    it("generates _category_.json with noPage for sub-categories", () => {
+    it("generates index.mdx with category_no_page for sub-categories", () => {
       generateClaudeResourcesDocs({
         claudeDir,
         projectRoot: tmpDir,
@@ -100,14 +100,14 @@ describe("generateClaudeResourcesDocs", () => {
 
       const dirs = ["claude-md", "claude-commands", "claude-skills", "claude-agents"];
       for (const dir of dirs) {
-        const catPath = path.join(docsDir, dir, "_category_.json");
-        expect(fs.existsSync(catPath)).toBe(true);
+        const indexPath = path.join(docsDir, dir, "index.mdx");
+        expect(fs.existsSync(indexPath)).toBe(true);
 
-        const cat = JSON.parse(fs.readFileSync(catPath, "utf8"));
-        expect(cat).toHaveProperty("label");
-        expect(cat).toHaveProperty("position");
-        expect(cat).toHaveProperty("description");
-        expect(cat.noPage).toBe(true);
+        const parsed = matter(fs.readFileSync(indexPath, "utf8"));
+        expect(parsed.data).toHaveProperty("title");
+        expect(parsed.data).toHaveProperty("sidebar_position");
+        expect(parsed.data).toHaveProperty("description");
+        expect(parsed.data.category_no_page).toBe(true);
       }
     });
 
@@ -128,7 +128,7 @@ describe("generateClaudeResourcesDocs", () => {
   // ---------------------------------------------------------------------------
 
   describe("content", () => {
-    it("generates overview page with CategoryTreeNav", () => {
+    it("generates overview page with CategoryNav", () => {
       generateClaudeResourcesDocs({
         claudeDir,
         projectRoot: tmpDir,
@@ -139,7 +139,7 @@ describe("generateClaudeResourcesDocs", () => {
         path.join(docsDir, "claude", "index.mdx"),
         "utf8",
       );
-      expect(overview).toContain('<CategoryTreeNav category="claude" />');
+      expect(overview).toContain('<CategoryNav categories={');
     });
 
     it("skill page has correct frontmatter", () => {
@@ -332,7 +332,7 @@ describe("generateClaudeResourcesDocs", () => {
   // ---------------------------------------------------------------------------
 
   describe("category metadata", () => {
-    it("_category_.json positions are ordered correctly", () => {
+    it("index.mdx sidebar_position values are ordered correctly", () => {
       generateClaudeResourcesDocs({
         claudeDir,
         projectRoot: tmpDir,
@@ -340,16 +340,36 @@ describe("generateClaudeResourcesDocs", () => {
       });
 
       const readPos = (dir: string) => {
-        const cat = JSON.parse(
-          fs.readFileSync(path.join(docsDir, dir, "_category_.json"), "utf8"),
+        const parsed = matter(
+          fs.readFileSync(path.join(docsDir, dir, "index.mdx"), "utf8"),
         );
-        return cat.position;
+        return parsed.data.sidebar_position;
       };
 
       expect(readPos("claude-md")).toBe(900);
       expect(readPos("claude-commands")).toBe(901);
       expect(readPos("claude-skills")).toBe(902);
       expect(readPos("claude-agents")).toBe(903);
+    });
+
+    it("index.mdx has correct label as title for each sub-category", () => {
+      generateClaudeResourcesDocs({
+        claudeDir,
+        projectRoot: tmpDir,
+        docsDir,
+      });
+
+      const readTitle = (dir: string) => {
+        const parsed = matter(
+          fs.readFileSync(path.join(docsDir, dir, "index.mdx"), "utf8"),
+        );
+        return parsed.data.title;
+      };
+
+      expect(readTitle("claude-md")).toBe("CLAUDE.md");
+      expect(readTitle("claude-commands")).toBe("Commands");
+      expect(readTitle("claude-skills")).toBe("Skills");
+      expect(readTitle("claude-agents")).toBe("Agents");
     });
   });
 
@@ -371,6 +391,145 @@ describe("generateClaudeResourcesDocs", () => {
         skills: 1,
         agents: 1,
       });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Slug collision detection tests
+  // ---------------------------------------------------------------------------
+
+  describe("slug collision detection", () => {
+    it("throws when two CLAUDE.md paths produce the same slug", () => {
+      // foo/bar/CLAUDE.md → slug "foo--bar"
+      // foo--bar/CLAUDE.md → slug "foo--bar"  (collision)
+      fs.mkdirSync(path.join(tmpDir, "foo", "bar"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, "foo", "bar", "CLAUDE.md"),
+        "# foo/bar instructions",
+      );
+      fs.mkdirSync(path.join(tmpDir, "foo--bar"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, "foo--bar", "CLAUDE.md"),
+        "# foo--bar instructions",
+      );
+
+      expect(() =>
+        generateClaudeResourcesDocs({
+          claudeDir,
+          projectRoot: tmpDir,
+          docsDir,
+        }),
+      ).toThrow(/slug collision/);
+    });
+
+    it("names both colliding source paths in the error", () => {
+      fs.mkdirSync(path.join(tmpDir, "foo", "bar"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, "foo", "bar", "CLAUDE.md"),
+        "# foo/bar instructions",
+      );
+      fs.mkdirSync(path.join(tmpDir, "foo--bar"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, "foo--bar", "CLAUDE.md"),
+        "# foo--bar instructions",
+      );
+
+      let caughtMessage = "";
+      try {
+        generateClaudeResourcesDocs({
+          claudeDir,
+          projectRoot: tmpDir,
+          docsDir,
+        });
+      } catch (e) {
+        caughtMessage = (e as Error).message;
+      }
+
+      expect(caughtMessage).toContain("foo--bar");
+      // Both source paths must appear in the message
+      expect(caughtMessage).toMatch(/foo.bar.CLAUDE\.md/);
+      expect(caughtMessage).toMatch(/foo--bar.CLAUDE\.md/);
+    });
+
+    it("does not throw for a clean tree (no collisions)", () => {
+      // The default fixture has only root/CLAUDE.md — no collision
+      expect(() =>
+        generateClaudeResourcesDocs({
+          claudeDir,
+          projectRoot: tmpDir,
+          docsDir,
+        }),
+      ).not.toThrow();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Reserved "index" slug guard tests
+  // ---------------------------------------------------------------------------
+
+  describe("reserved index slug guard", () => {
+    it("throws when a CLAUDE.md directory maps to the reserved index slug", () => {
+      // index/CLAUDE.md → slug "index" — reserved for category index.mdx
+      fs.mkdirSync(path.join(tmpDir, "index"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, "index", "CLAUDE.md"),
+        "# index dir instructions",
+      );
+
+      expect(() =>
+        generateClaudeResourcesDocs({
+          claudeDir,
+          projectRoot: tmpDir,
+          docsDir,
+        }),
+      ).toThrow(/reserved slug "index"/);
+    });
+
+    it("throws when a command file is named index.md", () => {
+      fs.writeFileSync(
+        path.join(claudeDir, "commands", "index.md"),
+        '---\ndescription: "Index command"\n---\n\nIndex body.',
+      );
+
+      expect(() =>
+        generateClaudeResourcesDocs({
+          claudeDir,
+          projectRoot: tmpDir,
+          docsDir,
+        }),
+      ).toThrow(/reserved name "index"/);
+    });
+
+    it("throws when a skill directory is named index", () => {
+      const indexSkillDir = path.join(claudeDir, "skills", "index");
+      fs.mkdirSync(indexSkillDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(indexSkillDir, "SKILL.md"),
+        '---\nname: index\ndescription: "Index skill"\n---\n\nIndex skill body.',
+      );
+
+      expect(() =>
+        generateClaudeResourcesDocs({
+          claudeDir,
+          projectRoot: tmpDir,
+          docsDir,
+        }),
+      ).toThrow(/reserved name "index"/);
+    });
+
+    it("throws when an agent file is named index.md", () => {
+      fs.writeFileSync(
+        path.join(claudeDir, "agents", "index.md"),
+        '---\nname: index-agent\ndescription: "Index agent"\nmodel: sonnet\n---\n\nIndex agent body.',
+      );
+
+      expect(() =>
+        generateClaudeResourcesDocs({
+          claudeDir,
+          projectRoot: tmpDir,
+          docsDir,
+        }),
+      ).toThrow(/reserved name "index"/);
     });
   });
 });

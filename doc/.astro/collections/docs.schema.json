@@ -1,0 +1,75 @@
+{
+  "$ref": "#/definitions/docs",
+  "definitions": {
+    "docs": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "sidebar_position": {
+          "type": "number"
+        },
+        "sidebar_label": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "search_exclude": {
+          "type": "boolean"
+        },
+        "pagination_next": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pagination_prev": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "draft": {
+          "type": "boolean"
+        },
+        "unlisted": {
+          "type": "boolean"
+        },
+        "hide_sidebar": {
+          "type": "boolean"
+        },
+        "hide_toc": {
+          "type": "boolean"
+        },
+        "standalone": {
+          "type": "boolean"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "generated": {
+          "type": "boolean"
+        },
+        "$schema": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
