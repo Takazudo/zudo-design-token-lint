@@ -46,6 +46,7 @@ zudo-design-token-lint/
 ```
 
 **Workspace policy notes:**
+
 - `pnpm-workspace.yaml` holds `allowBuilds` (esbuild, sharp, workerd) and `minimumReleaseAgeExclude` entries needed by zfb — these live at the workspace root and are read only from there.
 - `.npmrc` at the workspace root controls install-affecting settings for the whole workspace.
 - `claudeResources` in `doc/src/config/settings.ts` points to `../. claude` (the repo root `.claude/` directory), one level above the `doc/` subdir.
