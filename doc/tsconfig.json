@@ -40,8 +40,6 @@
     "worktrees",
     "vendor",
     "src/**/__tests__",
-    "vitest.config.ts",
-    "src/components/playground.tsx",
-    "src/lib/lint-browser.ts"
+    "vitest.config.ts"
   ]
 }

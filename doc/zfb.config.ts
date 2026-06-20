@@ -142,6 +142,16 @@ export default defineConfig({
   // Pin the dev/preview port — zfb defaults to 3000, but the generated
   // CLAUDE.md and the Tauri dev wrappers assume 4321.
   port: 4321,
+  // The Playground island (src/components/playground.tsx) imports hooks from
+  // "react", which zfb's framework=preact resolves to `preact/compat`. The
+  // nested `preact/compat/package.json` exposes the compat build only via a
+  // bare `main` field (no `exports` map), and esbuild's `--platform=neutral`
+  // page/SSR pass has an EMPTY main-fields list by default — so the resolve
+  // fails with "Main fields must be configured explicitly when using the
+  // neutral platform." Setting main-fields to ["main", "module"] lets the
+  // react→preact/compat resolution complete. zfb-documented escape hatch
+  // (BundleConfig.mainFields, #676).
+  bundle: { mainFields: ["main", "module"] },
   tailwind: { enabled: true },
   collections,
   stripMdExt: true,

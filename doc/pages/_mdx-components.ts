@@ -53,7 +53,7 @@ import { CategoryTreeNavWrapper } from "./lib/_category-tree-nav";
 import { SiteTreeNavWrapper } from "./lib/_site-tree-nav";
 import { DetailsWrapper } from "./lib/_details";
 import { PresetGeneratorFallback } from "./lib/_preset-generator";
-import { PlaygroundPlaceholder } from "./lib/_playground";
+import { PlaygroundIsland } from "./lib/_playground";
 import { MathBlock } from "./lib/_math-block";
 import { CodeGroup } from "@/components/content/code-group";
 import { makeAdmonition } from "@/components/content/content-admonition";
@@ -356,10 +356,12 @@ export function createMdxComponents(lang: Locale | string = defaultLocale) {
     // form loads client-side via the SSR-skip placeholder inside
     // PresetGeneratorFallback (see pages/lib/_preset-generator.tsx).
     PresetGenerator: PresetGeneratorFallback,
-    // Playground: the design-token-lint interactive island. This core
-    // migration ships a static placeholder (see ./lib/_playground.tsx); the
-    // full interactive port lands in #86.
-    Playground: PlaygroundPlaceholder,
+    // Playground: the design-token-lint interactive island. The real
+    // client-only component (src/components/playground.tsx + the browser-safe
+    // linter core in src/lib/lint-browser.ts) is wrapped in `<Island>` with a
+    // static SSR fallback so zfb's scanner registers it in the manifest and the
+    // hydration runtime mounts it on the client (see ./lib/_playground.tsx).
+    Playground: PlaygroundIsland,
     // Pure showcase placeholders (Avatar/Button/Card/MyComponent/PageLayout
     // appear only inside MDX prose as illustrative examples — never
     // implemented as real components).

@@ -1,33 +1,62 @@
 /** @jsxRuntime automatic */
 /** @jsxImportSource preact */
-// Placeholder SSR binding for the <Playground> island.
+// SSR fallback + island wiring for the interactive <Playground>.
 //
-// The interactive Playground (the Astro island in
-// src/components/playground.tsx + src/lib/lint-browser.ts) is ported to zfb in
-// a SEPARATE sub-issue (#86). For the core framework migration (#85) this
-// binding only has to make the Playground page BUILD green under zfb — so it
-// renders a static placeholder notice and does NOT import the real component.
+// The Playground is the design-token-lint browser demo: the UI lives in
+// src/components/playground.tsx and its browser-safe linter core in
+// src/lib/lint-browser.ts (no dependency on the npm package build). It is a
+// fully client-only island — it relies on useState/useEffect/useRef and runs
+// the linter live as the user types — so it is wrapped in `<Island>` with a
+// static SSR fallback rather than rendered server-side.
 //
-// Intentionally does NOT import src/components/playground.tsx: pulling it into
-// the page graph here would pre-empt #86's island wiring (manifest
-// registration, hydration, react→preact/compat handling). #86 replaces this
-// file's body with an <Island> wrapping the real component.
+// This file is imported transitively from page modules
+// (pages/docs/[...slug].tsx → _mdx-components.ts → here), so zfb's island
+// scanner walks the static import chain page → helper → real component and
+// registers Playground in the island manifest. Without that import chain the
+// scanner never finds the component and client-side hydration never fires
+// (orphan-component problem). Mirrors pages/lib/_preset-generator.tsx and the
+// body-end islands in _body-end-islands.tsx.
+//
+// Replaces the static placeholder the core migration (#85) shipped: the real
+// component is now imported and mounted via the canonical `<Island ssrFallback>`
+// API (zfb). The `react` imports inside playground.tsx resolve to preact/compat
+// through the tsconfig `paths` alias.
 
 import type { VNode } from "preact";
+import { Island } from "@takazudo/zfb";
+import Playground from "@/components/playground";
+
+// Pin displayName so zfb's captureComponentName produces a stable marker name
+// even after the SSR pipeline runs the component through a function-name
+// rewriting layer. Must match the data-zfb-island-skip-ssr attribute value the
+// hydration runtime queries. Mirrors the pattern in _preset-generator.tsx and
+// _body-end-islands.tsx.
+(Playground as { displayName?: string }).displayName = "Playground";
 
 /**
- * Static placeholder shown where the interactive Playground will render.
+ * SSR fallback for the interactive Playground island.
  *
- * Keeps the page route building and gives readers a clear note that the live
- * playground is being ported. Replaced with the real island in #86.
+ * The real Playground is client-only (live linting via useState/useEffect),
+ * so the server emits a lightweight placeholder notice inside the skip-ssr
+ * div. The Island `ssrFallback` API connects this import to the manifest:
+ *
+ * - SSR emits the placeholder notice as static HTML inside the skip-ssr div.
+ * - The scanner reads children.type = Playground → registers it in the
+ *   manifest under "Playground".
+ * - The hydration runtime mounts the real interactive component into the
+ *   skip-ssr placeholder on the client after load (when="load", matching the
+ *   original Astro `client:load` directive).
  */
-export function PlaygroundPlaceholder(): VNode {
-  return (
+export function PlaygroundIsland(): VNode {
+  const fallback = (
     <div class="zd-playground-placeholder" data-playground-placeholder>
-      <p>
-        The interactive playground is being ported to the new build system and
-        will be available again shortly.
-      </p>
+      <p>Loading the interactive playground…</p>
     </div>
   );
+
+  return Island({
+    when: "load",
+    ssrFallback: fallback,
+    children: <Playground />,
+  }) as unknown as VNode;
 }
