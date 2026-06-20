@@ -69,14 +69,16 @@ CUR=$(node -p "require('./package.json').version")
 git tag -l "v$CUR"   # empty output = no tag yet for the current version
 ```
 
-- **If `v$CUR` does NOT exist** and the working tree is clean: the current version is un-tagged. Find the commit that introduced it (do NOT assume it is `HEAD`):
+- **If `v$CUR` does NOT exist**: the current version is un-tagged. First check the working tree:
+  - **Dirty** (`git status --porcelain` non-empty) → **STOP**. An un-tagged current version plus uncommitted changes is ambiguous — a half-finished bump, an aborted prior run, or stray edits. Ask the user to commit, stash, or discard the changes before re-running; do NOT resume or bump over a dirty tree.
+  - **Clean** → this is a RESUME. Find the commit that introduced the current version (do NOT assume it is `HEAD`):
 
-  ```bash
-  BUMP_SHA=$(git log -1 --format=%H -S"\"version\": \"$CUR\"" -- package.json)
-  ```
+    ```bash
+    BUMP_SHA=$(git log -1 --format=%H -S"\"version\": \"$CUR\"" -- package.json)
+    ```
 
-  Tell the user the bump for `v$CUR` is already committed (`$BUMP_SHA`) and offer to **RESUME** — this skips Steps 2–6 (bump / changelog / commit) and continues from **Step 7** (CI wait) onward, tagging **`$BUMP_SHA`**, through the same push-tag → publish → GitHub Release path. The resume confirmation stands in for the Step 3 gate. If `$BUMP_SHA` is not the current `HEAD`, later commits landed on top — surface that and let the user choose: tag `$BUMP_SHA` as-is, or abort and cut a fresh bump that includes the newer commits.
-- **If `v$CUR` already exists**: the current version is released. Proceed with a normal cold-start bump (Steps 2–6). Require a **clean working tree** (`git status --porcelain` empty) on this cold-start path.
+    Tell the user the bump for `v$CUR` is already committed (`$BUMP_SHA`) and offer to **RESUME** — this skips Steps 2–6 (bump / changelog / commit) and continues from **Step 7** (CI wait) onward, tagging **`$BUMP_SHA`**, through the same push-tag → publish → GitHub Release path. The resume confirmation stands in for the Step 3 gate. If `$BUMP_SHA` is not the current `HEAD`, later commits landed on top — surface that and let the user choose: tag `$BUMP_SHA` as-is, or abort and cut a fresh bump that includes the newer commits.
+- **If `v$CUR` already exists**: the current version is released. Proceed with a normal cold-start bump (Steps 2–6). Require a **clean working tree** (`git status --porcelain` empty) on this cold-start path too.
 
 ## Step 2: Determine Next Version
 
@@ -231,14 +233,20 @@ If `/watch-ci` is unavailable in the running session, fall back to a direct poll
 gh run watch "$(gh run list --branch main --commit <BUMP_SHA> --limit 1 --json databaseId -q '.[0].databaseId')" --exit-status
 ```
 
-If CI fails, fix the issue, commit the fix, push, and re-watch before proceeding. Do not advance to the tag push until CI on the bump commit is green.
+If CI fails, fix the issue, commit the fix, push, and re-watch before proceeding. **A fix commit moves the green commit off the original `BUMP_SHA` — refresh it so the tag in Step 8 points at the commit whose CI actually passed, never the stale pre-fix commit:**
+
+```bash
+BUMP_SHA=$(git rev-parse HEAD)   # only after CI on THIS commit is green
+```
+
+Do not advance to the tag push until CI on the bump commit is green.
 
 ## Step 8: Push the Tag (triggers the publish)
 
-Mint the tag on the bump commit and push it — the push is what fires `.github/workflows/publish.yml`:
+Mint the tag on the **green** bump commit and push it — the push is what fires `.github/workflows/publish.yml`. Tag `$BUMP_SHA` as carried from Step 7 (refreshed if a CI-fix commit was added there), never a stale pre-fix commit:
 
 ```bash
-git tag "v<version>" <BUMP_SHA>
+git tag "v<version>" "$BUMP_SHA"
 git push origin "v<version>"
 ```
 
@@ -246,13 +254,22 @@ The `v*.*.*` tag push triggers the publish workflow. Do NOT ask "push the tag no
 
 ## Step 9: Watch the Publish Workflow
 
-Find the run `publish.yml` started for this tag (allow a few seconds for it to register), then watch it to completion:
+Find the run `publish.yml` started for this tag and watch it to completion. Match the run by its **head commit** (`$BUMP_SHA`, the tagged commit) — that is deterministic for a tag push, whereas `headBranch` is often empty for tag events. Retry until the run registers, and **fail rather than fall back to an unrelated run** (watching an older successful release would let Step 10 create a Release before this version actually published):
 
 ```bash
-PUBLISH_RUN=$(gh run list --workflow publish.yml --limit 5 \
-  --json databaseId,headBranch -q '[.[] | select(.headBranch=="v<version>")][0].databaseId')
-# Fallback if the tag-ref filter returns nothing: the most recent publish.yml run
-[ -z "$PUBLISH_RUN" ] && PUBLISH_RUN=$(gh run list --workflow publish.yml --limit 1 --json databaseId -q '.[0].databaseId')
+PUBLISH_RUN=""
+for i in $(seq 1 12); do
+  PUBLISH_RUN=$(gh run list --workflow publish.yml --limit 15 \
+    --json databaseId,headSha,event \
+    -q "[.[] | select(.headSha==\"$BUMP_SHA\")][0].databaseId")
+  [ -n "$PUBLISH_RUN" ] && break
+  sleep 5
+done
+if [ -z "$PUBLISH_RUN" ]; then
+  echo "ERROR: could not find the publish.yml run for v<version> (commit $BUMP_SHA)." >&2
+  echo "Inspect 'gh run list --workflow publish.yml' and watch the correct run manually before creating the Release." >&2
+  exit 1
+fi
 gh run watch "$PUBLISH_RUN" --exit-status
 ```
 
