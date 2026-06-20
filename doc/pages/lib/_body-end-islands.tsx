@@ -159,9 +159,10 @@ export function BodyEndIslands({
 
   return (
     <>
-      {/* Pure SSR — no Island wrap. The component emits its overlay div,
-          inline styles, and a small inline script that self-wires
-          zfb:before-preparation / zfb:after-swap listeners at runtime. */}
+      {/* Pure SSR — no Island wrap. The component emits its overlay div and a
+          small inline script that self-wires zfb:before-preparation /
+          zfb:after-swap listeners at runtime. Its CSS lives in
+          src/styles/global.css (the component emits no inline <style>). */}
       <PageLoadingOverlay />
       {clientRouterBootstrap}
       {aiAssistant}
