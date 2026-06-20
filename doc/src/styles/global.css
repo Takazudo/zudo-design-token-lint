@@ -976,7 +976,11 @@ button[data-zd-nav-pending] {
 .page-loading-spinner {
   width: 48px;
   height: 48px;
-  border: 5px solid var(--color-fg, #fff);
+  /* The scrim is always dark (--color-overlay is black), so the spinner needs a
+     light stroke in BOTH color schemes. --color-image-overlay-fg is the token
+     for foreground content shown on a dark overlay (light in light + dark
+     schemes) — using --color-fg would go dark-on-dark in the light scheme. */
+  border: 5px solid var(--color-image-overlay-fg, #fff);
   border-bottom-color: transparent;
   border-radius: 50%;
   display: inline-block;
@@ -1004,7 +1008,7 @@ button[data-zd-nav-pending] {
 @media (prefers-reduced-motion: reduce) {
   .page-loading-spinner {
     animation: none;
-    border-bottom-color: var(--color-fg, #fff);
+    border-bottom-color: var(--color-image-overlay-fg, #fff);
     opacity: 0.5;
   }
 }
