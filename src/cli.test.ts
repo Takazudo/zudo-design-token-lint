@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseArgs, readPackageVersion, helpText, runMain } from './cli.js';
+import { pathToFileURL } from 'node:url';
+import { parseArgs, readPackageVersion, helpText, runMain, isMainModule } from './cli.js';
 import { setConfig } from './rules.js';
 import { compileConfig, DEFAULT_CONFIG } from './config.js';
 
@@ -84,6 +85,55 @@ describe('helpText', () => {
     expect(text).toContain('-V, --version');
     expect(text).toContain('.design-token-lint.json');
     expect(text).toContain('TOKEN_LINT_ALLOW_EMPTY');
+  });
+});
+
+describe('isMainModule', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-ismain-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns true when argv1 is a symlink pointing to the real module file', () => {
+    const realFile = join(tmpDir, 'cli.js');
+    const symlinkFile = join(tmpDir, 'cli-symlink.js');
+    writeFileSync(realFile, '');
+    symlinkSync(realFile, symlinkFile);
+    // argv1 is the symlink; moduleUrl resolves to the real file
+    expect(isMainModule(symlinkFile, pathToFileURL(realFile).href)).toBe(true);
+  });
+
+  it('returns true when argv1 and moduleUrl are the same real file (no symlink)', () => {
+    const realFile = join(tmpDir, 'cli.js');
+    writeFileSync(realFile, '');
+    expect(isMainModule(realFile, pathToFileURL(realFile).href)).toBe(true);
+  });
+
+  it('returns false when argv1 points to an unrelated file', () => {
+    const realFile = join(tmpDir, 'cli.js');
+    const otherFile = join(tmpDir, 'other.js');
+    writeFileSync(realFile, '');
+    writeFileSync(otherFile, '');
+    expect(isMainModule(otherFile, pathToFileURL(realFile).href)).toBe(false);
+  });
+
+  it('returns false when argv1 is undefined', () => {
+    const realFile = join(tmpDir, 'cli.js');
+    writeFileSync(realFile, '');
+    expect(isMainModule(undefined, pathToFileURL(realFile).href)).toBe(false);
+  });
+
+  it('returns false when argv1 cannot be resolved (non-existent path) and does not throw', () => {
+    const realFile = join(tmpDir, 'cli.js');
+    writeFileSync(realFile, '');
+    // argv1 path does not exist → realpathSync fails → falls back to raw string comparison
+    const nonExistent = join(tmpDir, 'does-not-exist.js');
+    expect(isMainModule(nonExistent, pathToFileURL(realFile).href)).toBe(false);
   });
 });
 
