@@ -4,10 +4,7 @@
 
 `@takazudo/zudo-design-token-lint` — a linter that enforces semantic design tokens instead of raw Tailwind numeric utilities.
 
-**Hybrid repo:** the repository root is the npm package (primary); `doc/` is a separate pnpm workspace member that hosts the zfb documentation site.
-
-- **Root**: The npm package (TypeScript + vitest)
-- **`doc/`**: zfb host-app — documentation site deployed to Cloudflare Workers at `https://zudo-design-token-lint.takazudomodular.com/`
+**Hybrid repo:** the repository root is the npm package (primary, TypeScript + vitest); `doc/` is a separate pnpm workspace member hosting the zfb documentation site, deployed to Cloudflare Workers at `https://zudo-design-token-lint.takazudomodular.com/`.
 
 ## Directory Layout
 
@@ -45,11 +42,11 @@ zudo-design-token-lint/
 └── .github/workflows/            # CI + publish workflows
 ```
 
-**Workspace policy notes:**
+**Workspace policy:**
 
-- `pnpm-workspace.yaml` holds `allowBuilds` (esbuild, sharp, workerd) and `minimumReleaseAgeExclude` entries needed by zfb — these live at the workspace root and are read only from there.
+- `pnpm-workspace.yaml` (root only) holds `allowBuilds` (esbuild, sharp, workerd) and `minimumReleaseAgeExclude` entries needed by zfb.
 - `.npmrc` at the workspace root controls install-affecting settings for the whole workspace.
-- `claudeResources` in `doc/src/config/settings.ts` points to `../. claude` (the repo root `.claude/` directory), one level above the `doc/` subdir.
+- `claudeResources` in `doc/src/config/settings.ts` points to `../.claude` — the repo root `.claude/` directory, one level above `doc/`.
 
 ## Commands (Root — Lint Package)
 
@@ -61,26 +58,18 @@ pnpm lint           # prettier --check .
 pnpm lint:fix       # prettier --write .
 ```
 
-## Commands (Doc Site — Workspace Shortcuts)
+## Commands (Doc Site)
 
-Run from the repo root via `--filter`. The underlying `doc/` scripts are `zfb dev/build/preview/check`.
+Run from the repo root via workspace `--filter` shortcuts (the underlying `doc/` scripts are `zfb dev/build/preview/check`):
 
 ```bash
-pnpm dev:doc        # zfb dev  — start local dev server (port 4321)
+pnpm dev:doc        # zfb dev — start local dev server (port 4321)
 pnpm build:doc      # zfb build — build static site
 pnpm preview:doc    # zfb preview — preview built site
 pnpm check:doc      # zfb check — type checking
 ```
 
-Or run the same commands directly inside `doc/`:
-
-```bash
-cd doc
-pnpm dev            # zfb dev
-pnpm build          # zfb build
-pnpm preview        # zfb preview
-pnpm check          # zfb check
-```
+Or run the same scripts directly from `doc/`: `pnpm dev`, `pnpm build`, `pnpm preview`, `pnpm check`.
 
 ## API Shapes (Important)
 
@@ -94,25 +83,24 @@ Keep the public documentation (`doc/src/content/docs/api/`) in sync when changin
 
 ## Deployment
 
-The doc site is hosted on **Cloudflare Workers** (static assets) at base `/`.
+The doc site is hosted on **Cloudflare Workers** (static assets) at base `/` — no subpath prefix (`settings.base` in `doc/src/config/settings.ts` is `"/"`).
 
 - **Live URL**: `https://zudo-design-token-lint.takazudomodular.com/`
-- **Base path**: `/` — no subpath prefix. `settings.base` in `doc/src/config/settings.ts` is `"/"`.
-- **Production**: Push to `main` triggers `.github/workflows/doc-deploy.yml` → `wrangler deploy` → Cloudflare Workers
-- **PR Preview**: PRs targeting `main` trigger `.github/workflows/doc-preview.yml` → Workers preview deployment + check matrix
+- **Production**: push to `main` → `doc-deploy.yml` → `wrangler deploy`
+- **PR Preview**: PRs targeting `main` → `doc-preview.yml` → Workers preview deployment + check matrix (preview URL posted as a PR comment)
 
 Required secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
 
-## CI / Publish
+## CI & Publishing
 
-- `.github/workflows/ci.yml` — test + build + lint (npm package) on PR and push to main
-- `.github/workflows/doc-deploy.yml` — build doc site + `wrangler deploy` to Cloudflare Workers on push to main
-- `.github/workflows/doc-preview.yml` — build doc site + Workers preview deployment on PRs; posts preview URL as PR comment
-- `.github/workflows/publish.yml` — publish npm package when a `v*.*.*` tag is pushed (requires `NPM_TOKEN` secret)
+Workflows in `.github/workflows/`:
 
-## Publishing
+- `ci.yml` — test + build + lint (npm package) on PR and push to `main`
+- `doc-deploy.yml` — build doc site + `wrangler deploy` to Cloudflare Workers on push to `main`
+- `doc-preview.yml` — build doc site + Workers preview deployment on PRs
+- `publish.yml` — publish the npm package when a `v*.*.*` tag is pushed
 
-Triggered by pushing a `v*.*.*` tag to main. The `.github/workflows/publish.yml` workflow runs tests + build + `pnpm publish --access public`. Requires `NPM_TOKEN` secret.
+**Publishing**: push a `v*.*.*` tag to `main`; `publish.yml` runs tests + build + `pnpm publish --access public`. Requires the `NPM_TOKEN` secret.
 
 ## Dogfooding
 
