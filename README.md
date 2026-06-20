@@ -2,6 +2,8 @@
 
 [![npm version](https://img.shields.io/npm/v/@takazudo/zudo-design-token-lint.svg)](https://www.npmjs.com/package/@takazudo/zudo-design-token-lint)
 
+📖 **Documentation:** <https://zudo-design-token-lint.takazudomodular.com/>
+
 Lint Tailwind CSS class names against design system tokens. Enforce semantic spacing and color tokens instead of raw numeric utilities.
 
 Based on the [design token methodology](https://takazudomodular.com/pj/zudo-css-wisdom/docs/methodology/) for building consistent, maintainable design systems with Tailwind CSS.
