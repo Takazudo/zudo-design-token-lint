@@ -1,8 +1,16 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+"use client";
+
+// Use preact hook entrypoints directly — the "react" → "preact/compat" alias
+// lets us consume React-typed components in this Preact app (configured
+// project-wide).
+import { useState, useCallback, useEffect, useMemo, useRef } from "preact/hooks";
 import type { NavNode } from "@/utils/docs";
 import type { LocaleLink } from "@/types/locale";
 import { INDENT, BASE_PAD, connectorLeft, ConnectorLines, CategoryLinkIcon } from "./tree-nav-shared";
-import ThemeToggle from "@/components/theme-toggle";
+// BARE ThemeToggle (#2012 E2) — this footer toggle renders inside the
+// SidebarToggle island, so it must NOT bring its own island wrapper.
+import { ThemeToggle } from "@takazudo/zudo-doc/theme-toggle";
+import { smartBreakToHtml } from "@/utils/smart-break";
 
 function ToggleChevron({ isExpanded, className }: { isExpanded: boolean; className?: string }) {
   return (
@@ -55,7 +63,9 @@ function findActiveSlug(nodes: NavNode[], pathname: string): string | undefined 
   for (const node of nodes) {
     if (node.href && normalizePath(node.href) === pathname) return node.slug;
     const found = findActiveSlug(node.children, pathname);
-    if (found) return found;
+    // "" is the canonical root-index slug (#1891) — a truthiness check
+    // would discard a legitimate root match.
+    if (found !== undefined) return found;
   }
   return undefined;
 }
@@ -71,8 +81,10 @@ function useActiveSlug(nodes: NavNode[], initial?: string): string | undefined {
       if (found !== undefined) setSlug(found);
     };
     update();
-    document.addEventListener("astro:after-swap", update);
-    return () => document.removeEventListener("astro:after-swap", update);
+    // zfb's `<ViewTransitions />` does a real page load on every
+    // navigation, so `DOMContentLoaded` is the post-navigate signal.
+    document.addEventListener("DOMContentLoaded", update);
+    return () => document.removeEventListener("DOMContentLoaded", update);
   }, [nodes]);
 
   return slug;
@@ -110,10 +122,10 @@ function RootMenuItemEntry({ item }: { item: RootMenuItem }) {
       <div className="flex items-center">
         <a
           href={item.href}
-          className="flex flex-1 items-center gap-hsp-xs px-hsp-sm py-vsp-xs text-small font-semibold text-fg hover:text-accent hover:underline"
+          className="flex flex-1 items-center gap-hsp-xs px-hsp-sm py-vsp-xs text-small font-semibold text-fg hover:text-accent hover:underline break-words"
         >
           <CategoryLinkIcon className="w-[14px]" />
-          {item.label}
+          <span dangerouslySetInnerHTML={{ __html: smartBreakToHtml(item.label) }} />
         </a>
         {hasChildren && (
           <button
@@ -133,9 +145,9 @@ function RootMenuItemEntry({ item }: { item: RootMenuItem }) {
             <a
               key={child.href}
               href={child.href}
-              className="block pl-hsp-xl pr-hsp-sm py-vsp-2xs text-small text-muted hover:text-accent hover:underline"
+              className="block pl-hsp-xl pr-hsp-sm py-vsp-2xs text-small text-muted hover:text-accent hover:underline break-words"
             >
-              {child.label}
+              <span dangerouslySetInnerHTML={{ __html: smartBreakToHtml(child.label) }} />
             </a>
           ))}
         </div>
@@ -222,9 +234,9 @@ export default function SidebarTree({ nodes, currentSlug, rootMenuItems, backToM
         <button
           type="button"
           onClick={() => setShowingRootMenu(false)}
-          className="flex w-full items-center gap-hsp-xs px-hsp-sm py-vsp-xs text-small text-muted hover:text-fg border-b border-muted"
+          className="flex w-full items-center gap-hsp-xs px-hsp-sm py-vsp-xs text-left text-small text-muted hover:text-fg border-b border-muted"
         >
-          <svg className="h-[1rem] w-[1rem] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="h-icon-sm w-icon-sm shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
           {backToMenuLabel ?? "Back to main menu"}
@@ -238,8 +250,10 @@ export default function SidebarTree({ nodes, currentSlug, rootMenuItems, backToM
   }
 
   // Top page: show only header nav links, no doc tree or filter.
-  // Derived from activeSlug (runtime-synced) so it stays correct across View Transitions.
-  if (!activeSlug && rootMenuItems) {
+  // Derived from activeSlug (runtime-synced) so it stays correct across View
+  // Transitions. Must be an undefined check, not truthiness: "" is the
+  // canonical root-index doc slug (#1891) and gets the full tree.
+  if (activeSlug === undefined && rootMenuItems) {
     return (
       <nav>
         {rootMenuItems.map((item) => (
@@ -256,9 +270,9 @@ export default function SidebarTree({ nodes, currentSlug, rootMenuItems, backToM
         <button
           type="button"
           onClick={() => setShowingRootMenu(true)}
-          className="lg:hidden flex w-full items-center gap-hsp-xs px-hsp-sm py-vsp-xs text-small text-muted hover:text-fg border-b border-muted"
+          className="lg:hidden flex w-full items-center gap-hsp-xs px-hsp-sm py-vsp-xs text-left text-small text-muted hover:text-fg border-b border-muted"
         >
-          <svg className="h-[1rem] w-[1rem] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="h-icon-sm w-icon-sm shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
           {backToMenuLabel ?? "Back to main menu"}
@@ -274,7 +288,7 @@ export default function SidebarTree({ nodes, currentSlug, rootMenuItems, backToM
             type="text"
             placeholder={filterPlaceholder}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onInput={(e) => setQuery(e.currentTarget.value)}
             className="bg-transparent text-small outline-none w-full text-fg placeholder:text-muted"
           />
         </div>
@@ -405,7 +419,7 @@ function CategoryNode({
     <div className={`${depth === 0 ? "border-t border-muted" : ""} ${depth >= 1 && !isLast ? "relative" : ""}`}>
       {depth >= 1 && !isLast && isExpanded && (
         <div
-          className="absolute border-l border-solid border-muted z-10"
+          className="absolute border-l border-solid border-muted z-local-1"
           style={{
             left: connectorLeft(depth),
             top: 0,
@@ -414,7 +428,7 @@ function CategoryNode({
         />
       )}
       <div className="relative">
-        <ConnectorLines depth={depth} isLast={isLast} />
+        <ConnectorLines depth={depth} isLast={isLast} topPad="calc(0.15rem + var(--spacing-vsp-xs))" />
         {node.href ? (
           <div
             className={`flex w-full items-center text-small font-semibold pt-[0.15rem] ${isActive ? "bg-fg text-bg" : "text-fg"}`}
@@ -422,11 +436,15 @@ function CategoryNode({
             <a
               href={node.href}
               aria-current={isActive ? "page" : undefined}
-              className={`flex-1 flex items-center gap-hsp-xs py-vsp-xs hover:underline focus:underline ${isActive ? "text-bg" : "text-fg"}`}
+              className={`flex-1 flex items-start gap-hsp-xs py-vsp-xs hover:underline focus:underline break-words ${isActive ? "text-bg" : "text-fg"}`}
               style={{ paddingLeft }}
             >
-              {depth === 0 && <CategoryLinkIcon className={`w-[14px] ${isActive ? "text-bg" : ""}`} />}
-              {node.label}
+              {depth === 0 && (
+                <span className="flex h-[1lh] items-center">
+                  <CategoryLinkIcon className={`w-[14px] ${isActive ? "text-bg" : ""}`} />
+                </span>
+              )}
+              <span dangerouslySetInnerHTML={{ __html: smartBreakToHtml(node.label) }} />
             </a>
             <button
               type="button"
@@ -442,7 +460,7 @@ function CategoryNode({
           <button
             type="button"
             onClick={toggle}
-            className={`flex w-full items-center gap-hsp-md text-small font-semibold py-vsp-xs text-fg hover:underline focus:underline`}
+            className={`flex w-full items-center gap-hsp-md text-left text-small font-semibold py-vsp-xs text-fg hover:underline focus:underline break-words`}
             style={{ paddingLeft }}
             aria-expanded={isExpanded}
             aria-label={isExpanded ? `Collapse ${node.label}` : `Expand ${node.label}`}
@@ -450,7 +468,7 @@ function CategoryNode({
             <span className="aspect-square flex items-center justify-center w-[1.5rem] shrink-0 border border-muted">
               <ToggleChevron isExpanded={isExpanded} className="text-muted" />
             </span>
-            {node.label}
+            <span dangerouslySetInnerHTML={{ __html: smartBreakToHtml(node.label) }} />
           </button>
         )}
       </div>
@@ -484,18 +502,32 @@ function LeafNode({
   const isRoot = depth === 0;
   const paddingLeft = padLeft(depth, isRoot);
 
+  // For nested last leaves, add visual breathing space as margin on the outer wrapper
+  // rather than padding on the anchor — padding would grow the row box and throw off
+  // the ConnectorLines geometry (which now uses topPad + 0.5lh of the row to land the
+  // horizontal connector at the first-line midpoint).
+  const outerClass = isRoot
+    ? "border-t border-muted"
+    : !isRoot && isLast
+      ? "pb-vsp-md"
+      : "";
+
+  const topPad = isRoot
+    ? "calc(var(--spacing-vsp-xs) + 0.15rem)"
+    : "var(--spacing-vsp-2xs)";
+
   return (
-    <div className={isRoot ? "border-t border-muted" : ""}>
+    <div className={outerClass}>
       <div className="relative">
-        <ConnectorLines depth={depth} isLast={isLast} />
+        <ConnectorLines depth={depth} isLast={isLast} topPad={topPad} />
         <a
           href={node.href}
           aria-current={isActive ? "page" : undefined}
           className={isRoot
-            ? `flex items-center gap-hsp-xs py-[calc(var(--spacing-vsp-xs)+0.15rem)] pr-[4px] text-small font-semibold ${
+            ? `flex items-start gap-hsp-xs py-[calc(var(--spacing-vsp-xs)+0.15rem)] pr-[4px] text-small font-semibold break-words ${
                 isActive ? "bg-fg text-bg" : "text-fg hover:underline focus:underline"
               }`
-            : `block py-vsp-2xs pr-[4px] ${isLast ? "pb-vsp-xs" : ""} text-small ${
+            : `block py-vsp-2xs pr-[4px] text-small break-words ${
                 isActive
                   ? "bg-fg font-medium text-bg"
                   : "text-muted hover:underline focus:underline"
@@ -503,8 +535,12 @@ function LeafNode({
           }
           style={{ paddingLeft }}
         >
-          {isRoot && <CategoryLinkIcon className={`w-[14px] ${isActive ? "text-bg" : ""}`} />}
-          {node.label}
+          {isRoot && (
+            <span className="flex h-[1lh] items-center">
+              <CategoryLinkIcon className={`w-[14px] ${isActive ? "text-bg" : ""}`} />
+            </span>
+          )}
+          <span dangerouslySetInnerHTML={{ __html: smartBreakToHtml(node.label) }} />
         </a>
       </div>
     </div>

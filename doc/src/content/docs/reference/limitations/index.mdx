@@ -7,7 +7,7 @@ category: reference
 
 `design-token-lint` uses regex-based static analysis to extract class names from source files. This approach is fast and requires no build step, but it cannot evaluate code at runtime. As a result, some dynamic patterns are not correctly analyzed.
 
-The set of attribute names and utility functions scanned is configurable via [`classAttributes` and `classFunctions`](../../guide/configuration/index.md) in your config file. By default, `className`, `class`, `cn`, `clsx`, `classNames`, and `twMerge` are scanned.
+The set of attribute names and utility functions scanned is configurable via [`classAttributes` and `classFunctions`](../../guide/configuration/index.mdx) in your config file. By default, `className`, `class`, `cn`, `clsx`, `classNames`, and `twMerge` are scanned.
 
 These are not bugs — they are inherent to static analysis.
 

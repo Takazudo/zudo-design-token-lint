@@ -25,7 +25,7 @@ Use **relative `.md` paths** for cross-page links, not absolute `/docs/...` path
 
 ```md
 <!-- Good — relative path from guide/configuration/ to reference/methodology/ -->
-See the [methodology](../../reference/methodology/index.md) page.
+See the [methodology](../../reference/methodology/index.mdx) page.
 
 <!-- Bad — breaks under settings.base -->
 See the [methodology](/docs/reference/methodology) page.
