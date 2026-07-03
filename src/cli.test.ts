@@ -66,6 +66,28 @@ describe('parseArgs', () => {
   it('prefers help over version when both are set', () => {
     expect(parseArgs(['--version', '--help'])).toEqual({ kind: 'help' });
   });
+
+  it('rejects an unrecognized short option', () => {
+    expect(parseArgs(['-x'])).toEqual({ kind: 'error', message: 'Unknown option: -x' });
+  });
+
+  it('rejects an unrecognized long option', () => {
+    expect(parseArgs(['--bogus'])).toEqual({ kind: 'error', message: 'Unknown option: --bogus' });
+  });
+
+  it('rejects an unrecognized option even when mixed with valid glob patterns', () => {
+    expect(parseArgs(['src/**/*.tsx', '--nope'])).toEqual({
+      kind: 'error',
+      message: 'Unknown option: --nope',
+    });
+  });
+
+  it('leaves bare glob patterns unaffected (none start with "-")', () => {
+    expect(parseArgs(['src/**/*.tsx', '!src/generated/**'])).toEqual({
+      kind: 'run',
+      patterns: ['src/**/*.tsx', '!src/generated/**'],
+    });
+  });
 });
 
 describe('readPackageVersion', () => {
@@ -190,6 +212,96 @@ describe('runMain — flag handling', () => {
     });
     expect(code).toBe(0);
     expect(io.stdout).toEqual([readPackageVersion()]);
+  });
+});
+
+describe('runMain — unknown option handling', () => {
+  it('exits 2 and names the option on an unrecognized short flag', async () => {
+    const io = makeIO();
+    const code = await runMain({
+      args: ['-x'],
+      env: {},
+      cwd: process.cwd(),
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(2);
+    const err = io.stderr.join('\n');
+    expect(err).toContain('Unknown option: -x');
+    expect(err).toContain('Run with --help for usage');
+    expect(io.stdout).toEqual([]);
+  });
+
+  it('exits 2 and names the option on an unrecognized long flag', async () => {
+    const io = makeIO();
+    const code = await runMain({
+      args: ['--bogus'],
+      env: {},
+      cwd: process.cwd(),
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(2);
+    expect(io.stderr.join('\n')).toContain('Unknown option: --bogus');
+  });
+});
+
+describe('runMain — config error handling', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-config-err-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('exits 2 and names the file when the config JSON is malformed', async () => {
+    writeFileSync(join(tmpDir, '.design-token-lint.json'), '{ not valid json');
+    const io = makeIO();
+    const code = await runMain({
+      args: [],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(2);
+    const err = io.stderr.join('\n');
+    expect(err).toContain('Failed to parse .design-token-lint.json');
+    expect(io.stdout).toEqual([]);
+  });
+
+  it('exits 2 and names the field when a config field has the wrong type', async () => {
+    writeFileSync(join(tmpDir, '.design-token-lint.json'), JSON.stringify({ prohibited: 'p-{n}' }));
+    const io = makeIO();
+    const code = await runMain({
+      args: [],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(2);
+    expect(io.stderr.join('\n')).toContain('"prohibited" must be an array of strings');
+  });
+
+  it('exits 2 with a clear message when a prohibited pattern is malformed', async () => {
+    writeFileSync(
+      join(tmpDir, '.design-token-lint.json'),
+      JSON.stringify({ prohibited: ['{n}'], allowed: [], ignore: [] }),
+    );
+    const io = makeIO();
+    const code = await runMain({
+      args: [],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(2);
+    expect(io.stderr.join('\n')).toContain('placeholder');
   });
 });
 

@@ -15,7 +15,13 @@ import chalk from 'chalk';
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, isAbsolute, resolve } from 'node:path';
-import { loadConfig, compileConfig } from './config.js';
+import {
+  loadConfig,
+  compileConfig,
+  ConfigError,
+  type LintConfig,
+  type CompiledConfig,
+} from './config.js';
 import { setConfig } from './rules.js';
 import { lintFile, type LintResult } from './linter.js';
 
@@ -31,13 +37,18 @@ const DEFAULT_IGNORE_PATTERNS = ['**/node_modules/**', '**/dist/**', '**/__inbox
 export type ParsedArgs =
   | { kind: 'help' }
   | { kind: 'version' }
-  | { kind: 'run'; patterns: string[] };
+  | { kind: 'run'; patterns: string[] }
+  | { kind: 'error'; message: string };
+
+const KNOWN_FLAGS = new Set(['-h', '--help', '-V', '--version']);
 
 /**
  * Parse CLI argv (process.argv.slice(2)).
  *
- * Recognizes -h/--help and -V/--version as flags. Any other args are treated
- * as glob patterns. Flags take precedence; if both --help and --version are
+ * Recognizes -h/--help and -V/--version as flags. Any other arg starting
+ * with "-" is treated as an unrecognized option (kind: 'error') rather than
+ * a glob pattern — bare glob patterns (which never start with "-") are
+ * unaffected. Flags take precedence; if both --help and --version are
  * present, --help wins (it appears earlier in conventional CLIs).
  */
 export function parseArgs(args: string[]): ParsedArgs {
@@ -46,6 +57,11 @@ export function parseArgs(args: string[]): ParsedArgs {
   }
   if (args.includes('-V') || args.includes('--version')) {
     return { kind: 'version' };
+  }
+  for (const arg of args) {
+    if (arg.startsWith('-') && !KNOWN_FLAGS.has(arg)) {
+      return { kind: 'error', message: `Unknown option: ${arg}` };
+    }
   }
   return { kind: 'run', patterns: args };
 }
@@ -127,10 +143,29 @@ export async function runMain(opts: MainOptions): Promise<number> {
     stdout(readPackageVersion());
     return 0;
   }
+  if (parsed.kind === 'error') {
+    stderr(chalk.red(parsed.message));
+    stderr(chalk.dim('Run with --help for usage'));
+    return 2;
+  }
 
-  // Load and apply config
-  const config = await loadConfig(cwd);
-  const compiled = compileConfig(config);
+  // Load and apply config. A missing config file falls through to defaults
+  // silently (handled inside loadConfig); a config file that exists but is
+  // invalid (bad JSON, wrong field type, malformed pattern) throws — caught
+  // here so the CLI reports a clean one-line message instead of a raw stack
+  // trace via the generic top-level catch in the entry point below.
+  let config: LintConfig;
+  let compiled: CompiledConfig;
+  try {
+    config = await loadConfig(cwd);
+    compiled = compileConfig(config);
+  } catch (err) {
+    if (err instanceof ConfigError || err instanceof Error) {
+      stderr(chalk.red(err.message));
+      return 2;
+    }
+    throw err;
+  }
   setConfig(compiled);
 
   // Resolve patterns: CLI args > config file > defaults
