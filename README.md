@@ -105,7 +105,7 @@ An allowlist checked before prohibited patterns are matched. Each entry can take
 
 #### `semanticPrefixes`
 
-Override the default semantic token prefixes to match your project's naming convention:
+Value prefixes that mark a spacing value as an already-semantic token, bypassing the numeric-spacing check regardless of whether the value happens to look numeric. Override the default to match your project's naming convention:
 
 ```json
 {
@@ -113,7 +113,9 @@ Override the default semantic token prefixes to match your project's naming conv
 }
 ```
 
-Classes like `p-hsp-sm` or `gap-vsp-md` will be allowed instead of the default `hgap-`/`vgap-` prefixes. Set to `[]` to disable the prefix allowlist entirely.
+With this override, `p-hsp-sm` and `gap-vsp-md` are explicitly declared as semantic tokens instead of the default `hgap-`/`vgap-` prefixes. Set to `[]` to remove the prefix allowlist entirely.
+
+> **Note**: The built-in prohibited patterns only flag purely numeric values (`p-4`, `m-8`, ...), so an alphabetic suffix like `hgap-sm` already fails that check regardless of this setting — `semanticPrefixes` mainly matters as an explicit declaration of your semantic-token vocabulary, or if you add a custom prohibited pattern with looser value matching.
 
 #### `suggestionSuffix`
 

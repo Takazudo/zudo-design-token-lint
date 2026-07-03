@@ -110,7 +110,7 @@ A string appended to violation messages after the `—` separator, replacing the
 
 ### `semanticPrefixes`
 
-Value prefixes that bypass spacing rules — a class like `p-hgap-sm` is treated as a semantic token rather than a raw numeric value, even though it starts with `p-`.
+Value prefixes that mark a spacing value as an already-semantic token — a value starting with one of these prefixes bypasses the numeric-spacing check without needing to look numeric in the first place.
 
 **Default**: `["hgap-", "vgap-"]`
 
@@ -122,7 +122,13 @@ Override this to match your project's naming convention:
 }
 ```
 
-Classes like `p-hsp-sm` or `gap-vsp-md` will be allowed instead of the default `hgap-`/`vgap-` prefixes. Set to `[]` to disable the prefix allowlist entirely — every numeric-looking spacing value is then flagged unless it's `0`, `1px`, or in `allowed`.
+With this override, `p-hsp-sm` and `gap-vsp-md` are explicitly declared as semantic tokens. Set to `[]` to remove the prefix allowlist entirely.
+
+<Note>
+
+The built-in prohibited patterns only flag purely numeric values (`p-4`, `m-8`, ...), so an alphabetic suffix like `hgap-sm` or `hsp-sm` already fails that check regardless of this setting. `semanticPrefixes` mainly matters as an explicit declaration of your semantic-token vocabulary, or if you add a custom prohibited pattern with looser value matching.
+
+</Note>
 
 ### `classAttributes`
 
