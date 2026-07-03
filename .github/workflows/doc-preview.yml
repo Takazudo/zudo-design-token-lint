@@ -4,7 +4,7 @@
 #   1. Template drift check (needs pnpm install — create-zudo-doc devDep)
 #   2. Pin parity check (pure-Node, reads doc/package.json only)
 #   3. Format check (pnpm dlx, no install needed)
-#   4. Type check (pnpm check) + wrangler pin check
+#   4. Type check (pnpm check) + wrangler pin check + z-index token drift check
 #   5. Build the zfb docs site (full clone) + link check
 #   6. HTML validate
 #   7. Build doc history JSONs
@@ -58,6 +58,7 @@ jobs:
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -108,6 +109,7 @@ jobs:
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
+          cache: pnpm
 
       - name: Check MDX formatting
         working-directory: doc
@@ -134,6 +136,7 @@ jobs:
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -149,6 +152,13 @@ jobs:
       - name: Run type checking
         working-directory: doc
         run: pnpm check
+
+      # Verifies src/styles/global.css's GENERATED:Z_INDEX block matches
+      # src/config/z-index-tokens.ts (the source of truth). Pure Node, no
+      # extra deps — catches drift when a tier is edited without regenerating.
+      - name: Check z-index token drift
+        working-directory: doc
+        run: pnpm check:z-index
 
   # ---------------------------------------------------------------------------
   # Job 2: Build the zfb docs site (full clone — needed for SSG meta dates)
@@ -175,6 +185,7 @@ jobs:
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -216,6 +227,7 @@ jobs:
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
+          cache: pnpm
 
       - name: Install deps (no scripts)
         run: pnpm install --frozen-lockfile --ignore-scripts
@@ -258,6 +270,7 @@ jobs:
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

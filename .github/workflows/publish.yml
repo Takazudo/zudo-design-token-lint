@@ -19,6 +19,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # workflow_dispatch allows a manual run (e.g. to retry a failed publish),
+      # but --no-git-checks below means it would otherwise publish from ANY ref.
+      # Guard manual runs to tag refs only, and do it first so we fail fast
+      # without spending CI time on checkout/install/build/test.
+      - name: Guard workflow_dispatch to tag refs
+        if: github.event_name == 'workflow_dispatch' && github.ref_type != 'tag'
+        run: |
+          echo "::error::workflow_dispatch must be run from a v*.*.* tag ref, not '${{ github.ref }}'"
+          exit 1
+
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4
@@ -27,6 +37,7 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -55,8 +66,8 @@ jobs:
           echo "Publishing @takazudo/zudo-design-token-lint@$VERSION"
           if echo "$VERSION" | grep -Eq -- '-(next|beta|rc)\.'; then
             echo "Prerelease → dist-tag 'next'"
-            pnpm publish --tag next --access public --no-git-checks
+            pnpm publish --tag next --access public --no-git-checks --provenance
           else
             echo "Stable → dist-tag 'latest'"
-            pnpm publish --tag latest --access public --no-git-checks
+            pnpm publish --tag latest --access public --no-git-checks --provenance
           fi

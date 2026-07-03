@@ -1,7 +1,8 @@
 # Production deployment workflow for the doc site.
 #
 # Triggered on every push to `main`. The pipeline:
-#   1. Builds the zfb static site (full clone — needed for SSG meta dates)
+#   1. Type checks and builds the zfb static site, then checks links
+#      (full clone — needed for SSG meta dates)
 #   2. HTML validates the built doc/dist/
 #   3. Builds doc history JSONs (full clone, @takazudo/zudo-doc-history-server)
 #   4. Merges both build outputs and deploys to Cloudflare Workers
@@ -63,13 +64,22 @@ jobs:
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Run type checking
+        working-directory: doc
+        run: pnpm check
+
       - name: Build site
         working-directory: doc
         run: pnpm build
+
+      - name: Check links
+        working-directory: doc
+        run: pnpm check:links
 
       - name: Cache site build output
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -101,6 +111,7 @@ jobs:
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
+          cache: pnpm
 
       - name: Install deps (no scripts)
         run: pnpm install --frozen-lockfile --ignore-scripts
@@ -143,6 +154,7 @@ jobs:
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -217,7 +229,7 @@ jobs:
   # ---------------------------------------------------------------------------
   notify:
     name: Deploy Notification
-    needs: [build-site, build-history, deploy]
+    needs: [build-site, html-validate, build-history, deploy]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -229,6 +241,7 @@ jobs:
           IFTTT_PROD_NOTIFY: ${{ secrets.IFTTT_PROD_NOTIFY }}
           RAW_COMMIT_MSG: ${{ github.event.head_commit.message }}
           BUILD_SITE_RESULT: ${{ needs.build-site.result }}
+          HTML_VALIDATE_RESULT: ${{ needs.html-validate.result }}
           BUILD_HISTORY_RESULT: ${{ needs.build-history.result }}
           DEPLOY_RESULT: ${{ needs.deploy.result }}
           GITHUB_SHA_VAL: ${{ github.sha }}
@@ -240,6 +253,8 @@ jobs:
             STATUS="zudo-design-token-lint doc deploy succeeded!"
           elif [ "$BUILD_SITE_RESULT" = "failure" ]; then
             STATUS="zudo-design-token-lint doc deploy failed (site build)"
+          elif [ "$HTML_VALIDATE_RESULT" = "failure" ]; then
+            STATUS="zudo-design-token-lint doc deploy failed (html-validate)"
           elif [ "$BUILD_HISTORY_RESULT" = "failure" ]; then
             STATUS="zudo-design-token-lint doc deploy failed (history build)"
           elif [ "$DEPLOY_RESULT" = "failure" ]; then
