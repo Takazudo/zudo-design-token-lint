@@ -1,0 +1,82 @@
+# Registry smoke test — verifies the PUBLISHED npm package (not the repo's
+# source tree), on a schedule, so a registry-side problem (bad dist-tag,
+# botched provenance, CDN propagation issue) is caught even when no PR or
+# push is happening.
+#
+# Deliberately does NOT check out the repository: the point is to test what
+# is live on the registry right now, decoupled from whatever main currently
+# looks like. Each matrix leg installs the package fresh from npm into a
+# scratch project and exercises the same two assertions as
+# scripts/check-pack.sh's artifact checks (version + violation exit code),
+# against @latest and @next.
+#
+# Schedule: weekly, Monday 04:23 UTC — an off-minute (not top-of-hour) to
+# avoid the scheduled-workflow stampede documented in GitHub's own guidance.
+
+name: Registry Smoke Test
+
+on:
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: registry-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Smoke test (@${{ matrix.tag }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: [latest, next]
+
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+
+      - name: Install @takazudo/zudo-design-token-lint@${{ matrix.tag }}
+        run: |
+          WORK_DIR=$(mktemp -d)
+          echo "WORK_DIR=$WORK_DIR" >> "$GITHUB_ENV"
+          cd "$WORK_DIR"
+          npm init -y >/dev/null
+          npm i "@takazudo/zudo-design-token-lint@${{ matrix.tag }}"
+
+      - name: Check design-token-lint --version exits 0
+        run: |
+          cd "$WORK_DIR"
+          npx --no-install design-token-lint --version
+
+      - name: Check violation fixture exits 1
+        run: |
+          cd "$WORK_DIR"
+          mkdir -p src
+          cat >src/Violation.tsx <<'EOF'
+          export function Violation() {
+            return <div className="p-4 bg-gray-500">bad</div>;
+          }
+          EOF
+
+          set +e
+          OUTPUT=$(npx --no-install design-token-lint 2>&1)
+          CODE=$?
+          set -e
+          echo "$OUTPUT"
+
+          if [ "$CODE" -ne 1 ]; then
+            echo "::error::expected exit code 1 for the violation fixture, got $CODE"
+            exit 1
+          fi
+          if ! echo "$OUTPUT" | grep -q "p-4"; then
+            echo "::error::violation output did not mention the offending class (p-4)"
+            exit 1
+          fi
