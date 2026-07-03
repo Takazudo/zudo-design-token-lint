@@ -22,7 +22,7 @@
 
 import type { JSX } from "preact";
 import { Island } from "@takazudo/zfb";
-import SiteTreeNav from "@/components/site-tree-nav";
+import { SiteTreeNav } from "@takazudo/zudo-doc/site-tree-nav-island";
 import {
   buildNavTree,
   groupSatelliteNodes,
