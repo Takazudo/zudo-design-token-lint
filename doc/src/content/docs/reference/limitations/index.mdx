@@ -36,6 +36,41 @@ Astro's `class:list` object syntax is supported — class names in quoted keys a
 
 Both `p-4` and `m-8` are extracted and linted.
 
+## Supported: Multiline Function Calls
+
+`cn()`, `clsx()`, `classNames()`, and `twMerge()` calls that span multiple lines are supported — arguments are accumulated until the parentheses balance, the same way multiline `className` values are:
+
+```tsx
+<div
+  className={cn(
+    "p-4",
+    "bg-gray-500",
+    isActive && "m-8",
+  )}
+>
+```
+
+All three string arguments are extracted and linted. This also applies to `class:list={[...]}` arrays that span multiple lines.
+
+## Limitation: Vue/Svelte Dynamic Class Bindings
+
+Static `class="..."` attributes are extracted correctly in any template language, including Vue and Svelte. Dynamic binding syntax is not:
+
+```vue
+<!-- Not linted correctly — extracted as garbage tokens, no real violations reported -->
+<div :class="isActive ? 'p-4' : 'm-8'">
+<div v-bind:class="{ 'p-4': isActive }">
+```
+
+```svelte
+<!-- Not linted at all — the `class:` directive isn't recognized, nothing is extracted -->
+<div class:active={isActive} class:p-4={isBig}>
+```
+
+Vue's `:class`/`v-bind:class` bindings match the `class` attribute pattern (the leading `:` doesn't block the match), so their expression content is extracted and split into tokens — but the result is punctuation-laden garbage (`isActive`, `?`, `'p-4'`, `:`, `'m-8'`) that never matches a prohibited pattern, so violations inside it are silently missed. Svelte's `class:name` directive isn't matched at all (`class` isn't followed by `=`), so it's skipped entirely — also with no violations reported.
+
+**Workaround**: Extract the relevant classes into a static string (e.g. via a computed property or a `cn()`/`clsx()` call assigned to a variable) so the linter sees a plain string literal, or add an ignore comment to acknowledge the gap.
+
 ## Limitation: Conditional Expressions
 
 Ternary expressions inside `className` are not extracted:
@@ -97,11 +132,15 @@ The regex parser does not handle escaped quote sequences inside string literals.
 | Pattern | Supported |
 | --- | --- |
 | Multiline `className` | Yes |
+| Multiline `cn()`/`clsx()`/`class:list` calls | Yes |
 | Static string literals | Yes |
 | Template literals (static only) | Yes |
 | Object keys in `class:list` | Yes |
 | Custom attribute names (via `classAttributes`) | Yes — configurable |
 | Custom utility functions (via `classFunctions`) | Yes — configurable |
+| Vue/Svelte static `class="..."` attributes | Yes |
 | Ternary expressions | No — silently skipped |
 | Template literals with interpolation | No — dynamic parts not linted |
 | Escaped quotes in class strings | No — may extract incorrectly |
+| Vue `:class`/`v-bind:class` bindings | No — extracted as garbage tokens |
+| Svelte `class:name` directives | No — not recognized at all |

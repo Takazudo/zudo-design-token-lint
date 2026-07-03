@@ -20,13 +20,31 @@ design-token-lint "src/**/*.tsx" "pages/**/*.tsx"
 design-token-lint src/App.tsx
 ```
 
+## オプション
+
+| オプション | 説明 |
+|---|---|
+| `-h`, `--help` | ヘルプメッセージを表示して終了 |
+| `-V`, `--version` | パッケージのバージョンを表示して終了 |
+| `--json` | 結果を JSON 配列として stdout に出力(人間が読める表示は引き続き stderr へ) |
+| `--format <fmt>` | 違反の出力フォーマット: `human`(デフォルト)または `github` |
+
+```bash
+design-token-lint --help
+design-token-lint --version
+design-token-lint --json
+design-token-lint --format github
+```
+
+`-` で始まるが上記のいずれでもない未知のオプションは、glob パターンとして黙って扱われるのではなく、エラーかつ終了コード `2` として拒否されます。
+
 ## 終了コード
 
 | コード | 意味 |
 |---|---|
-| `0` | 違反なし(またはマッチしたファイルなし) |
+| `0` | 違反なし |
 | `1` | 違反あり |
-| `2` | 予期しないエラー(ファイルシステム障害など) |
+| `2` | 設定されたパターンにマッチするファイルがない、または設定/予期しないエラーが発生した |
 
 CI で違反があった場合にビルドを失敗させるには終了コード `1` を利用します:
 
@@ -35,21 +53,52 @@ CI で違反があった場合にビルドを失敗させるには終了コー�
 - run: pnpm design-token-lint
 ```
 
+## 環境変数
+
+| 変数 | 説明 |
+|---|---|
+| `TOKEN_LINT_ALLOW_EMPTY` | `1`、`true`、`yes`、`on`(大文字小文字を区別しない)に設定すると、マッチしたファイルがない場合に終了コード `2` の代わりに `0` で終了します。初回実行時/ブートストラップ時のエスケープハッチとして便利です。 |
+| `GITHUB_ACTIONS` | GitHub Actions によって自動的に設定されます。真値の場合、`--format` が明示的に渡されていない限り `--format github` を自動選択します(フラグが渡された場合は常にそちらが優先されます)。 |
+
 ## 出力フォーマット
 
-違反はファイルごとにグループ化されます。各行は行番号、違反クラス、理由を表示します:
+デフォルト(`human` フォーマット)では、違反はファイルごとにグループ化されます。各行は行番号、違反クラス、理由を表示します:
 
 ```
 Scanning 1 file(s)...
 
 src/App.tsx
-  L12: p-4 — Numeric spacing "p-4" — use semantic token (hgap-*/vgap-*) or arbitrary value
-  L12: bg-gray-500 — Default Tailwind color "bg-gray-500" — use design system token (zd-*, p0-p15, semantic)
+  L12: p-4 — Numeric spacing "p-4" — use a semantic spacing token or arbitrary value
+  L12: bg-gray-500 — Default Tailwind color "bg-gray-500" — use a design system color token
 
 Found 2 violation(s) in 1 file(s).
 ```
 
-すべての出力は stderr に送られるため、stdout をパイプするスクリプトに干渉しません。
+すべての出力は stderr に送られるため、stdout をパイプするスクリプトに干渉しません — 例外は `--json`(JSON 配列を stdout に出力)と `--format github`(`::error` アノテーションを stdout に出力)です。
+
+## JSON 出力
+
+`--json` を渡すと、通常の stderr への人間可読表示に加えて、結果が JSON 配列として stdout に出力されます:
+
+```bash
+design-token-lint --json > violations.json
+```
+
+```json
+[
+  { "filePath": "src/App.tsx", "line": 12, "className": "p-4", "reason": "Numeric spacing \"p-4\" — use a semantic spacing token or arbitrary value" }
+]
+```
+
+## GitHub Actions アノテーション
+
+`--format github` を渡す(または GitHub Actions 上でそのまま実行する — `GITHUB_ACTIONS` は自動検出されます)と、人間可読表示の代わりに各違反が `::error` ワークフローコマンドとして出力されます:
+
+```
+::error file=src/App.tsx,line=12::p-4 — Numeric spacing "p-4" — use a semantic spacing token or arbitrary value
+```
+
+GitHub はこれらを PR の差分表示と Checks タブ上のインラインアノテーションとしてレンダリングします。`--json` と `--format` を組み合わせた場合、stdout に何が出力されるかは `--json` が優先されます。
 
 ## ファイルパターン解決
 
@@ -99,4 +148,4 @@ GitHub Actions ステップを追加:
   run: pnpm design-token-lint
 ```
 
-違反があればコード `1` で終了し、ワークフローが失敗します。
+違反があればコード `1` で終了し、ワークフローが失敗します。Actions の実行では `GITHUB_ACTIONS` が自動的に設定されるため、明示的に `--format github` を指定しなくても `::error` アノテーション形式(「[GitHub Actions アノテーション](#github-actions-アノテーション)」参照)で自動出力されます。
