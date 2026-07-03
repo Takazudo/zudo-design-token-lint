@@ -1,0 +1,28 @@
+{
+  "prohibited": [
+    "p-{n}",
+    "px-{n}",
+    "py-{n}",
+    "pt-{n}",
+    "pr-{n}",
+    "pb-{n}",
+    "pl-{n}",
+    "m-{n}",
+    "mt-{n}",
+    "mr-{n}",
+    "mb-{n}",
+    "ml-{n}",
+    "gap-{n}",
+    "bg-{color}-{shade}",
+    "text-{color}-{shade}",
+    "border-s-{color}-{shade}",
+    "border-e-{color}-{shade}",
+    "ring-offset-{color}-{shade}",
+    "inset-ring-{color}-{shade}",
+    "inset-shadow-{color}-{shade}",
+    "text-shadow-{color}-{shade}"
+  ],
+  "allowed": ["p-0", "m-0", "gap-0", "p-13"],
+  "ignore": [],
+  "patterns": ["**/*.tsx", "**/*.jsx", "**/*.astro"]
+}

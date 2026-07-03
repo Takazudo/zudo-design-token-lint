@@ -9,7 +9,7 @@ import {
   type CompiledConfig,
 } from './config.js';
 import { checkClassWithConfig } from './rules.js';
-import { writeFile, unlink, mkdir } from 'node:fs/promises';
+import { writeFile, unlink, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -410,5 +410,54 @@ describe('loadConfig — error handling', () => {
         expect(config.prohibited).toEqual(['p-{n}']);
       },
     );
+  });
+});
+
+describe('loadConfig — config file discovery', () => {
+  async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
+    const dir = join(
+      tmpdir(),
+      `dtl-discovery-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    await mkdir(dir, { recursive: true });
+    try {
+      await fn(dir);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  it('falls back to DEFAULT_CONFIG when neither config filename is present', async () => {
+    await withTempDir(async (dir) => {
+      const config = await loadConfig(dir);
+      expect(config).toEqual(DEFAULT_CONFIG);
+    });
+  });
+
+  it('picks up the second filename (design-token-lint.config.json) when the dotfile is absent', async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, 'design-token-lint.config.json'),
+        JSON.stringify({ prohibited: ['m-{n}'], allowed: [], ignore: [] }),
+      );
+      const config = await loadConfig(dir);
+      expect(config.prohibited).toEqual(['m-{n}']);
+    });
+  });
+
+  it('prefers the dotfile (.design-token-lint.json) when both config files exist', async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ prohibited: ['p-{n}'], allowed: [], ignore: [] }),
+      );
+      await writeFile(
+        join(dir, 'design-token-lint.config.json'),
+        JSON.stringify({ prohibited: ['m-{n}'], allowed: [], ignore: [] }),
+      );
+      const config = await loadConfig(dir);
+      // The dotfile's content wins — the second filename is never even read.
+      expect(config.prohibited).toEqual(['p-{n}']);
+    });
   });
 });

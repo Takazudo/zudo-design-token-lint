@@ -480,6 +480,82 @@ describe('runMain — empty match handling', () => {
   );
 });
 
+describe('runMain — pattern precedence (args > config.patterns > defaults)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-precedence-'));
+    // A violation reachable only via DEFAULT_PATTERNS (src/**/*.{tsx,jsx,astro}).
+    mkdirSync(join(tmpDir, 'src'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'from-default.tsx'), `<div className="p-4">`);
+    // A violation reachable only via the config file's "patterns" field.
+    mkdirSync(join(tmpDir, 'from-config'), { recursive: true });
+    writeFileSync(join(tmpDir, 'from-config', 'only.tsx'), `<div className="m-8">`);
+    // A violation reachable only via CLI args.
+    mkdirSync(join(tmpDir, 'from-args'), { recursive: true });
+    writeFileSync(join(tmpDir, 'from-args', 'only.tsx'), `<div className="gap-6">`);
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('CLI args win over config.patterns', async () => {
+    writeFileSync(
+      join(tmpDir, '.design-token-lint.json'),
+      JSON.stringify({ patterns: ['from-config/**/*.tsx'] }),
+    );
+    const io = makeIO();
+    const code = await runMain({
+      args: ['--json', 'from-args/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    const results = JSON.parse(io.stdout[0]);
+    const classNames = results.map((r: { className: string }) => r.className);
+    expect(classNames).toEqual(['gap-6']);
+  });
+
+  it('config.patterns wins over defaults when no CLI args are given', async () => {
+    writeFileSync(
+      join(tmpDir, '.design-token-lint.json'),
+      JSON.stringify({ patterns: ['from-config/**/*.tsx'] }),
+    );
+    const io = makeIO();
+    const code = await runMain({
+      args: ['--json'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    const results = JSON.parse(io.stdout[0]);
+    const classNames = results.map((r: { className: string }) => r.className);
+    expect(classNames).toEqual(['m-8']);
+  });
+
+  it('falls back to DEFAULT_PATTERNS when neither CLI args nor config.patterns are given', async () => {
+    // No config file at all — loadConfig falls through to DEFAULT_CONFIG,
+    // whose `patterns` field is undefined, so runMain uses DEFAULT_PATTERNS.
+    const io = makeIO();
+    const code = await runMain({
+      args: ['--json'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    const results = JSON.parse(io.stdout[0]);
+    const classNames = results.map((r: { className: string }) => r.className);
+    expect(classNames).toEqual(['p-4']);
+  });
+});
+
 describe('runMain — happy path still works', () => {
   let tmpDir: string;
 
