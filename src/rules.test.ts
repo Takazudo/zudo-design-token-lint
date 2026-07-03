@@ -55,6 +55,13 @@ describe('checkClass', () => {
     });
   });
 
+  describe('trailing important modifier (Tailwind v4) — prohibited', () => {
+    it.each(['p-4!', '-mt-4!', 'bg-red-500!', 'sm:p-4!', 'bg-red-500/50!'])('flags %s', (cls) => {
+      const result = checkClass(cls);
+      expect(result).not.toBeNull();
+    });
+  });
+
   describe('hyphenated modifiers — prohibited', () => {
     it.each([
       'group-hover:p-4',
@@ -286,6 +293,40 @@ describe('checkClass', () => {
       expect(result).not.toBeNull();
       expect(result!.reason).toContain('use zd-* color tokens');
       expect(result!.reason).toContain('Default Tailwind color');
+    });
+  });
+
+  describe('allowed list — matches original className verbatim', () => {
+    const custom: LintConfig = {
+      prohibited: DEFAULT_CONFIG.prohibited,
+      allowed: ['-mt-4', 'hover:p-2', 'bg-red-500/50'],
+      ignore: DEFAULT_CONFIG.ignore,
+    };
+    const compiled = compileConfig(custom);
+
+    it.each(['-mt-4', 'hover:p-2', 'bg-red-500/50'])(
+      'allows %s when listed verbatim in allowed',
+      (cls) => {
+        expect(checkClassWithConfig(cls, compiled)).toBeNull();
+      },
+    );
+
+    it('bare normalized entries still cover variant/negative forms (regression)', () => {
+      const bareAllowed: LintConfig = {
+        prohibited: DEFAULT_CONFIG.prohibited,
+        allowed: ['p-4'],
+        ignore: DEFAULT_CONFIG.ignore,
+      };
+      const compiledBare = compileConfig(bareAllowed);
+      expect(checkClassWithConfig('p-4', compiledBare)).toBeNull();
+      expect(checkClassWithConfig('sm:p-4', compiledBare)).toBeNull();
+      expect(checkClassWithConfig('hover:p-4', compiledBare)).toBeNull();
+    });
+
+    it('does not allow unrelated classes matching the same rule', () => {
+      // "-mt-4" is allowed verbatim, but its normalized form "mt-4" is not,
+      // so a different negative value must still be flagged.
+      expect(checkClassWithConfig('-mt-8', compiled)).not.toBeNull();
     });
   });
 
