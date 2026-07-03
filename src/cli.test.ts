@@ -3,7 +3,14 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { parseArgs, readPackageVersion, helpText, runMain, isMainModule } from './cli.js';
+import {
+  parseArgs,
+  readPackageVersion,
+  helpText,
+  runMain,
+  isMainModule,
+  formatGithubAnnotation,
+} from './cli.js';
 import { setConfig } from './rules.js';
 import { compileConfig, DEFAULT_CONFIG } from './config.js';
 
@@ -635,6 +642,39 @@ describe('runMain — --format github output', () => {
     });
     expect(code).toBe(1);
     expect(io.stdout).toEqual([]);
+  });
+});
+
+describe('formatGithubAnnotation — workflow command escaping', () => {
+  it('formats a plain violation as an ::error command', () => {
+    expect(
+      formatGithubAnnotation({
+        filePath: 'src/app.tsx',
+        line: 3,
+        className: 'p-4',
+        reason: 'Numeric spacing',
+      }),
+    ).toBe('::error file=src/app.tsx,line=3::p-4 — Numeric spacing');
+  });
+
+  it('escapes commas and colons in the file property so they are not parsed as delimiters', () => {
+    const annotation = formatGithubAnnotation({
+      filePath: 'src/foo,bar:baz.tsx',
+      line: 1,
+      className: 'p-4',
+      reason: 'Numeric spacing',
+    });
+    expect(annotation).toContain('file=src/foo%2Cbar%3Abaz.tsx,line=1');
+  });
+
+  it('escapes %, CR, and LF in the message data', () => {
+    const annotation = formatGithubAnnotation({
+      filePath: 'src/app.tsx',
+      line: 1,
+      className: 'w-[50%]',
+      reason: 'multi\nline\r reason',
+    });
+    expect(annotation).toBe('::error file=src/app.tsx,line=1::w-[50%25] — multi%0Aline%0D reason');
   });
 });
 

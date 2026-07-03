@@ -203,12 +203,32 @@ function printHumanResults(stderr: (msg: string) => void, byFile: Map<string, Li
 }
 
 /**
- * Format a single violation as a GitHub Actions workflow command so it
- * surfaces as an inline annotation on the offending line in a PR/run.
+ * Escape message data for a GitHub Actions workflow command. GitHub's
+ * runner decodes %25/%0D/%0A, so raw %, CR, and LF must be encoded or the
+ * command is truncated at the first newline.
  * See: https://docs.github.com/actions/using-workflows/workflow-commands-for-github-actions
  */
+function escapeGithubData(value: string): string {
+  return value.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+}
+
+/**
+ * Escape a workflow command property value. Properties additionally need
+ * : and , encoded — they delimit properties, so an unescaped path like
+ * "src/foo,bar.tsx" would be parsed as file=src/foo plus a bogus property.
+ */
+function escapeGithubProperty(value: string): string {
+  return escapeGithubData(value).replace(/:/g, '%3A').replace(/,/g, '%2C');
+}
+
+/**
+ * Format a single violation as a GitHub Actions workflow command so it
+ * surfaces as an inline annotation on the offending line in a PR/run.
+ */
 export function formatGithubAnnotation(result: LintResult): string {
-  return `::error file=${result.filePath},line=${result.line}::${result.className} — ${result.reason}`;
+  const file = escapeGithubProperty(result.filePath);
+  const message = escapeGithubData(`${result.className} — ${result.reason}`);
+  return `::error file=${file},line=${result.line}::${message}`;
 }
 
 /**
