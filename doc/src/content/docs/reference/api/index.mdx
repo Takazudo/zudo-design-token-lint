@@ -95,7 +95,7 @@ Check one class name against the active config. Returns a `Violation` if the cla
 const violation = checkClass('p-4');
 if (violation) {
   console.error(violation.reason);
-  // "Numeric spacing \"p-4\" — use semantic token (hgap-*/vgap-*) or arbitrary value"
+  // "Numeric spacing \"p-4\" — use a semantic spacing token or arbitrary value"
 }
 ```
 
@@ -230,6 +230,7 @@ interface LintConfig {
   ignore: string[];
   patterns?: string[];
   suggestionSuffix?: string;
+  semanticPrefixes?: string[];
   classAttributes?: string[];
   classFunctions?: string[];
 }

@@ -32,9 +32,30 @@ design-token-lint
 
 # Scan specific patterns
 design-token-lint "src/**/*.tsx" "pages/**/*.tsx"
+
+# Other flags
+design-token-lint -h            # or --help
+design-token-lint -V            # or --version
+design-token-lint --json        # print results as a JSON array on stdout
+design-token-lint --format github  # print GitHub Actions ::error annotations on stdout
 ```
 
-The CLI exits with code 1 if violations are found (useful for CI).
+### Exit Codes
+
+| Code | Meaning                                                                         |
+| ---- | ------------------------------------------------------------------------------- |
+| `0`  | No violations found                                                             |
+| `1`  | Violations found                                                                |
+| `2`  | No files matched the configured patterns, or a config/unexpected error occurred |
+
+Set `TOKEN_LINT_ALLOW_EMPTY=1` (also accepts `true`/`yes`/`on`) to exit `0` instead of `2` when no files match — useful as a first-run/bootstrap escape hatch.
+
+### Output Formats
+
+- `--json` — prints the results as a JSON array on stdout (the human-readable display still goes to stderr).
+- `--format github` — prints one `::error file=...,line=...::...` GitHub Actions workflow command per violation on stdout instead of the human display, so CI runs get inline annotations. Auto-selected when the `GITHUB_ACTIONS` env var is truthy (set automatically by GitHub Actions), unless `--format` is passed explicitly.
+
+See the [CLI doc page](https://zudo-design-token-lint.takazudomodular.com/docs/guide/cli/) for full details.
 
 ## Configuration
 
@@ -62,16 +83,25 @@ Create a `.design-token-lint.json` (or `design-token-lint.config.json`) in your 
 
 ### Config Fields
 
-| Field              | Type       | Description                                                                                         |
-| ------------------ | ---------- | --------------------------------------------------------------------------------------------------- |
-| `prohibited`       | `string[]` | Patterns to flag. Placeholders: `{n}` (number), `{color}` (Tailwind color name), `{shade}` (50-950) |
-| `allowed`          | `string[]` | Exceptions that are always allowed, even if they match a prohibited pattern                         |
-| `ignore`           | `string[]` | File glob patterns to skip entirely                                                                 |
-| `patterns`         | `string[]` | File glob patterns to scan (overrides CLI defaults when no args given)                              |
-| `suggestionSuffix` | `string`   | Custom suffix for violation messages (replaces the default suggestion text)                         |
-| `semanticPrefixes` | `string[]` | Value prefixes that bypass spacing rules (default: `["hgap-", "vgap-"]`)                            |
+| Field              | Type       | Description                                                                                                              |
+| ------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `prohibited`       | `string[]` | Patterns to flag. Placeholders: `{n}` (number), `{color}` (Tailwind color name), `{shade}` (50-950)                      |
+| `allowed`          | `string[]` | Exceptions that are always allowed, even if they match a prohibited pattern                                              |
+| `ignore`           | `string[]` | File glob patterns to skip entirely                                                                                      |
+| `patterns`         | `string[]` | File glob patterns to scan (overrides CLI defaults when no args given)                                                   |
+| `suggestionSuffix` | `string`   | Custom suffix for violation messages (replaces the default suggestion text)                                              |
+| `semanticPrefixes` | `string[]` | Value prefixes that bypass spacing rules (default: `["hgap-", "vgap-"]`)                                                 |
+| `classAttributes`  | `string[]` | HTML/JSX attribute names the extractor scans for class names (default: `["className", "class"]`)                         |
+| `classFunctions`   | `string[]` | Utility function names the extractor scans for class name arguments (default: `["cn", "clsx", "classNames", "twMerge"]`) |
 
 All fields fall back to built-in defaults if omitted.
+
+#### `allowed`
+
+An allowlist checked before prohibited patterns are matched. Each entry can take either form:
+
+- **Bare/normalized form** (e.g. `p-4`) — also allows every variant, negative, important-modifier, and opacity form built from it: `hover:p-4`, `-p-4`, `p-4!`, `sm:-p-4!`, `bg-red-500/50`, etc.
+- **Exact/verbatim form** (e.g. `hover:p-2`, `-mt-4`, `bg-red-500/50`) — allows only that specific string, copied straight from a violation message, without opening up the bare form or every other variant.
 
 #### `semanticPrefixes`
 

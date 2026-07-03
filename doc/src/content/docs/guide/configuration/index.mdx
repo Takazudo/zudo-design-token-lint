@@ -41,6 +41,7 @@ Create a `.design-token-lint.json` or `design-token-lint.config.json` file at yo
 | `ignore` | `string[]` | File glob patterns to skip entirely |
 | `patterns` | `string[]` | File glob patterns to scan (used when no CLI args are given) |
 | `suggestionSuffix` | `string` | Custom suffix for violation messages (replaces the default suggestion text) |
+| `semanticPrefixes` | `string[]` | Value prefixes that bypass spacing rules (default: `["hgap-", "vgap-"]`) |
 | `classAttributes` | `string[]` | HTML/JSX attribute names the extractor scans for class names |
 | `classFunctions` | `string[]` | Utility function names the extractor scans for class name arguments |
 
@@ -62,7 +63,12 @@ Examples:
 
 ### `allowed`
 
-An exact-match allowlist. Any class in this array always passes, regardless of prohibited patterns. Useful for escape hatches like `p-0`, `m-0`, or `p-1px`.
+An allowlist checked before prohibited patterns are matched. Each entry can take either form:
+
+- **Bare/normalized form** (e.g. `p-4`) — also allows every variant, negative, important-modifier, and opacity form built from it: `hover:p-4`, `-p-4`, `p-4!`, `sm:-p-4!`, `bg-red-500/50`, etc. Matching strips the variant prefix (up to the last `:`), the `!` important modifier, the leading `-` negative sign, and the `/N` opacity suffix before comparing.
+- **Exact/verbatim form** (e.g. `hover:p-2`, `-mt-4`, `bg-red-500/50`) — allows only that specific string. Useful for copy-pasting a class straight out of a violation message to allow just that one variant without opening up the bare form or every other variant of it.
+
+Escape hatches like `p-0`, `m-0`, or `p-1px` are common entries.
 
 ### `ignore`
 
@@ -101,6 +107,22 @@ A string appended to violation messages after the `—` separator, replacing the
 
 - Spacing: `Numeric spacing "p-4" — use hgap-*/vgap-* or zd-* tokens`
 - Color: `Default Tailwind color "bg-gray-500" — use hgap-*/vgap-* or zd-* tokens`
+
+### `semanticPrefixes`
+
+Value prefixes that bypass spacing rules — a class like `p-hgap-sm` is treated as a semantic token rather than a raw numeric value, even though it starts with `p-`.
+
+**Default**: `["hgap-", "vgap-"]`
+
+Override this to match your project's naming convention:
+
+```json
+{
+  "semanticPrefixes": ["hsp-", "vsp-"]
+}
+```
+
+Classes like `p-hsp-sm` or `gap-vsp-md` will be allowed instead of the default `hgap-`/`vgap-` prefixes. Set to `[]` to disable the prefix allowlist entirely — every numeric-looking spacing value is then flagged unless it's `0`, `1px`, or in `allowed`.
 
 ### `classAttributes`
 

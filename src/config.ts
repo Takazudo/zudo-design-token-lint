@@ -24,7 +24,15 @@ export class ConfigError extends Error {
 export interface LintConfig {
   /** Patterns to flag as violations. Placeholders: {n} = number, {color} = Tailwind color, {shade} = shade (50-950) */
   prohibited: string[];
-  /** Exceptions that are always allowed, even if they match a prohibited pattern */
+  /**
+   * Exceptions that are always allowed, even if they match a prohibited pattern.
+   * Each entry is matched two ways: the normalized form (variant prefix, `!`
+   * important modifier, leading `-` negative sign, and `/N` opacity suffix all
+   * stripped — so a bare entry like "p-4" also covers "hover:p-4", "-p-4",
+   * "p-4!", etc.) AND the exact original string (so a specific variant like
+   * "hover:p-2", copied verbatim from a violation message, can be allowed
+   * without opening up the bare "p-2" form or its other variants).
+   */
   allowed: string[];
   /** File path globs to skip entirely */
   ignore: string[];
