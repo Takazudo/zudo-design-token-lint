@@ -23,6 +23,11 @@ import {
   findNode,
   firstRoutedHref,
 } from "@/utils/docs";
+import {
+  getPathForLocale,
+  isDefaultLocaleOnlyPath,
+  stripBase,
+} from "@/utils/base";
 import { defaultLocale, type Locale } from "@/config/i18n";
 import { resolveNavSource } from "./_nav-source-docs";
 
@@ -95,8 +100,16 @@ export function CategoryNavWrapper({
       .map((slug): V2NavNode | null => {
         const node = findNode(tree, slug);
         if (!node) return null;
-        const href = node.href ?? firstRoutedHref(node);
-        if (!href) return null;
+        const rawHref = node.href ?? firstRoutedHref(node);
+        if (!rawHref) return null;
+        // defaultLocaleOnly docs (e.g. claude-md) have no locale-prefixed
+        // routes — remint their card href into the default-locale URL space
+        // so the JA page links to the EN page instead of a 404.
+        // workaround for zudolab/zudo-doc#2569
+        const defaultShaped = getPathForLocale(rawHref, locale, defaultLocale);
+        const href = isDefaultLocaleOnlyPath(stripBase(defaultShaped))
+          ? defaultShaped
+          : rawHref;
         return {
           label: node.label,
           description: node.description,
