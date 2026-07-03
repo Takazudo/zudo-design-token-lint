@@ -65,9 +65,9 @@ describe('extractClasses', () => {
 ]}>`;
     const result = extractClasses(content);
     expect(result).toEqual([
-      { className: 'p-4', line: 1 },
-      { className: 'flex', line: 1 },
-      { className: 'bg-gray-500', line: 1 },
+      { className: 'p-4', line: 2 },
+      { className: 'flex', line: 2 },
+      { className: 'bg-gray-500', line: 3 },
     ]);
   });
 
@@ -99,8 +99,8 @@ describe('extractClasses', () => {
 );`;
       const result = extractClasses(content);
       expect(result).toEqual([
-        { className: 'p-4', line: 1 },
-        { className: 'bg-blue-500', line: 1 },
+        { className: 'p-4', line: 2 },
+        { className: 'bg-blue-500', line: 3 },
       ]);
     });
 
@@ -111,8 +111,8 @@ describe('extractClasses', () => {
 );`;
       const result = extractClasses(content);
       expect(result).toEqual([
-        { className: 'gap-4', line: 1 },
-        { className: 'hidden', line: 1 },
+        { className: 'gap-4', line: 2 },
+        { className: 'hidden', line: 3 },
       ]);
     });
 
@@ -123,8 +123,8 @@ describe('extractClasses', () => {
 );`;
       const result = extractClasses(content);
       expect(result).toEqual([
-        { className: 'p-4)', line: 1 },
-        { className: 'm-8', line: 1 },
+        { className: 'p-4)', line: 2 },
+        { className: 'm-8', line: 3 },
       ]);
     });
 
@@ -144,9 +144,9 @@ describe('extractClasses', () => {
 );`;
       const result = extractClasses(content);
       expect(result).toEqual([
-        { className: 'p-2', line: 1 },
-        { className: 'p-4', line: 1 },
-        { className: 'm-8', line: 1 },
+        { className: 'p-2', line: 2 },
+        { className: 'p-4', line: 2 },
+        { className: 'm-8', line: 3 },
       ]);
     });
 
@@ -162,7 +162,7 @@ describe('extractClasses', () => {
 ); const b = cn('m-8');`;
       const result = extractClasses(content);
       expect(result).toEqual([
-        { className: 'p-4', line: 1 },
+        { className: 'p-4', line: 2 },
         { className: 'm-8', line: 3 },
       ]);
     });
@@ -173,7 +173,7 @@ describe('extractClasses', () => {
 ]} class="m-8">`;
       const result = extractClasses(content);
       expect(result).toEqual([
-        { className: 'p-4', line: 1 },
+        { className: 'p-4', line: 2 },
         { className: 'm-8', line: 3 },
       ]);
     });
@@ -446,6 +446,64 @@ describe('extractClasses', () => {
 <span className="flex">text</span>`;
       const result = extractClasses(content);
       expect(result).toEqual([{ className: 'flex', line: 5 }]);
+    });
+  });
+
+  describe('ignore comments inside multiline constructs', () => {
+    it('// ignore comment before an inner cn() argument suppresses only that line', () => {
+      const content = `const cls = cn(
+  "flex",
+  // design-token-lint-ignore
+  "p-4",
+  "m-8",
+);`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'flex', line: 2 },
+        { className: 'm-8', line: 5 },
+      ]);
+    });
+
+    it('// ignore comment before an inner class:list element suppresses only that line', () => {
+      const content = `<div class:list={[
+  'flex',
+  // design-token-lint-ignore
+  'p-4',
+  'm-8',
+]}>`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'flex', line: 2 },
+        { className: 'm-8', line: 5 },
+      ]);
+    });
+
+    it('{/* design-token-lint-ignore */} JSX comment before an inner cn() argument suppresses only that line', () => {
+      const content = `const cls = cn(
+  "flex",
+  {/* design-token-lint-ignore */}
+  "p-4",
+  "m-8",
+);`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'flex', line: 2 },
+        { className: 'm-8', line: 5 },
+      ]);
+    });
+
+    it('{/* design-token-lint-ignore */} JSX comment before an inner class:list element suppresses only that line', () => {
+      const content = `<div class:list={[
+  'flex',
+  {/* design-token-lint-ignore */}
+  'p-4',
+  'm-8',
+]}>`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'flex', line: 2 },
+        { className: 'm-8', line: 5 },
+      ]);
     });
   });
 

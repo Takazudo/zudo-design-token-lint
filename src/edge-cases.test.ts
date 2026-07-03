@@ -34,8 +34,8 @@ const b = cn(
       expect(result).toEqual([
         { className: 'p-4', line: 1 },
         { className: 'flex', line: 1 },
-        { className: 'm-8', line: 2 },
-        { className: 'gap-2', line: 2 },
+        { className: 'm-8', line: 3 },
+        { className: 'gap-2', line: 4 },
       ]);
     });
 
@@ -57,8 +57,8 @@ const b = cn(
 ]}>`;
       const result = extractClasses(content);
       expect(result).toEqual([
-        { className: 'p-4', line: 1 },
-        { className: 'm-8', line: 1 },
+        { className: 'p-4', line: 2 },
+        { className: 'm-8', line: 2 },
       ]);
     });
 
@@ -69,8 +69,8 @@ const b = cn(
 ]}>`;
       const result = extractClasses(content);
       expect(result).toEqual([
-        { className: 'p-4]', line: 1 },
-        { className: 'm-8', line: 1 },
+        { className: 'p-4]', line: 2 },
+        { className: 'm-8', line: 3 },
       ]);
     });
   });

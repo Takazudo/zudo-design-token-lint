@@ -13,13 +13,13 @@
   },
   {
     "filePath": "multiline-cn.tsx",
-    "line": 6,
+    "line": 8,
     "className": "bg-gray-500",
     "reason": "Default Tailwind color \"bg-gray-500\" — use a design system color token"
   },
   {
     "filePath": "multiline-cn.tsx",
-    "line": 6,
+    "line": 9,
     "className": "p-4",
     "reason": "Numeric spacing \"p-4\" — use a semantic spacing token or arbitrary value"
   },

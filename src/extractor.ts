@@ -162,7 +162,7 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
     while ((clMatch = classListStart.exec(line)) !== null) {
       const startCol = classListStart.lastIndex; // just past the opening '['
       const arr = scanBalancedDelimited(lines, i, startCol, '[', ']');
-      extractFromClassListArray(results, arr.content, lineNum);
+      extractFromClassListArray(results, arr.content, i, ignoredLines);
 
       if (arr.endLine !== i) {
         // Array spanned multiple lines. Blank out the consumed prefix of the
@@ -185,7 +185,7 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
       while ((fnMatch = utilFnStart.exec(line)) !== null) {
         const startCol = utilFnStart.lastIndex; // just past the opening '('
         const call = scanBalancedDelimited(lines, i, startCol, '(', ')');
-        extractFromCallArgs(results, call.content, lineNum);
+        extractFromCallArgs(results, call.content, i, ignoredLines);
 
         if (call.endLine !== i) {
           // Call spanned multiple lines. Blank out the consumed prefix of the
@@ -326,30 +326,72 @@ function scanBalancedDelimited(
 }
 
 /**
- * Extract string-literal and template-literal class tokens from a utility
- * function's joined argument text. Template-literal tokens containing `${...}`
- * fall through untouched (same as the attribute-level template literal
- * handling) — they don't match any lint rule pattern.
+ * Return the 0-based character offset of every `\n` in `text`, in ascending
+ * order. Used to map a match's character index in accumulated multiline
+ * content back to the source line it actually came from.
  */
-function extractFromCallArgs(results: ExtractedClass[], argsText: string, line: number): void {
+function collectNewlineOffsets(text: string): number[] {
+  const offsets: number[] = [];
+  for (let idx = 0; idx < text.length; idx++) {
+    if (text.charCodeAt(idx) === 10) offsets.push(idx);
+  }
+  return offsets;
+}
+
+/**
+ * Extract string-literal and template-literal class tokens from a utility
+ * function's joined argument text. Each match is attributed to its actual
+ * source line — `startLine0` (0-based) plus the number of newlines
+ * accumulated before the match — not the line the call opened on, so a
+ * design-token-lint-ignore comment on an inner argument line suppresses only
+ * that line's classes (mirrors the ignoredLines semantics used for single-line
+ * extraction). Template-literal tokens containing `${...}` fall through
+ * untouched (same as the attribute-level template literal handling) — they
+ * don't match any lint rule pattern.
+ */
+function extractFromCallArgs(
+  results: ExtractedClass[],
+  argsText: string,
+  startLine0: number,
+  ignoredLines: Set<number>,
+): void {
+  const newlineOffsets = collectNewlineOffsets(argsText);
+  let cursor = 0;
   for (const match of argsText.matchAll(/'([^']*)'|"([^"]*)"|`([^`]*)`/g)) {
     const value = match[1] ?? match[2] ?? match[3] ?? '';
-    addClasses(results, value, line);
+    const matchIndex = match.index ?? 0;
+    while (cursor < newlineOffsets.length && newlineOffsets[cursor] < matchIndex) {
+      cursor++;
+    }
+    const actualLine0 = startLine0 + cursor;
+    if (ignoredLines.has(actualLine0)) continue;
+    addClasses(results, value, actualLine0 + 1);
   }
 }
 
 /**
  * Extract single/double-quoted string literals from a `class:list` array's
  * joined content (object-key form like `{ "p-4": true }` is included, since
- * the key itself is a quoted string literal).
+ * the key itself is a quoted string literal). Each match is attributed to its
+ * actual source line — see extractFromCallArgs for why, and for the
+ * ignoredLines semantics applied per inner line.
  */
 function extractFromClassListArray(
   results: ExtractedClass[],
   arrayContent: string,
-  line: number,
+  startLine0: number,
+  ignoredLines: Set<number>,
 ): void {
+  const newlineOffsets = collectNewlineOffsets(arrayContent);
+  let cursor = 0;
   for (const match of arrayContent.matchAll(/['"]([^'"]+)['"]/g)) {
-    addClasses(results, match[1], line);
+    const matchIndex = match.index ?? 0;
+    while (cursor < newlineOffsets.length && newlineOffsets[cursor] < matchIndex) {
+      cursor++;
+    }
+    const actualLine0 = startLine0 + cursor;
+    if (ignoredLines.has(actualLine0)) continue;
+    addClasses(results, match[1], actualLine0 + 1);
   }
 }
 
