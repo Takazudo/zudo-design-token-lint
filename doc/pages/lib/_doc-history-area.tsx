@@ -28,7 +28,12 @@ import { settings } from "@/config/settings";
 import { defaultLocale, t } from "@/config/i18n";
 import { BodyFootUtilArea } from "@takazudo/zudo-doc/body-foot-util";
 import { buildGitHubSourceUrl } from "@/utils/github";
-import { DocHistory } from "@/components/doc-history";
+// Import the real DocHistory island directly from the package so zfb's island
+// scanner registers a single source under the "DocHistory" marker. The
+// `@/components/doc-history` shim (a `"use client"` re-export) is kept only as
+// a stable project-local path; importing island code through it would register
+// the shim as a second source and collide with the package island.
+import { DocHistory } from "@takazudo/zudo-doc/doc-history";
 import { toHistorySlug } from "@/utils/slug";
 // SSR author + date metadata comes from `.zfb/doc-history-meta.json`, a
 // build-time manifest emitted by `scripts/zfb-prebuild.mjs` (step 2:
@@ -40,13 +45,8 @@ import { toHistorySlug } from "@/utils/slug";
 // across the shadow boundary would resolve to the wrong location.
 import docHistoryMeta from "#doc-history-meta";
 
-// Set explicit `displayName` on the named-export DocHistory so zfb's
-// `captureComponentName` produces a stable marker even after the SSR
-// pipeline runs the component through a function-name-rewriting layer.
-// (DocHistory is `export function DocHistory(...)` — `name` is already
-// "DocHistory" but the explicit assignment is a guard for production
-// minification regressions, mirroring the BodyEndIslands helper.)
-(DocHistory as { displayName?: string }).displayName = "DocHistory";
+// The package's DocHistory island pins its own `displayName` internally, so no
+// host-side marker pin is needed here.
 
 interface DocHistoryAreaProps {
   /** Page slug, e.g. "getting-started/intro". */
