@@ -167,6 +167,7 @@ export interface CompiledRule {
 
 // Matches the placeholders compilePattern understands inside a value part.
 const PLACEHOLDER_TOKEN = /\{n\}|\{color\}|\{shade\}/g;
+const KNOWN_PLACEHOLDER_TOKENS = new Set(['{n}', '{color}', '{shade}']);
 
 /**
  * Escape regex metacharacters in a literal string segment. Mirrors the
@@ -175,6 +176,35 @@ const PLACEHOLDER_TOKEN = /\{n\}|\{color\}|\{shade\}/g;
  */
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Validate every "{...}" occurrence in a value part: it must be one of the
+ * known placeholder tokens ({n}, {color}, {shade}), fully closed, with no
+ * stray "}" left unmatched. Without this, a typo like "{number}" or a bare
+ * "{}" would silently compile as escaped literal text — the rule would
+ * compile without error but never match the classes it was meant to catch.
+ */
+function validatePlaceholders(pattern: string, valuePart: string): void {
+  let i = 0;
+  while (i < valuePart.length) {
+    const ch = valuePart[i];
+    if (ch === '{') {
+      const close = valuePart.indexOf('}', i);
+      if (close === -1) {
+        throw new Error(`Invalid pattern "${pattern}": unclosed placeholder "{"`);
+      }
+      const token = valuePart.slice(i, close + 1);
+      if (!KNOWN_PLACEHOLDER_TOKENS.has(token)) {
+        throw new Error(`Invalid pattern "${pattern}": unknown placeholder "${token}"`);
+      }
+      i = close + 1;
+    } else if (ch === '}') {
+      throw new Error(`Invalid pattern "${pattern}": unmatched "}" with no preceding "{"`);
+    } else {
+      i++;
+    }
+  }
 }
 
 /**
@@ -207,7 +237,8 @@ function expandValuePart(valuePart: string): string {
  * Compile a single pattern string into a rule.
  *
  * Throws a plain Error when the pattern is malformed (e.g. a placeholder
- * not preceded by "-", or an unclosed "{").
+ * not preceded by "-", an unclosed "{", or an unrecognized placeholder
+ * like "{number}").
  */
 export function compilePattern(pattern: string, suggestionSuffix?: string): CompiledRule {
   // Find the first placeholder
@@ -225,13 +256,11 @@ export function compilePattern(pattern: string, suggestionSuffix?: string): Comp
   if (placeholderIndex === 0 || pattern[placeholderIndex - 1] !== '-') {
     throw new Error(`Invalid pattern "${pattern}": placeholder "{" must be preceded by "-"`);
   }
-  if (pattern.indexOf('}', placeholderIndex) === -1) {
-    throw new Error(`Invalid pattern "${pattern}": unclosed placeholder "{"`);
-  }
 
   // Split into prefix (everything before the placeholder, minus trailing -)
   const prefix = pattern.slice(0, placeholderIndex - 1);
   const valuePart = pattern.slice(placeholderIndex);
+  validatePlaceholders(pattern, valuePart);
 
   // Build regex from the value part
   let regexStr = '^';

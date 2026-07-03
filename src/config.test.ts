@@ -90,6 +90,16 @@ describe('compilePattern — malformed patterns', () => {
   it('throws a clear error when a placeholder is unclosed', () => {
     expect(() => compilePattern('p-{n')).toThrow(/unclosed/i);
   });
+
+  it('throws a clear error on an unrecognized placeholder instead of silently matching nothing', () => {
+    // A typo like "{number}" must not be silently escaped to dead literal text.
+    expect(() => compilePattern('p-{number}')).toThrow(/unknown placeholder/i);
+    expect(() => compilePattern('p-{}')).toThrow(/unknown placeholder/i);
+  });
+
+  it('throws a clear error on a stray closing brace', () => {
+    expect(() => compilePattern('p-{n}}')).toThrow(/unmatched/i);
+  });
 });
 
 describe('checkClassWithConfig', () => {
