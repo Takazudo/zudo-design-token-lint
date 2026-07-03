@@ -40,10 +40,13 @@ interface CliResult {
  * or via a nonzero exit code (execFile rejects with stdout/stderr attached).
  */
 async function runCli(args: string[], cwd: string, env?: NodeJS.ProcessEnv): Promise<CliResult> {
+  // GITHUB_ACTIONS flips the CLI's output format to github annotations
+  // (auto-detect); scrub it so these assertions are environment-independent.
+  const { GITHUB_ACTIONS: _ignored, ...cleanEnv } = process.env;
   try {
     const { stdout, stderr } = await execFileAsync(process.execPath, [distCli, ...args], {
       cwd,
-      env: env ?? process.env,
+      env: env ?? cleanEnv,
     });
     return { code: 0, stdout, stderr };
   } catch (err) {
@@ -82,6 +85,15 @@ describe('CLI subprocess — node dist/cli.js', () => {
     expect(result.stderr).toContain('violations.jsx');
     expect(result.stderr).toContain('p-4');
     expect(result.stderr).toMatch(/Found \d+ violation\(s\) in \d+ file\(s\)\./);
+  });
+
+  it('auto-selects github format when GITHUB_ACTIONS is truthy in the environment', async () => {
+    const result = await runCli([], sampleProjectDir, {
+      ...process.env,
+      GITHUB_ACTIONS: 'true',
+    });
+    expect(result.code).toBe(1);
+    expect(result.stdout).toMatch(/^::error file=.*violations\.jsx,line=\d+::/m);
   });
 
   describe('with a scratch temp directory', () => {
