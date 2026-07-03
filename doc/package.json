@@ -21,10 +21,10 @@
     "setup:doc-skill": "bash scripts/setup-doc-skill.sh"
   },
   "dependencies": {
-    "@takazudo/zfb": "0.1.0-next.51",
-    "@takazudo/zfb-runtime": "0.1.0-next.51",
-    "@takazudo/zfb-adapter-cloudflare": "0.1.0-next.51",
-    "@takazudo/zudo-doc": "^0.2.11",
+    "@takazudo/zfb": "0.1.0-next.76",
+    "@takazudo/zfb-runtime": "0.1.0-next.76",
+    "@takazudo/zfb-adapter-cloudflare": "0.1.0-next.76",
+    "@takazudo/zudo-doc": "^2.5.0",
     "zod": "^4.0.0",
     "preact": "^10.29.1",
     "preact-render-to-string": "^6.6.6",
@@ -38,7 +38,7 @@
     "katex": "^0.16.38",
     "minisearch": "^7.2.0",
     "diff": "^8.0.3",
-    "@takazudo/zudo-doc-history-server": "^0.2.11"
+    "@takazudo/zudo-doc-history-server": "^2.5.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.0",
@@ -46,7 +46,7 @@
     "typescript": "^5.9.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",
-    "create-zudo-doc": "^0.2.11",
+    "create-zudo-doc": "^2.5.0",
     "html-validate": "^10.0.0",
     "pagefind": "^1.4.0",
     "tsx": "^4.21.0",

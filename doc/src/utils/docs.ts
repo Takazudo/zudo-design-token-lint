@@ -123,6 +123,17 @@ function navTreeCacheKey(
     .join(",")}`;
 }
 
+/** A docs-href builder: `(slug, locale) => url`. Lets a caller inject the URL
+ *  space the tree's hrefs are minted in (e.g. a versioned route's own URLs)
+ *  instead of the default latest-route `docsUrl`. */
+export type BuildHref = (slug: string, locale: Locale) => string;
+
+/** Optional injected dependencies for {@link buildNavTree}. */
+export interface BuildNavTreeOptions {
+  /** Override the href builder used for every node (defaults to `docsUrl`). */
+  buildHref?: BuildHref;
+}
+
 /**
  * Build a recursive navigation tree from a flat content collection.
  * Mirrors the filesystem: directories become category nodes, files become leaves.
@@ -131,28 +142,45 @@ function navTreeCacheKey(
  * framework builder (`buildSidebarTree` in @takazudo/zudo-doc/sidebar-tree);
  * this function keeps the host-side concerns: the NavNode shape consumed by
  * every host nav surface, the content-key cache, and the identity fast-path.
+ *
+ * `options.buildHref` parameterizes the href space (#2344, S1a): callers pass it
+ * to mint hrefs in their own route's URL space. Omit it to keep the default
+ * latest-route `docsUrl` behavior — every existing 3-arg call site is unchanged.
  */
 export function buildNavTree(
   docs: DocsEntry[],
   lang: Locale = defaultLocale,
   categoryMeta?: Map<string, CategoryMeta>,
+  options?: BuildNavTreeOptions,
 ): NavNode[] {
+  const buildHref: BuildHref = options?.buildHref ?? ((slug, locale) => docsUrl(slug, locale));
+  // Both cache layers are keyed by (docs, lang, categoryMeta) and assume the
+  // default `docsUrl` href space. A custom `buildHref` mints a DIFFERENT href
+  // space for the same key, so it must skip both the read (would return a tree
+  // with default hrefs) and the write (would poison the default-href cache for
+  // later callers). Only the default-href path — every current call site — is
+  // cached; custom-href callers (versioned routes, S6/S7/S8) recompute. The
+  // cache exists for the hot default path, which this preserves exactly.
+  const useCache = options?.buildHref === undefined;
+
   // Identity fast-path: stable array instance already seen for this
   // (lang, categoryMeta)? Return its tree without recomputing the key.
-  const byIdentity = navTreeByIdentity.get(docs);
-  if (byIdentity) {
-    for (const slot of byIdentity) {
-      if (slot.lang === lang && slot.categoryMeta === categoryMeta) {
-        return slot.tree;
+  if (useCache) {
+    const byIdentity = navTreeByIdentity.get(docs);
+    if (byIdentity) {
+      for (const slot of byIdentity) {
+        if (slot.lang === lang && slot.categoryMeta === categoryMeta) {
+          return slot.tree;
+        }
       }
     }
-  }
 
-  const cacheKey = navTreeCacheKey(docs, lang, categoryMeta);
-  const cached = navTreeCacheGet(cacheKey);
-  if (cached) {
-    rememberIdentity(docs, lang, categoryMeta, cached);
-    return cached;
+    const cacheKey = navTreeCacheKey(docs, lang, categoryMeta);
+    const cached = navTreeCacheGet(cacheKey);
+    if (cached) {
+      rememberIdentity(docs, lang, categoryMeta, cached);
+      return cached;
+    }
   }
 
   const sidebarTree = buildSidebarTree(
@@ -166,7 +194,7 @@ export function buildNavTree(
     lang,
     {
       categoryMeta,
-      buildHref: (slug, locale) => docsUrl(slug, locale),
+      buildHref: (slug, locale) => buildHref(slug, locale as Locale),
       // Host call sites own visibility: nav surfaces pre-filter via
       // `stableNavDocs(docs.filter(isNavVisible))`, while the breadcrumb tree
       // intentionally builds from the UNFILTERED list so unlisted pages still
@@ -186,7 +214,7 @@ export function buildNavTree(
   // already-sorted rest).
   const rootDoc = findRootIndexDoc(docs);
   if (rootDoc) {
-    result.push(toRootNavNode(rootDoc, lang, categoryMeta));
+    result.push(toRootNavNode(rootDoc, lang, buildHref, categoryMeta));
     result.sort((a, b) => {
       const posCompare = a.position - b.position;
       if (posCompare !== 0) return posCompare;
@@ -194,8 +222,10 @@ export function buildNavTree(
     });
   }
 
-  navTreeCacheSet(cacheKey, result);
-  rememberIdentity(docs, lang, categoryMeta, result);
+  if (useCache) {
+    navTreeCacheSet(navTreeCacheKey(docs, lang, categoryMeta), result);
+    rememberIdentity(docs, lang, categoryMeta, result);
+  }
   return result;
 }
 
@@ -219,6 +249,7 @@ function findRootIndexDoc(docs: DocsEntry[]): DocsEntry | undefined {
 function toRootNavNode(
   doc: DocsEntry,
   lang: Locale,
+  buildHref: BuildHref,
   categoryMeta?: Map<string, CategoryMeta>,
 ): NavNode {
   const meta = categoryMeta?.get("");
@@ -229,7 +260,7 @@ function toRootNavNode(
     label: doc.data.sidebar_label ?? doc.data.title ?? meta?.label ?? "",
     description: doc.data.description ?? meta?.description,
     position: doc.data.sidebar_position ?? meta?.position ?? 999,
-    href: noPage ? undefined : docsUrl("", lang),
+    href: noPage ? undefined : buildHref("", lang),
     hasPage: noPage !== true,
     children: [],
     sortOrder,

@@ -51,7 +51,7 @@ import {
 // project-source shim (#2048/#2057). This header composes its own Island
 // below, avoiding nesting an island inside an island.
 import { ThemeToggle } from "@takazudo/zudo-doc/theme-toggle";
-import SidebarToggle from "@/components/sidebar-toggle";
+import { SidebarToggle } from "@/components/sidebar-toggle";
 import { settings } from "@/config/settings";
 import { defaultLocale, locales, t, type Locale } from "@/config/i18n";
 import { buildGitHubRepoUrl } from "@/utils/github";

@@ -67,7 +67,11 @@ export function escapeForMdx(content: string): string {
             return `&lt;/${name}&gt;`;
           },
         )
-        // Escape self-closing tags: <Name />
+        // Escape self-closing tags. The spaced form <Foo /> is already handled
+        // by the opening-tag regex above ((\s[^>]*)? matches " /", then > closes),
+        // but the COMPACT form <Foo/> (no space before the slash) is NOT — the
+        // name is consumed, (\s[^>]*)? matches empty, then the regex needs ">"
+        // and finds "/". So this branch is still required for the compact form.
         .replace(
           /<([A-Za-z][A-Za-z0-9_-]*)(\s[^>]*)?\s*\/>/g,
           (match, name: string) => {
@@ -84,7 +88,7 @@ export function escapeForMdx(content: string): string {
       // Restore inline code placeholders
       escaped = escaped.replace(
         new RegExp(`${inlinePlaceholder}(\\d+)\x00`, "g"),
-        (_, idx: string) => inlineCodes[Number(idx)],
+        (_, idx: string) => inlineCodes[Number(idx)] ?? "",
       );
 
       return escaped;

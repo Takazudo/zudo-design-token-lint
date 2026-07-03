@@ -31,4 +31,12 @@ describe("escapeForMdx", () => {
   it("escapes self-closing non-allowlisted component tags", () => {
     expect(escapeForMdx("<Component />")).toMatch(/&lt;Component\s*\/&gt;/);
   });
+
+  it("escapes the compact self-closing form <Foo/> (no space before slash)", () => {
+    // Regression: the opening-tag regex only matches the spaced form <Foo />,
+    // so the compact <Foo/> needs the dedicated self-closing branch.
+    const out = escapeForMdx("<Foo/>");
+    expect(out).toBe("&lt;Foo/&gt;");
+    expect(out).not.toContain("<Foo/>");
+  });
 });

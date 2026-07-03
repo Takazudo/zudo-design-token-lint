@@ -34,7 +34,7 @@ import type { JSX } from "preact";
 // path; this wave routes the hydration target so the wiring actually
 // reaches the rendered tree).
 import { Island } from "@takazudo/zfb";
-import SidebarTree from "@/components/sidebar-tree";
+import { SidebarTree } from "@/components/sidebar-tree";
 import { defaultLocale, locales, t, type Locale } from "@/config/i18n";
 import {
   buildRootMenuItems,

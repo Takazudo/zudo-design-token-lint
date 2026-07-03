@@ -156,7 +156,7 @@ export function isDefaultLocaleOnlyPath(path: string): boolean {
 }
 
 /** Build a versioned docs URL for the given slug, version, and lang. */
-export function versionedDocsUrl(slug: string, versionSlug: string, lang: Locale = defaultLocale): string {
+export function versionedDocsUrl(slug: string, versionSlug: string, lang: Locale | string = defaultLocale): string {
   const path = lang === defaultLocale
     ? `/v/${versionSlug}/docs/${slug}`
     : `/v/${versionSlug}/${lang}/docs/${slug}`;
