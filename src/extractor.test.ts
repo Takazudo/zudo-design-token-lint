@@ -58,6 +58,19 @@ describe('extractClasses', () => {
     ]);
   });
 
+  it('extracts from a multiline class:list array (Prettier style)', () => {
+    const content = `<div class:list={[
+  "p-4 flex",
+  'bg-gray-500',
+]}>`;
+    const result = extractClasses(content);
+    expect(result).toEqual([
+      { className: 'p-4', line: 1 },
+      { className: 'flex', line: 1 },
+      { className: 'bg-gray-500', line: 1 },
+    ]);
+  });
+
   it('extracts from cn/clsx utility calls', () => {
     const content = `const cls = cn("p-4 flex", 'bg-zd-black');`;
     const result = extractClasses(content);
@@ -66,6 +79,115 @@ describe('extractClasses', () => {
       { className: 'flex', line: 1 },
       { className: 'bg-zd-black', line: 1 },
     ]);
+  });
+
+  it('extracts from className={"..."} (double-quote brace form)', () => {
+    const content = '<div className={"p-4 flex"}>';
+    const result = extractClasses(content);
+    expect(result).toEqual([
+      { className: 'p-4', line: 1 },
+      { className: 'flex', line: 1 },
+    ]);
+  });
+
+  describe('multiline utility function calls', () => {
+    it('extracts from a multiline cn() call (Prettier/shadcn style)', () => {
+      const content = `const cls = cn(
+  "p-4",
+  isActive && "bg-blue-500",
+  className,
+);`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'bg-blue-500', line: 1 },
+      ]);
+    });
+
+    it('extracts from a multiline clsx() call', () => {
+      const content = `const cls = clsx(
+  'gap-4',
+  'hidden'
+);`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'gap-4', line: 1 },
+        { className: 'hidden', line: 1 },
+      ]);
+    });
+
+    it('a `)` inside a string literal does not close the call early', () => {
+      const content = `const cls = cn(
+  "p-4)",
+  "m-8"
+);`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4)', line: 1 },
+        { className: 'm-8', line: 1 },
+      ]);
+    });
+
+    it('balances nested calls before closing (single line)', () => {
+      const content = `const cls = cn(cond ? 'p-2' : cx('p-4'));`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-2', line: 1 },
+        { className: 'p-4', line: 1 },
+      ]);
+    });
+
+    it('balances nested calls before closing (multiline)', () => {
+      const content = `const cls = cn(
+  cond ? 'p-2' : cx('p-4'),
+  'm-8'
+);`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-2', line: 1 },
+        { className: 'p-4', line: 1 },
+        { className: 'm-8', line: 1 },
+      ]);
+    });
+
+    it('bails gracefully past the 50-line cap without crashing', () => {
+      const argLines = Array.from({ length: 60 }, (_, i) => `  "p-${i}",`);
+      const content = `const cls = cn(\n${argLines.join('\n')}\n);`;
+      expect(() => extractClasses(content)).not.toThrow();
+    });
+  });
+
+  describe('function-name word boundary', () => {
+    it('does not scan an identifier merely ending in a function name', () => {
+      const content = `const cls = mycn("p-4");`;
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('still scans the configured function name itself', () => {
+      const content = `const cls = cn("p-4");`;
+      const result = extractClasses(content);
+      expect(result).toEqual([{ className: 'p-4', line: 1 }]);
+    });
+  });
+
+  describe('template-literal arguments in utility function calls', () => {
+    it('extracts from a fully static template-literal argument', () => {
+      const content = 'const cls = cn(`p-6 m-6`);';
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-6', line: 1 },
+        { className: 'm-6', line: 1 },
+      ]);
+    });
+
+    it('static tokens are flagged; ${...} tokens fall through unmatched', () => {
+      const content = 'const cls = cn(`p-6 ${x} m-6`);';
+      const result = extractClasses(content);
+      expect(result.some((r) => r.className === 'p-6')).toBe(true);
+      expect(result.some((r) => r.className === 'm-6')).toBe(true);
+      expect(result.some((r) => r.className.includes('${x}'))).toBe(true);
+    });
   });
 
   it('tracks correct line numbers', () => {

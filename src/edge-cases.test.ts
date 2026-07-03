@@ -23,6 +23,56 @@ describe('edge cases', () => {
       const result = extractClasses(content);
       expect(result.some((r) => r.className === 'm-4')).toBe(false);
     });
+
+    it('mixes a multiline cn() call with a single-line cn() call in the same file', () => {
+      const content = `const a = cn("p-4", "flex");
+const b = cn(
+  "m-8",
+  "gap-2"
+);`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'flex', line: 1 },
+        { className: 'm-8', line: 2 },
+        { className: 'gap-2', line: 2 },
+      ]);
+    });
+
+    it('does not scan a function name preceded by $ (word-boundary lookbehind)', () => {
+      const content = 'const cls = $cn("p-4");';
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('scans a call whose name is immediately preceded by a non-word character', () => {
+      const content = '<div className={cn("p-4")}>';
+      const result = extractClasses(content);
+      expect(result).toEqual([{ className: 'p-4', line: 1 }]);
+    });
+
+    it('extracts a multiline class:list array with object-key syntax (Astro)', () => {
+      const content = `<div class:list={[
+  { "p-4": true, "m-8": isActive }
+]}>`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'm-8', line: 1 },
+      ]);
+    });
+
+    it('a `]` inside a class:list string literal does not close the array early', () => {
+      const content = `<div class:list={[
+  "p-4]",
+  "m-8"
+]}>`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4]', line: 1 },
+        { className: 'm-8', line: 1 },
+      ]);
+    });
   });
 
   describe('checkClass', () => {
