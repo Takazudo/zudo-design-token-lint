@@ -184,12 +184,21 @@ export function extractClasses(content: string): ExtractedClass[] {
   const doubleQuoteAttr = /(?:className|class)\s*=\s*"([^"]+)"/g;
   const singleQuoteAttr = /(?:className|class)\s*=\s*'([^']+)'/g;
   const singleQuoteBrace = /(?:className|class)\s*=\s*\{\s*'([^']+)'\s*\}/g;
+  const doubleQuoteBrace = /(?:className|class)\s*=\s*\{\s*"([^"]+)"\s*\}/g;
   const templateLiteral = /(?:className|class)\s*=\s*\{\s*`([^`]+)`\s*\}/g;
-  const classListPattern = /class:list\s*=\s*\{\s*\[([^\]]+)\]\s*\}/g;
-  const utilFnPattern =
-    /(?:cn|clsx|classNames|twMerge)\s*\(\s*([^)]+)\)/g;
 
-  for (let i = 0; i < lines.length; i++) {
+  // class:list={[...]} — matches only up to the opening '[' — the array
+  // contents are scanned separately via scanBalancedDelimited so the array
+  // can span multiple lines.
+  const classListStart = /class:list\s*=\s*\{\s*\[/g;
+
+  // Utility function call-start pattern — matches only the function name +
+  // opening paren — the args are scanned separately via
+  // scanBalancedDelimited so calls can span multiple lines. Word-boundary
+  // guard avoids matching a substring of a longer identifier (e.g. "xcn(").
+  const utilFnStart = /(?<![\w$])(?:cn|clsx|classNames|twMerge)\s*\(/g;
+
+  lineLoop: for (let i = 0; i < lines.length; i++) {
     if (ignoredLines.has(i)) continue;
 
     const line = lines[i];
@@ -204,24 +213,220 @@ export function extractClasses(content: string): ExtractedClass[] {
     for (const match of line.matchAll(singleQuoteBrace)) {
       addClasses(results, match[1], lineNum);
     }
+    for (const match of line.matchAll(doubleQuoteBrace)) {
+      addClasses(results, match[1], lineNum);
+    }
     for (const match of line.matchAll(templateLiteral)) {
       addClasses(results, match[1], lineNum);
     }
-    for (const match of line.matchAll(classListPattern)) {
-      const arrayContent = match[1];
-      for (const strMatch of arrayContent.matchAll(/['"]([^'"]+)['"]/g)) {
-        addClasses(results, strMatch[1], lineNum);
+
+    // class:list={[...]} — accumulate across lines until brackets balance
+    // (same 50-line cap as utility function calls).
+    classListStart.lastIndex = 0;
+    let clMatch: RegExpExecArray | null;
+    while ((clMatch = classListStart.exec(line)) !== null) {
+      const startCol = classListStart.lastIndex; // just past the opening '['
+      const arr = scanBalancedDelimited(lines, i, startCol, "[", "]");
+      extractFromClassListArray(results, arr.content, i, ignoredLines);
+
+      if (arr.endLine !== i) {
+        // Array spanned multiple lines. Blank out the consumed prefix of the
+        // closing line (preserving column positions) and reprocess that
+        // line, so source after the closing ']' is still scanned.
+        lines[arr.endLine] =
+          " ".repeat(arr.endCol) + lines[arr.endLine].slice(arr.endCol);
+        i = arr.endLine - 1;
+        continue lineLoop;
       }
+      classListStart.lastIndex = arr.endCol;
     }
-    for (const match of line.matchAll(utilFnPattern)) {
-      const argsContent = match[1];
-      for (const strMatch of argsContent.matchAll(/['"]([^'"]+)['"]/g)) {
-        addClasses(results, strMatch[1], lineNum);
+
+    // cn(...) / clsx(...) / classNames(...) / twMerge(...) — accumulate
+    // arguments across lines until parens balance.
+    utilFnStart.lastIndex = 0;
+    let fnMatch: RegExpExecArray | null;
+    while ((fnMatch = utilFnStart.exec(line)) !== null) {
+      const startCol = utilFnStart.lastIndex; // just past the opening '('
+      const call = scanBalancedDelimited(lines, i, startCol, "(", ")");
+      extractFromCallArgs(results, call.content, i, ignoredLines);
+
+      if (call.endLine !== i) {
+        // Call spanned multiple lines. Blank out the consumed prefix of the
+        // closing line (preserving column positions) and reprocess that
+        // line, so source after the closing ')' is still scanned.
+        lines[call.endLine] =
+          " ".repeat(call.endCol) + lines[call.endLine].slice(call.endCol);
+        i = call.endLine - 1;
+        continue lineLoop;
       }
+      utilFnStart.lastIndex = call.endCol;
     }
   }
 
   return results;
+}
+
+interface BalancedScan {
+  /** Joined text between the opening and closing delimiter (exclusive). */
+  content: string;
+  /** Index (0-based) of the line containing the closing delimiter, or the last line scanned. */
+  endLine: number;
+  /** Column just past the closing delimiter on `endLine` (only meaningful when balanced). */
+  endCol: number;
+}
+
+/**
+ * Scan forward from just after an opening delimiter (`(` for utility
+ * function calls, `[` for `class:list` arrays), tracking delimiter depth
+ * while skipping over string/template-literal contents — so a closing
+ * delimiter or a nested opening one inside a string literal never affects
+ * balance. Crosses line boundaries up to a 50-line safety cap, returning
+ * whatever was accumulated if the cap is hit.
+ */
+function scanBalancedDelimited(
+  lines: string[],
+  startLine: number,
+  startCol: number,
+  openChar: string,
+  closeChar: string,
+): BalancedScan {
+  const maxLines = 50;
+  let depth = 1;
+  let content = "";
+  let quote: string | null = null;
+  let line = startLine;
+  let col = startCol;
+  let linesConsumed = 0;
+
+  while (line < lines.length) {
+    const text = lines[line];
+    while (col < text.length) {
+      const ch = text[col];
+
+      if (quote) {
+        if (ch === "\\" && col + 1 < text.length) {
+          content += ch + text[col + 1];
+          col += 2;
+          continue;
+        }
+        if (ch === quote) quote = null;
+        content += ch;
+        col++;
+        continue;
+      }
+
+      if (ch === '"' || ch === "'" || ch === "`") {
+        quote = ch;
+        content += ch;
+        col++;
+        continue;
+      }
+
+      if (ch === openChar) {
+        depth++;
+        content += ch;
+        col++;
+        continue;
+      }
+
+      if (ch === closeChar) {
+        depth--;
+        col++;
+        if (depth === 0) {
+          return { content, endLine: line, endCol: col };
+        }
+        content += ch;
+        continue;
+      }
+
+      content += ch;
+      col++;
+    }
+
+    if (line + 1 >= lines.length || linesConsumed >= maxLines) {
+      return { content, endLine: line, endCol: col };
+    }
+    line++;
+    col = 0;
+    linesConsumed++;
+    content += "\n";
+  }
+
+  return { content, endLine: Math.max(line - 1, startLine), endCol: col };
+}
+
+/**
+ * Return the 0-based character offset of every `\n` in `text`, in ascending
+ * order. Used to map a match's character index in accumulated multiline
+ * content back to the source line it actually came from.
+ */
+function collectNewlineOffsets(text: string): number[] {
+  const offsets: number[] = [];
+  for (let idx = 0; idx < text.length; idx++) {
+    if (text.charCodeAt(idx) === 10) offsets.push(idx);
+  }
+  return offsets;
+}
+
+/**
+ * Extract string-literal and template-literal class tokens from a utility
+ * function's joined argument text. Each match is attributed to its actual
+ * source line — `startLine0` (0-based) plus the number of newlines
+ * accumulated before the match — not the line the call opened on, so a
+ * design-token-lint-ignore comment on an inner argument line suppresses
+ * only that line's classes. Template-literal tokens containing `${...}`
+ * fall through untouched — they don't match any lint rule pattern.
+ */
+function extractFromCallArgs(
+  results: ExtractedClass[],
+  argsText: string,
+  startLine0: number,
+  ignoredLines: Set<number>,
+): void {
+  const newlineOffsets = collectNewlineOffsets(argsText);
+  let cursor = 0;
+  for (const match of argsText.matchAll(/'([^']*)'|"([^"]*)"|`([^`]*)`/g)) {
+    const value = match[1] ?? match[2] ?? match[3] ?? "";
+    const matchIndex = match.index ?? 0;
+    while (
+      cursor < newlineOffsets.length &&
+      newlineOffsets[cursor] < matchIndex
+    ) {
+      cursor++;
+    }
+    const actualLine0 = startLine0 + cursor;
+    if (ignoredLines.has(actualLine0)) continue;
+    addClasses(results, value, actualLine0 + 1);
+  }
+}
+
+/**
+ * Extract single/double-quoted string literals from a `class:list` array's
+ * joined content (object-key form like `{ "p-4": true }` is included, since
+ * the key itself is a quoted string literal). Each match is attributed to
+ * its actual source line — see extractFromCallArgs for why, and for the
+ * ignoredLines semantics applied per inner line.
+ */
+function extractFromClassListArray(
+  results: ExtractedClass[],
+  arrayContent: string,
+  startLine0: number,
+  ignoredLines: Set<number>,
+): void {
+  const newlineOffsets = collectNewlineOffsets(arrayContent);
+  let cursor = 0;
+  for (const match of arrayContent.matchAll(/['"]([^'"]+)['"]/g)) {
+    const matchIndex = match.index ?? 0;
+    while (
+      cursor < newlineOffsets.length &&
+      newlineOffsets[cursor] < matchIndex
+    ) {
+      cursor++;
+    }
+    const actualLine0 = startLine0 + cursor;
+    if (ignoredLines.has(actualLine0)) continue;
+    addClasses(results, match[1], actualLine0 + 1);
+  }
 }
 
 // ── Rule matching (from src/rules.ts) ──────────────────────────────
@@ -278,8 +483,14 @@ export function checkClassWithConfig(
   const lastColon = className.lastIndexOf(":");
   let stripped = lastColon >= 0 ? className.slice(lastColon + 1) : className;
 
+  // Strip important modifier — leading form is Tailwind v3 (!p-4, sm:!p-4),
+  // trailing form is Tailwind v4 (p-4!, sm:p-4!). Both must be stripped
+  // before the negative/opacity handling below.
   if (stripped.startsWith("!")) {
     stripped = stripped.slice(1);
+  }
+  if (stripped.endsWith("!")) {
+    stripped = stripped.slice(0, -1);
   }
 
   const isNegative = stripped.startsWith("-");
@@ -293,7 +504,10 @@ export function checkClassWithConfig(
     return null;
   }
 
-  if (config.allowed.has(withoutOpacity)) {
+  // Match against the normalized form AND the original className verbatim,
+  // so exact-match entries like "-mt-4", "hover:p-2", or "bg-red-500/50"
+  // (copied straight from a violation message) actually take effect.
+  if (config.allowed.has(withoutOpacity) || config.allowed.has(className)) {
     return null;
   }
 
