@@ -15,7 +15,13 @@ import chalk from 'chalk';
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, isAbsolute, resolve } from 'node:path';
-import { loadConfig, compileConfig } from './config.js';
+import {
+  loadConfig,
+  compileConfig,
+  ConfigError,
+  type LintConfig,
+  type CompiledConfig,
+} from './config.js';
 import { setConfig } from './rules.js';
 import { lintFile, type LintResult } from './linter.js';
 
@@ -28,17 +34,40 @@ const DEFAULT_PATTERNS = [
 
 const DEFAULT_IGNORE_PATTERNS = ['**/node_modules/**', '**/dist/**', '**/__inbox/**'];
 
+/**
+ * Output format for reported violations.
+ *
+ * "human" is the default colorized, grouped-by-file display. "github" emits
+ * one GitHub Actions `::error` workflow command per violation instead, so
+ * CI runs surface inline annotations on the offending lines.
+ */
+export type OutputFormat = 'human' | 'github';
+
+const VALID_OUTPUT_FORMATS: OutputFormat[] = ['human', 'github'];
+
 export type ParsedArgs =
   | { kind: 'help' }
   | { kind: 'version' }
-  | { kind: 'run'; patterns: string[] };
+  | { kind: 'run'; patterns: string[]; json: boolean; format?: OutputFormat }
+  | { kind: 'error'; message: string };
+
+const KNOWN_FLAGS = new Set(['-h', '--help', '-V', '--version', '--json', '--format']);
 
 /**
  * Parse CLI argv (process.argv.slice(2)).
  *
- * Recognizes -h/--help and -V/--version as flags. Any other args are treated
- * as glob patterns. Flags take precedence; if both --help and --version are
+ * Recognizes -h/--help and -V/--version as flags. Any other arg starting
+ * with "-" is treated as an unrecognized option (kind: 'error') rather than
+ * a glob pattern — bare glob patterns (which never start with "-") are
+ * unaffected. Flags take precedence; if both --help and --version are
  * present, --help wins (it appears earlier in conventional CLIs).
+ *
+ * --json is a standalone boolean flag. --format takes a required value
+ * (human|github) consumed from the following arg; a missing or invalid
+ * value is reported as an error rather than silently falling through to
+ * being treated as a glob pattern. `format` is left `undefined` when the
+ * flag isn't passed so the caller can distinguish "not specified" (and fall
+ * back to env-based auto-detection) from an explicit choice.
  */
 export function parseArgs(args: string[]): ParsedArgs {
   if (args.includes('-h') || args.includes('--help')) {
@@ -47,7 +76,36 @@ export function parseArgs(args: string[]): ParsedArgs {
   if (args.includes('-V') || args.includes('--version')) {
     return { kind: 'version' };
   }
-  return { kind: 'run', patterns: args };
+
+  let json = false;
+  let format: OutputFormat | undefined;
+  const patterns: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--json') {
+      json = true;
+      continue;
+    }
+    if (arg === '--format') {
+      const value = args[i + 1];
+      if (value === undefined || !VALID_OUTPUT_FORMATS.includes(value as OutputFormat)) {
+        return {
+          kind: 'error',
+          message: `--format requires a value: ${VALID_OUTPUT_FORMATS.join(' or ')}`,
+        };
+      }
+      format = value as OutputFormat;
+      i++; // consume the value so it isn't also treated as a glob pattern
+      continue;
+    }
+    if (arg.startsWith('-') && !KNOWN_FLAGS.has(arg)) {
+      return { kind: 'error', message: `Unknown option: ${arg}` };
+    }
+    patterns.push(arg);
+  }
+
+  return { kind: 'run', patterns, json, format };
 }
 
 /**
@@ -86,8 +144,13 @@ export function helpText(): string {
     'with semantic design tokens.',
     '',
     'Options:',
-    '  -h, --help     Show this help message and exit',
-    '  -V, --version  Print the package version and exit',
+    '  -h, --help         Show this help message and exit',
+    '  -V, --version      Print the package version and exit',
+    '      --json         Print results as a JSON array on stdout',
+    '                     (human-readable output still goes to stderr)',
+    '      --format <fmt> Output format for violations: human (default) or github',
+    '                     github prints "::error" GitHub Actions workflow commands',
+    '                     on stdout instead of the human display',
     '',
     'Patterns:',
     '  When no patterns are passed, the linter reads `patterns` from',
@@ -98,6 +161,9 @@ export function helpText(): string {
     '  TOKEN_LINT_ALLOW_EMPTY  When set to 1/true/yes/on (case-insensitive),',
     '                          exit 0 (instead of 2) when no files match.',
     '                          Useful as a first-run / bootstrap escape hatch.',
+    '  GITHUB_ACTIONS          Set automatically by GitHub Actions; when truthy,',
+    '                          auto-selects --format github unless --format is',
+    '                          passed explicitly (the flag always wins).',
   ].join('\n');
 }
 
@@ -107,6 +173,62 @@ export interface MainOptions {
   cwd: string;
   stdout: (msg: string) => void;
   stderr: (msg: string) => void;
+}
+
+/**
+ * Group flat lint results by file, preserving first-seen file order.
+ */
+function groupByFile(results: LintResult[]): Map<string, LintResult[]> {
+  const byFile = new Map<string, LintResult[]>();
+  for (const r of results) {
+    const existing = byFile.get(r.filePath) ?? [];
+    existing.push(r);
+    byFile.set(r.filePath, existing);
+  }
+  return byFile;
+}
+
+/**
+ * Print the default colorized, grouped-by-file human display (unchanged
+ * from the pre-`--json`/`--format` behavior).
+ */
+function printHumanResults(stderr: (msg: string) => void, byFile: Map<string, LintResult[]>): void {
+  for (const [filePath, results] of byFile) {
+    stderr(chalk.underline(filePath));
+    for (const r of results) {
+      stderr(`  ${chalk.dim(`L${r.line}`)}: ${chalk.red(r.className)} — ${chalk.yellow(r.reason)}`);
+    }
+    stderr('');
+  }
+}
+
+/**
+ * Escape message data for a GitHub Actions workflow command. GitHub's
+ * runner decodes %25/%0D/%0A, so raw %, CR, and LF must be encoded or the
+ * command is truncated at the first newline.
+ * See: https://docs.github.com/actions/using-workflows/workflow-commands-for-github-actions
+ */
+function escapeGithubData(value: string): string {
+  return value.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+}
+
+/**
+ * Escape a workflow command property value. Properties additionally need
+ * : and , encoded — they delimit properties, so an unescaped path like
+ * "src/foo,bar.tsx" would be parsed as file=src/foo plus a bogus property.
+ */
+function escapeGithubProperty(value: string): string {
+  return escapeGithubData(value).replace(/:/g, '%3A').replace(/,/g, '%2C');
+}
+
+/**
+ * Format a single violation as a GitHub Actions workflow command so it
+ * surfaces as an inline annotation on the offending line in a PR/run.
+ */
+export function formatGithubAnnotation(result: LintResult): string {
+  const file = escapeGithubProperty(result.filePath);
+  const message = escapeGithubData(`${result.className} — ${result.reason}`);
+  return `::error file=${file},line=${result.line}::${message}`;
 }
 
 /**
@@ -127,10 +249,36 @@ export async function runMain(opts: MainOptions): Promise<number> {
     stdout(readPackageVersion());
     return 0;
   }
+  if (parsed.kind === 'error') {
+    stderr(chalk.red(parsed.message));
+    stderr(chalk.dim('Run with --help for usage'));
+    return 2;
+  }
 
-  // Load and apply config
-  const config = await loadConfig(cwd);
-  const compiled = compileConfig(config);
+  const json = parsed.json;
+  // An explicit --format always wins. Otherwise auto-detect via the env var
+  // GitHub Actions itself sets on every run, so CI gets annotations without
+  // requiring an extra flag in the workflow file.
+  const format: OutputFormat =
+    parsed.format ?? (isTruthyEnv(env.GITHUB_ACTIONS) ? 'github' : 'human');
+
+  // Load and apply config. A missing config file falls through to defaults
+  // silently (handled inside loadConfig); a config file that exists but is
+  // invalid (bad JSON, wrong field type, malformed pattern) throws — caught
+  // here so the CLI reports a clean one-line message instead of a raw stack
+  // trace via the generic top-level catch in the entry point below.
+  let config: LintConfig;
+  let compiled: CompiledConfig;
+  try {
+    config = await loadConfig(cwd);
+    compiled = compileConfig(config);
+  } catch (err) {
+    if (err instanceof ConfigError || err instanceof Error) {
+      stderr(chalk.red(err.message));
+      return 2;
+    }
+    throw err;
+  }
   setConfig(compiled);
 
   // Resolve patterns: CLI args > config file > defaults
@@ -178,26 +326,28 @@ export async function runMain(opts: MainOptions): Promise<number> {
 
   if (allResults.length === 0) {
     stderr(chalk.green('No design token violations found.'));
+    if (json) {
+      stdout(JSON.stringify(allResults));
+    }
     return 0;
   }
 
-  // Group by file
-  const byFile = new Map<string, LintResult[]>();
-  for (const r of allResults) {
-    const existing = byFile.get(r.filePath) ?? [];
-    existing.push(r);
-    byFile.set(r.filePath, existing);
-  }
-
-  for (const [filePath, results] of byFile) {
-    stderr(chalk.underline(filePath));
-    for (const r of results) {
-      stderr(`  ${chalk.dim(`L${r.line}`)}: ${chalk.red(r.className)} — ${chalk.yellow(r.reason)}`);
+  // --json is the machine-consumption contract: stdout must be exactly the
+  // JSON array (so e.g. `... --json | jq` works), so it wins over --format
+  // for what goes to stdout. The human display still goes to stderr either
+  // way, unaffected.
+  if (json) {
+    printHumanResults(stderr, groupByFile(allResults));
+    stdout(JSON.stringify(allResults));
+  } else if (format === 'github') {
+    for (const r of allResults) {
+      stdout(formatGithubAnnotation(r));
     }
-    stderr('');
+  } else {
+    printHumanResults(stderr, groupByFile(allResults));
   }
 
-  const fileCount = byFile.size;
+  const fileCount = new Set(allResults.map((r) => r.filePath)).size;
   stderr(chalk.red(`Found ${allResults.length} violation(s) in ${fileCount} file(s).`));
   return 1;
 }

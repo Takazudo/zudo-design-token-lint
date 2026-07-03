@@ -79,7 +79,7 @@ Or run the same scripts directly from `doc/`: `pnpm dev`, `pnpm build`, `pnpm pr
 - `checkClass()` returns `Violation | null` — not `undefined`
 - `ExtractedClass` has `{ className, line }` — no `column`
 
-Keep the public documentation (`doc/src/content/docs/api/`) in sync when changing these shapes.
+Keep the public documentation (`doc/src/content/docs/reference/api/`, plus its `doc/src/content/docs-ja/reference/api/` mirror) in sync when changing these shapes.
 
 ## Deployment
 

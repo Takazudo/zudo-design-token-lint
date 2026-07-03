@@ -1,0 +1,104 @@
+[
+  {
+    "filePath": "ignore-comments.tsx",
+    "line": 11,
+    "className": "mt-8",
+    "reason": "Numeric spacing \"mt-8\" — use a semantic spacing token or arbitrary value"
+  },
+  {
+    "filePath": "ignore-comments.tsx",
+    "line": 13,
+    "className": "bg-gray-500",
+    "reason": "Default Tailwind color \"bg-gray-500\" — use a design system color token"
+  },
+  {
+    "filePath": "multiline-cn.tsx",
+    "line": 8,
+    "className": "bg-gray-500",
+    "reason": "Default Tailwind color \"bg-gray-500\" — use a design system color token"
+  },
+  {
+    "filePath": "multiline-cn.tsx",
+    "line": 9,
+    "className": "p-4",
+    "reason": "Numeric spacing \"p-4\" — use a semantic spacing token or arbitrary value"
+  },
+  {
+    "filePath": "new-colors.astro",
+    "line": 4,
+    "className": "ring-offset-blue-500",
+    "reason": "Default Tailwind color \"ring-offset-blue-500\" — use a design system color token"
+  },
+  {
+    "filePath": "new-colors.astro",
+    "line": 4,
+    "className": "inset-ring-red-400",
+    "reason": "Default Tailwind color \"inset-ring-red-400\" — use a design system color token"
+  },
+  {
+    "filePath": "new-colors.astro",
+    "line": 4,
+    "className": "inset-shadow-gray-500",
+    "reason": "Default Tailwind color \"inset-shadow-gray-500\" — use a design system color token"
+  },
+  {
+    "filePath": "new-colors.astro",
+    "line": 4,
+    "className": "text-shadow-amber-600",
+    "reason": "Default Tailwind color \"text-shadow-amber-600\" — use a design system color token"
+  },
+  {
+    "filePath": "new-colors.astro",
+    "line": 4,
+    "className": "border-s-red-500",
+    "reason": "Default Tailwind color \"border-s-red-500\" — use a design system color token"
+  },
+  {
+    "filePath": "new-colors.astro",
+    "line": 5,
+    "className": "border-e-emerald-600",
+    "reason": "Default Tailwind color \"border-e-emerald-600\" — use a design system color token"
+  },
+  {
+    "filePath": "trailing-important.tsx",
+    "line": 3,
+    "className": "p-4!",
+    "reason": "Numeric spacing \"p-4!\" — use a semantic spacing token or arbitrary value"
+  },
+  {
+    "filePath": "trailing-important.tsx",
+    "line": 3,
+    "className": "sm:bg-gray-500!",
+    "reason": "Default Tailwind color \"sm:bg-gray-500!\" — use a design system color token"
+  },
+  {
+    "filePath": "trailing-important.tsx",
+    "line": 3,
+    "className": "!mt-8",
+    "reason": "Numeric spacing \"!mt-8\" — use a semantic spacing token or arbitrary value"
+  },
+  {
+    "filePath": "violations.jsx",
+    "line": 3,
+    "className": "p-4",
+    "reason": "Numeric spacing \"p-4\" — use a semantic spacing token or arbitrary value"
+  },
+  {
+    "filePath": "violations.jsx",
+    "line": 3,
+    "className": "mt-8",
+    "reason": "Numeric spacing \"mt-8\" — use a semantic spacing token or arbitrary value"
+  },
+  {
+    "filePath": "violations.jsx",
+    "line": 4,
+    "className": "bg-gray-500",
+    "reason": "Default Tailwind color \"bg-gray-500\" — use a design system color token"
+  },
+  {
+    "filePath": "violations.jsx",
+    "line": 4,
+    "className": "text-blue-600",
+    "reason": "Default Tailwind color \"text-blue-600\" — use a design system color token"
+  }
+]

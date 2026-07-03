@@ -22,6 +22,7 @@
   "scripts": {
     "// ── Lint package ────────────────────────────────": "",
     "build": "tsc",
+    "pretest": "pnpm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "prettier --check .",

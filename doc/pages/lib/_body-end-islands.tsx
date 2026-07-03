@@ -34,7 +34,12 @@ import { settings } from "@/config/settings";
 
 import AiChatModal from "@/components/ai-chat-modal";
 import ClientRouterBootstrap from "@/components/client-router-bootstrap";
-import ImageEnlarge, { ImageEnlargeSsrFallback } from "@/components/image-enlarge";
+// Import the real ImageEnlarge island directly from the package so zfb's
+// island scanner registers a single source under the "ImageEnlarge" marker.
+// The `@/components/image-enlarge` shim (a `"use client"` re-export) is kept
+// only as a stable project-local path; importing island code through it would
+// register the shim as a second source and collide with the package island.
+import { ImageEnlarge, ImageEnlargeSsrFallback } from "@takazudo/zudo-doc/image-enlarge";
 import { PageLoadingOverlay } from "@takazudo/zudo-doc/page-loading";
 
 // Set explicit `displayName` on each default-exported island so zfb's
@@ -47,7 +52,6 @@ import { PageLoadingOverlay } from "@takazudo/zudo-doc/page-loading";
 (AiChatModal as { displayName?: string }).displayName = "AiChatModal";
 (ClientRouterBootstrap as { displayName?: string }).displayName =
   "ClientRouterBootstrap";
-(ImageEnlarge as { displayName?: string }).displayName = "ImageEnlarge";
 
 /**
  * Default sr-only label rendered as the AiChatModal SSR fallback. This

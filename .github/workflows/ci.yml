@@ -25,6 +25,7 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -37,3 +38,9 @@ jobs:
 
       - name: Lint package
         run: pnpm -w run lint
+
+      # Cheap real-artifact check: pack -> npm i the tarball -> verify the CLI
+      # and exports map actually work as a consumer would see them. Catches
+      # files[]/bin/exports regressions that unit tests never touch.
+      - name: Check pack (verify published artifact)
+        run: bash scripts/check-pack.sh

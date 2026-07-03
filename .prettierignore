@@ -3,3 +3,7 @@ node_modules/
 pnpm-lock.yaml
 doc/
 .claude/
+
+# Golden-fixture source files: hand-crafted for exact line/column positions
+# that src/golden.test.ts and expected.json depend on — must not be reformatted.
+test/fixtures/

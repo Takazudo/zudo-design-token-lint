@@ -95,7 +95,7 @@ const results = lintContent('file.tsx', '<div className="p-4 bg-gray-500">');
 const violation = checkClass('p-4');
 if (violation) {
   console.error(violation.reason);
-  // "Numeric spacing \"p-4\" — use semantic token (hgap-*/vgap-*) or arbitrary value"
+  // "Numeric spacing \"p-4\" — use a semantic spacing token or arbitrary value"
 }
 ```
 
@@ -214,6 +214,7 @@ interface LintConfig {
   ignore: string[];
   patterns?: string[];
   suggestionSuffix?: string;
+  semanticPrefixes?: string[];
   classAttributes?: string[];
   classFunctions?: string[];
 }

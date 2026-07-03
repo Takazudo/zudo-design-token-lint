@@ -20,14 +20,6 @@ scripts/run-b4push.sh
 # the REPO-ROOT `.claude/` one level above `doc/` and symlink `doc/src/content/docs`.
 scripts/setup-doc-skill.sh
 
-# tsconfig.json — adds `src/components/playground.tsx` + `src/lib/lint-browser.ts`
-# to `exclude`. These two files are the Astro-era interactive Playground source,
-# preserved verbatim for the Playground port sub-issue (#86); they are NOT in the
-# zfb build graph yet (the page renders a placeholder island), so they are excluded
-# from `zfb check` (tsc --noEmit) until #86 ports them to preact/compat. Everything
-# else matches the base template.
-tsconfig.json
-
 # pages/_mdx-components.ts — imageEnlarge feature slots resolved.
 # The base template ships @slot:mdx-components:enlarge-imports and
 # @slot:mdx-components:enlarge-defs markers so the compose framework can inject
@@ -53,37 +45,24 @@ src/config/settings-types.ts
 # in place of the feature-styles slot (docHistory: true).
 src/styles/global.css
 
-# Component stubs vs. real implementations — the base template ships no-op
-# W6A stubs for these components (so imports resolve at typecheck on scaffold
-# without any features). The corresponding features are enabled in this site,
-# so production ships real island implementations that differ from the stubs.
+# Feature shims vs. base W6A stubs — the base template ships no-op W6A stubs
+# for these three components (so imports resolve at typecheck on a stub-only
+# scaffold). This site enables the imageEnlarge / docHistory / sidebarToggle
+# features, so each file is the feature-template re-export shim that forwards
+# to the package island (@takazudo/zudo-doc/{image-enlarge,doc-history,
+# desktop-sidebar-toggle-island}). The drift check's base-template pass always
+# flags these shims because they differ from the base stubs; keep them
+# allowlisted. (The feature-template pass would match the shims, but a
+# path-based allowlist entry skips both passes.)
 src/components/desktop-sidebar-toggle.tsx
 src/components/doc-history.tsx
 src/components/image-enlarge.tsx
-
-# docTags feature — tags pages are present in the docTags feature template
-# but this site has `docTags: false` in settings.ts (tags UI disabled).
-# The tag data model and frontmatter field are kept for future use, but
-# the tags index/detail pages are intentionally absent.
-pages/[locale]/docs/tags/[tag].tsx
-pages/[locale]/docs/tags/index.tsx
-pages/docs/tags/[tag].tsx
-pages/docs/tags/index.tsx
-pages/lib/_tag-pages.tsx
 
 # tagGovernance — tags-audit.ts and tags-suggest.ts scripts are present in the
 # tagGovernance feature template but have not been scaffolded for this site
 # (tagGovernance: "off"). Intentionally absent; add later if tag governance is enabled.
 scripts/tags-audit.ts
 scripts/tags-suggest.ts
-
-# mermaid-enlarge feature — create-zudo-doc 0.2.10 added a new optional island
-# (enlarge + zoom/pan affordance for client-rendered mermaid diagrams), wired in
-# the template via src/components/mermaid-enlarge.tsx + its island registration in
-# pages/lib/_body-end-islands.tsx (already allowlisted) + CSS in the template
-# global.css. This site has NOT opted into it (no references in prod). Intentionally
-# absent; adopt later as a separate task if mermaid-diagram enlarge is wanted.
-src/components/mermaid-enlarge.tsx
 
 # Brand typography (Futura) — the page-title <h1> elements carry the
 # `font-futura` utility + `font-normal` to restore the pre-zfb site's

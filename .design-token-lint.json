@@ -55,8 +55,12 @@
     "border-l-{color}-{shade}",
     "border-x-{color}-{shade}",
     "border-y-{color}-{shade}",
+    "border-s-{color}-{shade}",
+    "border-e-{color}-{shade}",
     "outline-{color}-{shade}",
     "ring-{color}-{shade}",
+    "ring-offset-{color}-{shade}",
+    "inset-ring-{color}-{shade}",
     "divide-{color}-{shade}",
     "from-{color}-{shade}",
     "via-{color}-{shade}",
@@ -67,7 +71,9 @@
     "stroke-{color}-{shade}",
     "decoration-{color}-{shade}",
     "placeholder-{color}-{shade}",
-    "shadow-{color}-{shade}"
+    "shadow-{color}-{shade}",
+    "inset-shadow-{color}-{shade}",
+    "text-shadow-{color}-{shade}"
   ],
   "allowed": ["p-0", "m-0", "gap-0", "p-1px"],
   "ignore": ["**/*.test.*", "**/*.stories.*"],

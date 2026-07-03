@@ -21,7 +21,7 @@
 import type { VNode, JSX } from "preact";
 import { Island } from "@takazudo/zfb";
 import { settings } from "@/config/settings";
-import DesktopSidebarToggle from "@/components/desktop-sidebar-toggle";
+import { DesktopSidebarToggle } from "@/components/desktop-sidebar-toggle";
 
 /**
  * The `afterSidebar` slot content shared by all four doc-route page components.

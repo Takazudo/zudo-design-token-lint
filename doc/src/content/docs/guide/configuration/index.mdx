@@ -41,6 +41,7 @@ Create a `.design-token-lint.json` or `design-token-lint.config.json` file at yo
 | `ignore` | `string[]` | File glob patterns to skip entirely |
 | `patterns` | `string[]` | File glob patterns to scan (used when no CLI args are given) |
 | `suggestionSuffix` | `string` | Custom suffix for violation messages (replaces the default suggestion text) |
+| `semanticPrefixes` | `string[]` | Value prefixes that bypass spacing rules (default: `["hgap-", "vgap-"]`) |
 | `classAttributes` | `string[]` | HTML/JSX attribute names the extractor scans for class names |
 | `classFunctions` | `string[]` | Utility function names the extractor scans for class name arguments |
 
@@ -62,7 +63,12 @@ Examples:
 
 ### `allowed`
 
-An exact-match allowlist. Any class in this array always passes, regardless of prohibited patterns. Useful for escape hatches like `p-0`, `m-0`, or `p-1px`.
+An allowlist checked before prohibited patterns are matched. Each entry can take either form:
+
+- **Bare/normalized form** (e.g. `p-4`) — also allows every variant, negative, important-modifier, and opacity form built from it: `hover:p-4`, `-p-4`, `p-4!`, `sm:-p-4!`, `bg-red-500/50`, etc. Matching strips the variant prefix (up to the last `:`), the `!` important modifier, the leading `-` negative sign, and the `/N` opacity suffix before comparing.
+- **Exact/verbatim form** (e.g. `hover:p-2`, `-mt-4`, `bg-red-500/50`) — allows only that specific string. Useful for copy-pasting a class straight out of a violation message to allow just that one variant without opening up the bare form or every other variant of it.
+
+Escape hatches like `p-0`, `m-0`, or `p-1px` are common entries.
 
 ### `ignore`
 
@@ -101,6 +107,28 @@ A string appended to violation messages after the `—` separator, replacing the
 
 - Spacing: `Numeric spacing "p-4" — use hgap-*/vgap-* or zd-* tokens`
 - Color: `Default Tailwind color "bg-gray-500" — use hgap-*/vgap-* or zd-* tokens`
+
+### `semanticPrefixes`
+
+Value prefixes that mark a spacing value as an already-semantic token — a value starting with one of these prefixes bypasses the numeric-spacing check without needing to look numeric in the first place.
+
+**Default**: `["hgap-", "vgap-"]`
+
+Override this to match your project's naming convention:
+
+```json
+{
+  "semanticPrefixes": ["hsp-", "vsp-"]
+}
+```
+
+With this override, `p-hsp-sm` and `gap-vsp-md` are explicitly declared as semantic tokens. Set to `[]` to remove the prefix allowlist entirely.
+
+<Note>
+
+The built-in prohibited patterns only flag purely numeric values (`p-4`, `m-8`, ...), so an alphabetic suffix like `hgap-sm` or `hsp-sm` already fails that check regardless of this setting. `semanticPrefixes` mainly matters as an explicit declaration of your semantic-token vocabulary, or if you add a custom prohibited pattern with looser value matching.
+
+</Note>
 
 ### `classAttributes`
 
@@ -141,6 +169,7 @@ This is useful when using libraries like `class-variance-authority` (`cva`), `ta
 If no config file exists, the linter uses these defaults:
 
 - **Prohibited**: all standard spacing utilities (`p-*`, `m-*`, `gap-*`, `inset-*`, `scroll-*`) with numeric values, plus all color utilities (`bg-*`, `text-*`, `border-*`, `ring-*`, etc.) with default Tailwind color-shade combinations
+- **Logical and v4 color utilities**: `border-s-*`, `border-e-*`, `ring-offset-*`, `inset-ring-*`, `inset-shadow-*`, `text-shadow-*` with default Tailwind color-shade combinations
 - **Allowed**: `p-0`, `m-0`, `gap-0`, `p-1px`
 - **Ignore**: `**/*.test.*`, `**/*.stories.*`
 

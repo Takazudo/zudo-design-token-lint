@@ -46,9 +46,15 @@ export function checkClassWithConfig(className: string, config: CompiledConfig):
   const lastColon = className.lastIndexOf(':');
   let stripped = lastColon >= 0 ? className.slice(lastColon + 1) : className;
 
-  // Strip important modifier (e.g., !p-4, sm:!p-4)
+  // Strip important modifier — leading form is Tailwind v3 (!p-4, sm:!p-4),
+  // trailing form is Tailwind v4 (p-4!, sm:p-4!). Both must be stripped before
+  // the negative/opacity handling below, or v4's trailing "!" rides along
+  // into the value and breaks rule/allowed-list matching.
   if (stripped.startsWith('!')) {
     stripped = stripped.slice(1);
+  }
+  if (stripped.endsWith('!')) {
+    stripped = stripped.slice(0, -1);
   }
 
   // Handle negative prefixes (e.g., -m-4, -top-2)
@@ -67,8 +73,12 @@ export function checkClassWithConfig(className: string, config: CompiledConfig):
     return null;
   }
 
-  // Check allowed list first (exact match on stripped class)
-  if (config.allowed.has(withoutOpacity)) {
+  // Check allowed list first. Match against the normalized form (so bare
+  // entries like "p-4" still cover variant/negative/important forms) AND the
+  // original className verbatim (so exact-match entries like "-mt-4",
+  // "hover:p-2", or "bg-red-500/50" — copied straight from a violation
+  // message — actually take effect).
+  if (config.allowed.has(withoutOpacity) || config.allowed.has(className)) {
     return null;
   }
 

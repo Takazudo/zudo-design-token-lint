@@ -3,12 +3,13 @@ import {
   compilePattern,
   compileConfig,
   loadConfig,
+  ConfigError,
   DEFAULT_CONFIG,
   type LintConfig,
   type CompiledConfig,
 } from './config.js';
 import { checkClassWithConfig } from './rules.js';
-import { writeFile, unlink, mkdir } from 'node:fs/promises';
+import { writeFile, unlink, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -70,6 +71,34 @@ describe('compilePattern', () => {
     const rule = compilePattern('bg-{color}-{shade}', 'use zd-* color tokens');
     expect(rule.reasonTemplate).toContain('use zd-* color tokens');
     expect(rule.reasonTemplate).toContain('Default Tailwind color');
+  });
+
+  it('escapes regex metacharacters in literal segments of a generic pattern', () => {
+    const rule = compilePattern('aspect-{n}.5');
+    expect(rule.valuePattern.test('4.5')).toBe(true);
+    // A literal "." must not act as a wildcard.
+    expect(rule.valuePattern.test('4X5')).toBe(false);
+  });
+});
+
+describe('compilePattern — malformed patterns', () => {
+  it('throws a clear error when a placeholder has no preceding "-"', () => {
+    expect(() => compilePattern('{n}')).toThrow(/placeholder/i);
+    expect(() => compilePattern('gap{n}')).toThrow(/placeholder/i);
+  });
+
+  it('throws a clear error when a placeholder is unclosed', () => {
+    expect(() => compilePattern('p-{n')).toThrow(/unclosed/i);
+  });
+
+  it('throws a clear error on an unrecognized placeholder instead of silently matching nothing', () => {
+    // A typo like "{number}" must not be silently escaped to dead literal text.
+    expect(() => compilePattern('p-{number}')).toThrow(/unknown placeholder/i);
+    expect(() => compilePattern('p-{}')).toThrow(/unknown placeholder/i);
+  });
+
+  it('throws a clear error on a stray closing brace', () => {
+    expect(() => compilePattern('p-{n}}')).toThrow(/unmatched/i);
   });
 });
 
@@ -316,5 +345,119 @@ describe('loadConfig — classAttributes and classFunctions', () => {
     } finally {
       await unlink(configPath);
     }
+  });
+});
+
+describe('loadConfig — error handling', () => {
+  async function withTempConfigFile(
+    content: string,
+    fn: (dir: string) => Promise<void>,
+  ): Promise<void> {
+    const dir = join(tmpdir(), `dtl-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    await mkdir(dir, { recursive: true });
+    const configPath = join(dir, '.design-token-lint.json');
+    await writeFile(configPath, content);
+    try {
+      await fn(dir);
+    } finally {
+      await unlink(configPath);
+    }
+  }
+
+  it('falls through to defaults when no config file exists (ENOENT unchanged)', async () => {
+    const dir = join(tmpdir(), `dtl-test-enoent-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const config = await loadConfig(dir);
+    expect(config).toEqual(DEFAULT_CONFIG);
+  });
+
+  it('throws ConfigError naming the file on malformed JSON', async () => {
+    await withTempConfigFile('{ not valid json', async (dir) => {
+      await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
+      await expect(loadConfig(dir)).rejects.toThrow(/Failed to parse \.design-token-lint\.json/);
+    });
+  });
+
+  it('throws ConfigError naming the field when "prohibited" has the wrong type', async () => {
+    await withTempConfigFile(JSON.stringify({ prohibited: 'p-{n}' }), async (dir) => {
+      await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
+      await expect(loadConfig(dir)).rejects.toThrow(/"prohibited" must be an array of strings/);
+    });
+  });
+
+  it('throws ConfigError when a string-array field contains a non-string element', () => {
+    return withTempConfigFile(JSON.stringify({ allowed: ['p-0', 42] }), async (dir) => {
+      await expect(loadConfig(dir)).rejects.toThrow(/"allowed" must be an array of strings/);
+    });
+  });
+
+  it('throws ConfigError naming the field when "suggestionSuffix" has the wrong type', async () => {
+    await withTempConfigFile(JSON.stringify({ suggestionSuffix: 123 }), async (dir) => {
+      await expect(loadConfig(dir)).rejects.toThrow(/"suggestionSuffix" must be a string/);
+    });
+  });
+
+  it('accepts a fully valid config file without throwing', async () => {
+    await withTempConfigFile(
+      JSON.stringify({
+        prohibited: ['p-{n}'],
+        allowed: ['p-0'],
+        ignore: [],
+        suggestionSuffix: 'use a token',
+      }),
+      async (dir) => {
+        const config = await loadConfig(dir);
+        expect(config.prohibited).toEqual(['p-{n}']);
+      },
+    );
+  });
+});
+
+describe('loadConfig — config file discovery', () => {
+  async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
+    const dir = join(
+      tmpdir(),
+      `dtl-discovery-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    await mkdir(dir, { recursive: true });
+    try {
+      await fn(dir);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  it('falls back to DEFAULT_CONFIG when neither config filename is present', async () => {
+    await withTempDir(async (dir) => {
+      const config = await loadConfig(dir);
+      expect(config).toEqual(DEFAULT_CONFIG);
+    });
+  });
+
+  it('picks up the second filename (design-token-lint.config.json) when the dotfile is absent', async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, 'design-token-lint.config.json'),
+        JSON.stringify({ prohibited: ['m-{n}'], allowed: [], ignore: [] }),
+      );
+      const config = await loadConfig(dir);
+      expect(config.prohibited).toEqual(['m-{n}']);
+    });
+  });
+
+  it('prefers the dotfile (.design-token-lint.json) when both config files exist', async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ prohibited: ['p-{n}'], allowed: [], ignore: [] }),
+      );
+      await writeFile(
+        join(dir, 'design-token-lint.config.json'),
+        JSON.stringify({ prohibited: ['m-{n}'], allowed: [], ignore: [] }),
+      );
+      const config = await loadConfig(dir);
+      // The dotfile's content wins — the second filename is never even read.
+      expect(config.prohibited).toEqual(['p-{n}']);
+    });
   });
 });
