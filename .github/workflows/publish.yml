@@ -51,6 +51,14 @@ jobs:
       - name: Run package tests
         run: pnpm -w run test
 
+      # Real-artifact gate, run BEFORE either `pnpm publish` path below: pack
+      # the tree, npm-install the tarball into a scratch project exactly like
+      # a consumer would, and verify the CLI + exports map actually work.
+      # This is the last chance to catch a files[]/bin/exports regression
+      # before it ships to the registry.
+      - name: Check pack (verify published artifact)
+        run: bash scripts/check-pack.sh
+
       # Dist-tag policy (derive from the version string; always pass --tag):
       #   prerelease versions (matching -next./-beta./-rc.) → "next"
       #   stable versions (clean X.Y.Z)                      → "latest"
