@@ -155,6 +155,28 @@ describe('extractClasses', () => {
       const content = `const cls = cn(\n${argLines.join('\n')}\n);`;
       expect(() => extractClasses(content)).not.toThrow();
     });
+
+    it('still scans source after a multiline call closes mid-line', () => {
+      const content = `const a = cn(
+  'p-4'
+); const b = cn('m-8');`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'm-8', line: 3 },
+      ]);
+    });
+
+    it('still scans attributes after a multiline class:list closes mid-line', () => {
+      const content = `<div class:list={[
+  'p-4'
+]} class="m-8">`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'm-8', line: 3 },
+      ]);
+    });
   });
 
   describe('function-name word boundary', () => {

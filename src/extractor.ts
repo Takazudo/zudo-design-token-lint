@@ -165,11 +165,12 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
       extractFromClassListArray(results, arr.content, lineNum);
 
       if (arr.endLine !== i) {
-        // Array spanned multiple lines — skip the outer loop past them and
-        // move straight to the next iteration (the stale `line`/`lineNum`
-        // captured above must not be reused by the multiline-attribute
-        // check below, which operates on the current `i`).
-        i = arr.endLine;
+        // Array spanned multiple lines. Blank out the consumed prefix of the
+        // closing line (preserving column positions) and reprocess that line,
+        // so source after the closing `]` — other attributes, utility calls —
+        // is still scanned.
+        lines[arr.endLine] = ' '.repeat(arr.endCol) + lines[arr.endLine].slice(arr.endCol);
+        i = arr.endLine - 1;
         continue lineLoop;
       }
       classListStart.lastIndex = arr.endCol;
@@ -187,11 +188,12 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
         extractFromCallArgs(results, call.content, lineNum);
 
         if (call.endLine !== i) {
-          // Call spanned multiple lines — skip the outer loop past them and
-          // move straight to the next iteration (the stale `line`/`lineNum`
-          // captured above must not be reused by the multiline-attribute
-          // check below, which operates on the current `i`).
-          i = call.endLine;
+          // Call spanned multiple lines. Blank out the consumed prefix of the
+          // closing line (preserving column positions) and reprocess that
+          // line, so source after the closing `)` — further calls,
+          // attributes — is still scanned.
+          lines[call.endLine] = ' '.repeat(call.endCol) + lines[call.endLine].slice(call.endCol);
+          i = call.endLine - 1;
           continue lineLoop;
         }
         utilFnStart.lastIndex = call.endCol;
