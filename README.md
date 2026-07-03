@@ -109,6 +109,7 @@ This turns `Numeric spacing "p-4" — use a semantic spacing token or arbitrary 
 
 - **Numeric spacing**: `p-4`, `m-8`, `gap-6`, `px-3`, `mt-16`, `space-x-4`, `inset-2`, `top-4`, etc.
 - **Default Tailwind colors**: `bg-gray-500`, `text-blue-600`, `border-red-300`, `ring-indigo-500`, etc.
+- **Logical and v4 color utilities**: `border-s-red-500`, `border-e-red-500`, `ring-offset-blue-600`, `inset-ring-gray-400`, `inset-shadow-gray-900`, `text-shadow-gray-900`, etc.
 
 ### Allowed (always passes)
 

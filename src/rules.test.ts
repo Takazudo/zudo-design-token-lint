@@ -116,6 +116,21 @@ describe('checkClass', () => {
     });
   });
 
+  describe('logical and v4 color utilities — prohibited', () => {
+    it.each([
+      'border-s-red-500',
+      'border-e-red-500',
+      'ring-offset-blue-600',
+      'inset-ring-gray-400',
+      'inset-shadow-gray-900',
+      'text-shadow-gray-900',
+    ])('flags %s', (cls) => {
+      const result = checkClass(cls);
+      expect(result).not.toBeNull();
+      expect(result!.reason).toContain('Default Tailwind color');
+    });
+  });
+
   describe('default Tailwind colors with prefixes — prohibited', () => {
     it.each(['hover:bg-gray-500', 'sm:text-blue-600', 'dark:border-red-300'])('flags %s', (cls) => {
       const result = checkClass(cls);
