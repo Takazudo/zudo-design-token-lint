@@ -322,6 +322,17 @@
   --zd-transition-slow: 200ms;          /* sidebar transform/visibility and content-band max-width */
   --zd-transition-slower: 300ms;        /* view-transition fade-in (contentFadeIn animation) */
   --zd-header-h: 80px;                  /* sticky header height; consumed by scroll-margin-top on [id] anchors */
+
+  /* Brand display face on every page-title <h1>. @takazudo/zudo-doc renders all
+     page-title h1s (doc-title, home hero, auto-index, versions, tag pages) as
+     `h1.text-heading` and exposes the --zdc-doc-title-font / --zdc-doc-title-weight
+     component tokens on that rule in content.css (package defaults: inherit /
+     var(--font-weight-bold); see the package's config/component-tokens). The
+     markup is framework-owned, so redefining these tokens in :root is the
+     no-eject way to rebrand every page h1 to Futura at normal weight — the
+     equivalent of the pre-migration site's `font-futura font-normal` h1 classes. */
+  --zdc-doc-title-font: var(--font-futura);
+  --zdc-doc-title-weight: var(--font-weight-normal);
 }
 
 /* ========================================
