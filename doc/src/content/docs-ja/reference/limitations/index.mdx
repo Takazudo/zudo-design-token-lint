@@ -1,0 +1,146 @@
+---
+title: 既知の制限事項
+description: design-token-lint が使用する静的解析アプローチに固有の制限事項。
+sidebar_position: 4
+category: reference
+---
+
+`design-token-lint` は正規表現ベースの静的解析を使用して、ソースファイルからクラス名を抽出します。このアプローチは高速でビルドステップが不要ですが、実行時にコードを評価することはできません。そのため、一部の動的パターンは正しく解析されません。
+
+抽出対象の属性名(`className`、`class` など)や関数名(`cn`、`clsx` など)は、設定の `classAttributes` および `classFunctions` でカスタマイズできます。
+
+これらはバグではなく、静的解析に固有の制限です。
+
+## サポート済み: 複数行の className
+
+複数行の `className` 値はサポートされています:
+
+```tsx
+<div
+  className="
+    p-4
+    bg-gray-500
+  "
+>
+```
+
+複数行にまたがるクラスは正しく抽出されます。
+
+## サポート済み: class:list のオブジェクトキー
+
+Astro の `class:list` オブジェクト構文はサポートされています — 引用符付きキーのクラス名が抽出されます:
+
+```astro
+<div class:list={[{ "p-4": true, "m-8": isActive }]}>
+```
+
+`p-4` と `m-8` の両方が抽出されてリントされます。
+
+## サポート済み: 複数行の関数呼び出し
+
+`cn()`、`clsx()`、`classNames()`、`twMerge()` の呼び出しが複数行にまたがる場合もサポートされています — 複数行の `className` 値と同様に、括弧が閉じるまで引数が蓄積されます:
+
+```tsx
+<div
+  className={cn(
+    "p-4",
+    "bg-gray-500",
+    isActive && "m-8",
+  )}
+>
+```
+
+3 つの文字列引数すべてが抽出されてリントされます。これは複数行にまたがる `class:list={[...]}` 配列にも適用されます。
+
+## 制限事項: Vue/Svelte の動的なクラスバインディング
+
+静的な `class="..."` 属性は、Vue や Svelte を含むどのテンプレート言語でも正しく抽出されます。動的なバインディング構文はそうではありません:
+
+```vue
+<!-- Not linted correctly — extracted as garbage tokens, no real violations reported -->
+<div :class="isActive ? 'p-4' : 'm-8'">
+<div v-bind:class="{ 'p-4': isActive }">
+```
+
+```svelte
+<!-- Not linted at all — the `class:` directive isn't recognized, nothing is extracted -->
+<div class:active={isActive} class:p-4={isBig}>
+```
+
+Vue の `:class`/`v-bind:class` バインディングは `class` 属性のパターンにマッチしてしまうため(先頭の `:` はマッチを妨げません)、式の内容が抽出されトークンに分割されます — しかしその結果は句読点だらけのゴミ(`isActive`、`?`、`'p-4'`、`:`、`'m-8'`)であり、いかなる禁止パターンにもマッチしないため、その中の違反は静かに見逃されます。Svelte の `class:name` ディレクティブはそもそもマッチしないため(`class` の直後に `=` が続きません)、完全にスキップされます — こちらも違反は報告されません。
+
+**回避策**: 関連するクラスを静的な文字列(computed プロパティや、変数に代入した `cn()`/`clsx()` 呼び出しなど)に抽出してリンターにプレーンな文字列リテラルとして認識させるか、無視コメントでこのギャップを明示してください。
+
+## 制限事項: 条件式
+
+`className` 内の三項演算子は抽出されません:
+
+```tsx
+// Not linted — classes inside ternaries are silently skipped
+<div className={isActive ? "p-4" : "m-8"}>
+```
+
+エクストラクターは `className` や `class` に直接割り当てられた文字列リテラルを探します。三項演算子の構文にはマッチしないため、クラスは抽出されず、違反も報告されません。
+
+つまり、三項演算子の中にある禁止クラスは、誤検知を出すのではなく、リンターに静かにスルーされます。三項演算子の中をリンターにチェックさせる回避策はありません。これらのクラスをリントする必要がある場合は、静的な変数に抽出してください:
+
+```tsx
+// These static strings are linted
+const activeClass = "p-hgap-sm";
+const inactiveClass = "m-vgap-md";
+<div className={isActive ? activeClass : inactiveClass}>
+```
+
+## 制限事項: テンプレート補間
+
+動的な式を含むテンプレートリテラルは、いかなるリントルールにもマッチしない文字列を生成します:
+
+```tsx
+// Not linted — `p-${size}` is extracted as a literal string, matches no rules
+<div className={`p-${size} bg-${color}-500`}>
+```
+
+エクストラクターは `${...}` 式を含む生のテンプレート内容を取り込みます。結果として得られる文字列（`p-${size}`、`bg-${color}-500`）はどのパターンにもマッチしないため、その中の違反は一切報告されません。
+
+**回避策**: 無視コメントを追加するか、静的なクラス名を使うよう変更してください:
+
+```tsx
+// Use ignore comment to acknowledge this is intentional
+{/* design-token-lint-ignore */}
+<div className={`p-${size}`}>
+```
+
+## 制限事項: エスケープされた引用符
+
+エスケープされた引用符を含むクラス属性は正しく抽出されない場合があります:
+
+```tsx
+// May extract incorrectly
+<div className="p-4 \"m-8\"">
+```
+
+正規表現パーサーは文字列リテラル内のエスケープされた引用符シーケンスを処理しません。
+
+**回避策**: クラス属性内でエスケープされた引用符を避けてください。代わりに JSX の式構文を使用してください:
+
+```tsx
+<div className={'p-4 m-8'}>
+```
+
+## まとめ
+
+| パターン | サポート |
+| --- | --- |
+| 複数行の `className` | あり |
+| 複数行の `cn()`/`clsx()`/`class:list` 呼び出し | あり |
+| 静的な文字列リテラル | あり |
+| テンプレートリテラル(静的のみ) | あり |
+| `class:list` のオブジェクトキー | あり |
+| カスタム属性名(`classAttributes`) | あり — 設定可能 |
+| カスタム関数名(`classFunctions`) | あり — 設定可能 |
+| Vue/Svelte の静的な `class="..."` 属性 | あり |
+| 三項演算子 | なし — 静かにスキップ |
+| 補間付きテンプレートリテラル | なし — 動的部分はリントされない |
+| クラス文字列内のエスケープされた引用符 | なし — 誤抽出の可能性あり |
+| Vue の `:class`/`v-bind:class` バインディング | なし — ゴミトークンとして抽出される |
+| Svelte の `class:name` ディレクティブ | なし — まったく認識されない |

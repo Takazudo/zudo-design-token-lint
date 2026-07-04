@@ -1,0 +1,12 @@
+---
+title: v1.1.0-next.1
+description: Prerelease — glob bumped to v13 plus a refined dist-tag publish policy.
+sidebar_position: 9996
+category: changelog
+---
+
+First prerelease of the `1.1.0` line, published under the `next` dist-tag. Dependency maintenance plus a refinement to how releases map to npm dist-tags. No changes to the public CLI or programmatic API.
+
+- Bumped the `glob` dependency to v13; the named-import async API is unchanged, so the CLI behaves identically (3f347a0)
+- Refreshed dev tooling: prettier, vitest, and `@types/node` (3f347a0)
+- The publish workflow now derives the npm dist-tag purely from the version string and always passes `--tag` explicitly (stable → `latest`, prerelease → `next`); `next` is no longer auto-advanced to the stable version, so it stays a preview-only side channel (1c64fdc)

@@ -1,0 +1,12 @@
+---
+title: v1.1.0-next.1
+description: プリリリース — glob を v13 に更新し、dist-tag 公開ポリシーを整理。
+sidebar_position: 9996
+category: changelog
+---
+
+`1.1.0` 系列の最初のプリリリースで、`next` dist-tag で公開されます。依存関係のメンテナンスと、リリースが npm の dist-tag にどう対応するかの整理です。公開 CLI・プログラマティック API に変更はありません。
+
+- `glob` 依存を v13 に更新。named-import の async API は変わらず、CLI の挙動は同一です (3f347a0)
+- 開発ツールの更新: prettier、vitest、`@types/node` (3f347a0)
+- 公開ワークフローが npm dist-tag をバージョン文字列のみから決定し、常に `--tag` を明示的に渡すようになりました(stable → `latest`、prerelease → `next`)。`next` を stable バージョンへ自動的に進めることはなくなり、プレビュー専用のサイドチャンネルとして維持されます (1c64fdc)
