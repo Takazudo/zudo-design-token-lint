@@ -322,6 +322,17 @@
   --zd-transition-slow: 200ms;          /* sidebar transform/visibility and content-band max-width */
   --zd-transition-slower: 300ms;        /* view-transition fade-in (contentFadeIn animation) */
   --zd-header-h: 80px;                  /* sticky header height; consumed by scroll-margin-top on [id] anchors */
+
+  /* Brand display face on every page-title <h1>. @takazudo/zudo-doc renders all
+     page-title h1s (doc-title, home hero, auto-index, versions, tag pages) as
+     `h1.text-heading` and exposes the --zdc-doc-title-font / --zdc-doc-title-weight
+     component tokens on that rule in content.css (package defaults: inherit /
+     var(--font-weight-bold); see the package's config/component-tokens). The
+     markup is framework-owned, so redefining these tokens in :root is the
+     no-eject way to rebrand every page h1 to Futura at normal weight — the
+     equivalent of the pre-migration site's `font-futura font-normal` h1 classes. */
+  --zdc-doc-title-font: var(--font-futura);
+  --zdc-doc-title-weight: var(--font-weight-normal);
 }
 
 /* ========================================
@@ -432,118 +443,22 @@ body {
   background-color: color-mix(in oklch, var(--color-muted) 8%, transparent);
 }
 
-/* Root cross-fade for same-document View Transitions (Strategy B).
- *
- * @view-transition { navigation: auto; } (Strategy A, cross-document) is
- * deleted — Strategy B uses <ClientRouter /> which drives same-document
- * transitions via document.startViewTransition on each navigation.
- *
- * Chrome extraction via view-transition-name (Strategy B+, zudolab/zudo-doc#1558):
- * <header>, <aside id="desktop-sidebar">, <footer>, and the desktop-sidebar-toggle
- * button each carry a data-zfb-transition-persist attribute whose value is keyed
- * by locale and nav-section. The four attribute selectors below assign a stable
- * view-transition-name based on the attribute value prefix, extracting those
- * elements from the root snapshot into their own named layers:
- *   - header-{lang}          → zfb-header
- *   - sidebar-{locale}-…     → zfb-sidebar
- *   - footer-{lang}          → zfb-footer
- *   - desktop-sidebar-toggle → zfb-sidebar-toggle
- *
- * Once extracted, the root cross-fade animates only non-chrome content (main,
- * article, TOC, etc.). The twelve ::view-transition-{old,new,group}(<name>)
- * rules disable animation for all four chrome layers. The group pseudo must be
- * neutralised too — even when old/new are static the group container can still
- * produce a geometry-morph animation when snapshot size/position differs.
- *
- * Entry/exit cross-fade (zudolab/zudo-doc#2072): animation: none is only
- * correct when the chrome element exists on BOTH pages of a navigation.
- * When it exists on one side only (docs page with sidebar → top page
- * without), the named group holds a single snapshot — frozen at full
- * opacity for the whole transition, then dropped abruptly at finish. The
- * :only-child rules below detect that one-sided case and cross-fade the
- * lone snapshot in sync with the root content fade (spec-standard
- * entry/exit pattern; :only-child outranks the animation: none rules via
- * the extra pseudo-class specificity). */
-
-/* Chrome extraction — assign view-transition-name from data-zfb-transition-persist */
-[data-zfb-transition-persist^="header-"]               { view-transition-name: zfb-header; }
-[data-zfb-transition-persist^="sidebar-"]              { view-transition-name: zfb-sidebar; }
-[data-zfb-transition-persist^="footer-"]               { view-transition-name: zfb-footer; }
-[data-zfb-transition-persist="desktop-sidebar-toggle"] { view-transition-name: zfb-sidebar-toggle; }
-
-/* Disable animation for all four chrome layers (old, new, and group) */
-::view-transition-old(zfb-header),
-::view-transition-new(zfb-header),
-::view-transition-group(zfb-header),
-::view-transition-old(zfb-sidebar),
-::view-transition-new(zfb-sidebar),
-::view-transition-group(zfb-sidebar),
-::view-transition-old(zfb-footer),
-::view-transition-new(zfb-footer),
-::view-transition-group(zfb-footer),
-::view-transition-old(zfb-sidebar-toggle),
-::view-transition-new(zfb-sidebar-toggle),
-::view-transition-group(zfb-sidebar-toggle) { animation: none; }
-
-/* Entry/exit: chrome element present on one side only (#2072).
- * Exit — lone old snapshot fades out with the content cross-fade. */
-::view-transition-old(zfb-header):only-child,
-::view-transition-old(zfb-sidebar):only-child,
-::view-transition-old(zfb-footer):only-child,
-::view-transition-old(zfb-sidebar-toggle):only-child {
-  animation: 150ms ease-in both contentFadeOut;
-}
-/* Entry — lone new snapshot fades in with the content cross-fade. */
-::view-transition-new(zfb-header):only-child,
-::view-transition-new(zfb-sidebar):only-child,
-::view-transition-new(zfb-footer):only-child,
-::view-transition-new(zfb-sidebar-toggle):only-child {
-  animation: 300ms ease-out both contentFadeIn;
-}
-
-/* Root cross-fade rules — animate only the non-chrome snapshot */
-::view-transition-old(root) {
-  animation: 150ms ease-in both contentFadeOut;
-}
-::view-transition-new(root) {
-  animation: 300ms ease-out both contentFadeIn;
-}
-
-/* Reduced motion: collapse all view-transition animation to an instant
- * swap (zudolab/zudo-doc#2086). With every snapshot animation at none the
- * transition settles immediately — no cross-fade, no translateY slide.
- * Covers the root cross-fade and the #2072 :only-child entry/exit rules;
- * the both-sides chrome layers are already animation: none above. Equal
- * specificity per selector, but later in source order, so these win.
- * ::view-transition-group(root) must be neutralized too (zudolab/zzmod#845):
- * the UA animates the root group for its full duration even when the old/new
- * root snapshots are at animation: none, leaving a brief frozen,
- * non-interactive frame. The chrome groups are already animation: none in the
- * unconditional chrome block above, so only the root group is added here. */
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-old(root),
-  ::view-transition-new(root),
-  ::view-transition-group(root),
-  ::view-transition-old(zfb-header):only-child,
-  ::view-transition-old(zfb-sidebar):only-child,
-  ::view-transition-old(zfb-footer):only-child,
-  ::view-transition-old(zfb-sidebar-toggle):only-child,
-  ::view-transition-new(zfb-header):only-child,
-  ::view-transition-new(zfb-sidebar):only-child,
-  ::view-transition-new(zfb-footer):only-child,
-  ::view-transition-new(zfb-sidebar-toggle):only-child {
-    animation: none;
-  }
-}
+/* View-Transitions CSS (chrome extraction, root cross-fade, reduced-motion) is
+ * shipped by the package's dynamicPageTransition feature via the
+ * `@import "@takazudo/zudo-doc/features.css"` above — it is the single driver.
+ * The hand-written chrome-extraction block that used to live here was removed
+ * to avoid double-driving the same ::view-transition-* rules the feature
+ * already injects (see zudolab/zudo-doc#1558/#2072/#2086 — now owned upstream). */
 
 /* ── Brand typography ──
- * Futura on the header site name. Page-title <h1> elements carry the
- * `font-futura` utility directly in the page components (applied in S3); the
- * header site-name anchor is rendered by the @takazudo/zudo-doc package (no
- * className hook), so it is targeted here via its stable `data-header-logo`
- * attribute. Normal weight matches the pre-zfb site (the package defaults it to
- * font-bold). Unlayered + last in source order, so it overrides Tailwind's
- * `font-bold` utility. */
+ * Futura on the header site name. The page-title <h1> elements are rendered by
+ * the @takazudo/zudo-doc package (framework-owned markup) and are rebranded to
+ * Futura via the --zdc-doc-title-font / --zdc-doc-title-weight component-token
+ * overrides in :root above — no per-component utility, no eject. The header
+ * site-name anchor exposes no className hook, so it is targeted here via its
+ * stable `data-header-logo` attribute. Normal weight matches the pre-zfb site
+ * (the package defaults the logo to font-bold). Unlayered + last in source
+ * order, so it overrides Tailwind's `font-bold` utility. */
 [data-header-logo] {
   font-family: var(--font-futura);
   font-weight: var(--font-weight-normal);
