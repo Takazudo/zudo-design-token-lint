@@ -1,0 +1,31 @@
+# Build output
+node_modules
+dist
+.zfb
+.zfb-build
+
+# macOS
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Cloudflare Wrangler
+.wrangler/
+
+# zudo-doc build artifact (routes-src/ staged here at build time)
+.zudo-doc/
+
+# NOTE: zdtl is a hybrid repo — `.claude/` lives at the REPO ROOT, one level
+# above doc/. The generated doc-lookup skill (setup-doc-skill.sh →
+# `.claude/skills/zudo-design-token-lint-wisdom/`) and the build-generated
+# claude* content pages (doc/src/content/docs/claude*) are therefore gitignored
+# from the repo-root .gitignore, NOT here. See the repo-root .gitignore.

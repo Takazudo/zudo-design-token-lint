@@ -1,26 +1,37 @@
 /** @jsxRuntime automatic */
 /** @jsxImportSource preact */
-// SSR fallback + island wiring for the interactive <Playground>.
+// Host-side MDX wrapper for <Playground> — the design-token-lint interactive
+// browser demo. Applies the zfb Island around the real "use client" Playground
+// component.
 //
-// The Playground is the design-token-lint browser demo: the UI lives in
-// src/components/playground.tsx and its browser-safe linter core in
-// src/lib/lint-browser.ts (no dependency on the npm package build). It is a
-// fully client-only island — it relies on useState/useEffect/useRef and runs
-// the linter live as the user types — so it is wrapped in `<Island>` with a
-// static SSR fallback rather than rendered server-side.
+// The Playground UI lives in src/components/playground.tsx and its browser-safe
+// linter core in src/lib/lint-browser.ts (a hand-maintained mirror of the root
+// lint engine with no node:* imports). It is a fully client-only island — it
+// relies on useState/useEffect/useRef and runs the linter live as the user
+// types — so it is wrapped in `<Island when="load">` with a static SSR fallback
+// (client:only mode) rather than server-rendered.
 //
-// This file is imported transitively from page modules
-// (pages/docs/[...slug].tsx → _mdx-components.ts → here), so zfb's island
-// scanner walks the static import chain page → helper → real component and
-// registers Playground in the island manifest. Without that import chain the
-// scanner never finds the component and client-side hydration never fires
-// (orphan-component problem). Mirrors pages/lib/_preset-generator.tsx and the
-// body-end islands in _body-end-islands.tsx.
+// ## Why client:only (ssrFallback) and not a server-rendered island
 //
-// Replaces the static placeholder the core migration (#85) shipped: the real
-// component is now imported and mounted via the canonical `<Island ssrFallback>`
-// API (zfb). The `react` imports inside playground.tsx resolve to preact/compat
-// through the tsconfig `paths` alias.
+// The component calls preact/compat hooks (useState/useRef/useEffect via the
+// `react` alias). Server-rendering it in the zfb SSR pipeline throws
+// "Cannot read properties of undefined (reading '__H')" — the compat hooks
+// state is not wired into the SSR renderer's preact instance. So the heavy
+// child MUST be skipped server-side; `ssrFallback` switches the Island into
+// SSR-skip mode (Astro `client:only` equivalent), emitting
+// `data-zfb-island-skip-ssr="Playground"` and rendering the placeholder until
+// the runtime mounts the real component on the client. Mirrors the original
+// design on `main` (pages/lib/_playground.tsx).
+//
+// ## Island wiring (mirrors _preset-generator.tsx — the canonical pattern)
+//
+// Registered in pages/lib/_chrome.ts as the `Playground` entry of the
+// `mdxExtras` bag. The zfb island scanner walks the STATIC import chain
+// page → _chrome.ts → here → Playground and registers Playground in the client
+// manifest. A dynamic/type-only import would break that walk and hydration
+// would silently never fire (orphan-component problem). The `react` imports
+// inside playground.tsx resolve to preact/compat via the tsconfig `paths` alias
+// (build-time: framework=preact + bundle.mainFields in zfb.config.ts).
 
 import type { VNode } from "preact";
 import { Island } from "@takazudo/zfb";
@@ -28,17 +39,14 @@ import Playground from "@/components/playground";
 
 // Pin displayName so zfb's captureComponentName produces a stable marker name
 // even after the SSR pipeline runs the component through a function-name
-// rewriting layer. Must match the data-zfb-island-skip-ssr attribute value the
-// hydration runtime queries. Mirrors the pattern in _preset-generator.tsx and
-// _body-end-islands.tsx.
+// rewriting layer. Must match the data-zfb-island-skip-ssr="Playground"
+// attribute the hydration runtime queries. Mirrors _preset-generator.tsx.
 (Playground as { displayName?: string }).displayName = "Playground";
 
 /**
- * SSR fallback for the interactive Playground island.
- *
- * The real Playground is client-only (live linting via useState/useEffect),
- * so the server emits a lightweight placeholder notice inside the skip-ssr
- * div. The Island `ssrFallback` API connects this import to the manifest:
+ * Public MDX-registered binding (`Playground: PlaygroundIsland`). Wraps the
+ * real client-only component in `<Island when="load">` with a static SSR
+ * fallback:
  *
  * - SSR emits the placeholder notice as static HTML inside the skip-ssr div.
  * - The scanner reads children.type = Playground → registers it in the

@@ -22,6 +22,12 @@
 // Locale: defaultLocale (EN). Non-default locales are handled by
 // pages/[locale]/docs/[[...slug]].tsx.
 //
+// This user route intentionally SHADOWS the package-owned route
+// (.zudo-doc/routes-src/docs-slug.tsx) so docs render through the host's
+// pages/lib/_chrome.ts — the module that binds the real `mdxExtras`
+// (Playground, HtmlPreview, PresetGenerator, …) and, via its static wrapper
+// imports, keeps the interactive islands on zfb's island-scanner graph.
+//
 // Enumeration + per-entry derived data (breadcrumbs, prev/next, headings) are
 // built by the shared, memoized buildDocRouteEntries (#2010); rendering by the
 // shared renderDocPage. This file owns only the route's nav source and the
@@ -33,7 +39,7 @@ import type { JSX } from "preact";
 import { resolveNavSource } from "../lib/_nav-source-docs";
 import type { DocPageEntryProps, DocPageAutoIndexProps } from "../lib/doc-page-props";
 import { buildDocRouteEntries } from "../lib/_doc-route-entries";
-import { renderDocPage } from "../lib/_doc-page-renderer";
+import { renderDocPage } from "../lib/_chrome";
 
 export const frontmatter = { title: "Docs" };
 

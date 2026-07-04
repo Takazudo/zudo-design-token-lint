@@ -49,6 +49,12 @@ import { BodyEndIslands as BodyEndIslandsSeam } from "./_body-end-islands";
 import { buildFrontmatterPreviewEntries } from "./_frontmatter-preview-data";
 import { DetailsWrapper } from "./_details";
 import { PresetGeneratorFallback } from "./_preset-generator";
+// zdtl-specific interactive island (no template equivalent) — the live
+// design-token-lint browser demo. Wired into the MDX bag below so the docs
+// corpus's <Playground> tag resolves. STATIC import is load-bearing for the
+// island scanner chain (page → _chrome → _playground → Playground); a
+// dynamic/type-only import would drop the marker + bundle silently.
+import { PlaygroundIsland } from "./_playground";
 import { DocHistory } from "@takazudo/zudo-doc/doc-history";
 import { HtmlPreviewWrapper, type HtmlPreviewWrapperProps } from "@takazudo/zudo-doc/html-preview-wrapper";
 // SSR author + date metadata — `#doc-history-meta` is the build-time manifest
@@ -114,6 +120,11 @@ const mdxExtras = {
   SmartBreak: MdxStub,
   Island: IslandWrapper,
   PresetGenerator: PresetGeneratorFallback,
+  // Playground: the design-token-lint interactive island (real wrapper;
+  // <Island when="load"> with a static SSR fallback). The real client-only
+  // component (src/components/playground.tsx + the browser-safe linter core in
+  // src/lib/lint-browser.ts) hydrates on the client (see ./_playground.tsx).
+  Playground: PlaygroundIsland,
   Avatar: MdxStub,
   Button: MdxStub,
   Card: MdxStub,

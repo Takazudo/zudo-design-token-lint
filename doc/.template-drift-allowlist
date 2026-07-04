@@ -4,45 +4,66 @@
 #
 # Format: one repo-relative path per line (no leading slash).
 # Blank lines and `#` comments are ignored.
+#
+# Re-authored from scratch for the new thin-preset model (create-zudo-doc
+# 2.5.1) during Wave 3 (S5) integration confirm — see issue #116. Note: the
+# drift check (scripts/check-template-drift.sh) only walks
+# node_modules/create-zudo-doc/templates/{base,features}; top-level identity
+# files (zfb.config.ts, wrangler.toml, src/config/settings.ts, package.json,
+# setup-preset.json) have no template counterpart there and are never
+# compared, so they need no allowlist entry.
 
 # .zfb/ directory is gitignored; doc-history-meta.json is written at build
 # time by the doc-history plugin. It does not exist in the working tree.
 .zfb/doc-history-meta.json
 
 # scripts/run-b4push.sh is intentionally customized for this consuming site
-# (full 8-step gate: format + drift + pin-parity + wrangler-pin + check + build
-# + html + links; replaces the 4-step template default).
+# (full 9-step gate: format:md:check + template-drift + pin-parity +
+# wrangler-pin + check + build + html + links + z-index; replaces the
+# 4-step template default of check/build/html/manual-smoke).
 scripts/run-b4push.sh
 
-# scripts/setup-doc-skill.sh — adapted for this HYBRID repo (root = npm package,
-# doc/ = doc site). The skillSymlinker template default assumes the repo root IS
-# the doc site and writes `.claude` next to package.json; here it must read/write
-# the REPO-ROOT `.claude/` one level above `doc/` and symlink `doc/src/content/docs`.
-scripts/setup-doc-skill.sh
+# pages/lib/_chrome.ts — site-specific MDX `mdxExtras` added. This site's docs
+# corpus uses a custom <Playground> tag (the design-token-lint live browser
+# demo, S4/#115); _chrome.ts imports PlaygroundIsland from ./_playground and
+# registers it in the mdxExtras bag passed to createChrome(...) so MDX content
+# resolves the tag through the host chrome instead of 500ing. Intentional
+# divergence from the base template's empty mdxExtras block.
+pages/lib/_chrome.ts
 
-# pages/_mdx-components.ts — imageEnlarge feature slots resolved.
-# The base template ships @slot:mdx-components:enlarge-imports and
-# @slot:mdx-components:enlarge-defs markers so the compose framework can inject
-# the image-enlarge implementation. Production has these slots resolved and the
-# real ENLARGE_SVG + paragraph override inlined (imageEnlarge: true).
-pages/_mdx-components.ts
-
-# pages/lib/_body-end-islands.tsx — @slot injection markers removed.
-# The base template ships three @slot: markers (body-end-islands imports,
-# display-names, extra-islands) so the compose framework can inject island
-# registrations. Production has these slots resolved and removed.
+# pages/lib/_body-end-islands.tsx — @slot markers resolved; dynamicPageTransition
+# wiring added. The base template ships @slot:body-end-islands:imports /
+# :display-names / :extra-islands injection markers. Production has these
+# slots resolved (removed) and the real dynamicPageTransition feature wiring
+# inlined in their place: ClientRouterBootstrap (SPA transition bootstrap,
+# hydrated via <Island when="load">) + PageLoadingOverlay (pure-SSR loading
+# overlay), gated behind `settings.dynamicPageTransition` (true for this site —
+# see epic #111 "Added: dynamicPageTransition").
 pages/lib/_body-end-islands.tsx
 
-# src/config/settings-types.ts — @slot:settings-types:trigger-names markers removed.
-# The base template ships @slot: markers so compose can inject feature-specific
-# trigger name types. Production has these slots resolved and removed.
+# src/config/settings-types.ts — @slot:settings-types:trigger-names markers
+# removed. The base template ships @slot: markers so compose can inject
+# feature-specific trigger name types. Production has these slots resolved
+# and removed.
 src/config/settings-types.ts
 
-# src/styles/global.css — @slot markers resolved; doc-history diff viewer CSS added.
-# The base template ships @slot:global-css:theme-tokens and
-# @slot:global-css:feature-styles injection markers. Production has these
-# slots resolved (removed) and the real doc-history diff viewer CSS inlined
-# in place of the feature-styles slot (docHistory: true).
+# src/styles/global.css — @slot markers resolved; Futura brand typography +
+# dynamicPageTransition/doc-history CSS added.
+# The base template ships @slot:global-css:imports, :theme-tokens, and
+# :feature-styles injection markers. Production has these slots resolved
+# (removed) and adds:
+#   - `@import "@takazudo/zudo-doc/page-loading.css"` + the
+#     `--color-page-loading-overlay` token (dynamicPageTransition feature).
+#   - the `--font-futura` token + `--zdc-doc-title-font` /
+#     `--zdc-doc-title-weight` component-token overrides (rebrand every
+#     framework-owned page-title h1 to Futura at normal weight, no-eject —
+#     see epic #111 risk 4) and the `[data-header-logo]` rule (Futura on the
+#     header site-name anchor, which exposes no className hook).
+#   - the doc-history side-by-side diff viewer CSS (docHistory: true).
+# The hand-written view-transition chrome-extraction block from the old model
+# was deliberately NOT ported here — dynamicPageTransition's own
+# `@takazudo/zudo-doc/features.css` is now the single driver, avoiding a
+# double-drive of the same ::view-transition-* rules (epic #111 risk 5).
 src/styles/global.css
 
 # Feature shims vs. base W6A stubs — the base template ships no-op W6A stubs
@@ -52,24 +73,31 @@ src/styles/global.css
 # to the package island (@takazudo/zudo-doc/{image-enlarge,doc-history,
 # desktop-sidebar-toggle-island}). The drift check's base-template pass always
 # flags these shims because they differ from the base stubs; keep them
-# allowlisted. (The feature-template pass would match the shims, but a
+# allowlisted. (The feature-template pass would match the shims exactly, but a
 # path-based allowlist entry skips both passes.)
 src/components/desktop-sidebar-toggle.tsx
 src/components/doc-history.tsx
 src/components/image-enlarge.tsx
 
+# src/integrations/claude-resources/* — MISSING (intentional).
+# The claudeResources feature template ships an Astro-integration-style
+# generator (src/integrations/claude-resources/{generate,escape-for-mdx}.ts +
+# tests). This site instead drives claude-resources generation purely through
+# the thin preset: `settings.claudeResources = { claudeDir: "../.claude",
+# projectRoot: ".", scanRoot: ".." }` passed into `zudoDocPreset(...)` in
+# zfb.config.ts (see src/config/settings.ts). No host-side integration files
+# are needed — the package-owned preset plugin does the generation, anchoring
+# generated `claude*` pages under doc/src/content/docs/ while scanning the
+# repo-root .claude/ one level above doc/ (the hybrid-repo path, epic #111
+# risk 2). Intentionally absent.
+src/integrations/claude-resources/__tests__/escape-for-mdx.test.ts
+src/integrations/claude-resources/__tests__/generate.test.ts
+src/integrations/claude-resources/escape-for-mdx.ts
+src/integrations/claude-resources/generate.ts
+
 # tagGovernance — tags-audit.ts and tags-suggest.ts scripts are present in the
 # tagGovernance feature template but have not been scaffolded for this site
-# (tagGovernance: "off"). Intentionally absent; add later if tag governance is enabled.
+# (settings.tagGovernance = "off"; settings.docTags = false). Intentionally
+# absent; add later if tag governance is enabled.
 scripts/tags-audit.ts
 scripts/tags-suggest.ts
-
-# Brand typography (Futura) — the page-title <h1> elements carry the
-# `font-futura` utility + `font-normal` to restore the pre-zfb site's
-# normal-weight Futura titles (the base template ships `font-bold`). The
-# `--font-futura` token + the header `[data-header-logo]` rule live in the
-# already-allowlisted src/styles/global.css. Intentional brand divergence.
-pages/index.tsx
-pages/[locale]/index.tsx
-pages/lib/_doc-content-header.tsx
-pages/lib/_doc-page-shell.tsx

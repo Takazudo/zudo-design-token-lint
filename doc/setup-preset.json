@@ -6,14 +6,15 @@
   "darkScheme": "Default Dark",
   "defaultMode": "dark",
   "respectPrefersColorScheme": true,
-  "features": ["search","sidebarFilter","imageEnlarge","i18n","claudeResources","sidebarResizer","sidebarToggle","docHistory","bodyFootUtil","llmsTxt","skillSymlinker","changelog","footerNavGroup","footerCopyright"],
+  "features": ["search","sidebarFilter","imageEnlarge","i18n","claudeResources","sidebarResizer","sidebarToggle","docHistory","bodyFootUtil","llmsTxt","skillSymlinker","changelog","footerCopyright","dynamicPageTransition","claudeSkills"],
   "cjkFriendly": true,
   "packageManager": "pnpm",
   "headerRightItems": [
     {"type":"component","component":"github-link"},
     {"type":"component","component":"theme-toggle"},
     {"type":"component","component":"search"},
-    {"type":"component","component":"language-switcher"}
+    {"type":"component","component":"language-switcher"},
+    {"type":"component","component":"version-switcher"}
   ],
-  "metaTags": {"description": true, "keywords":"", "ogImage":"/img/ogp.png", "ogSiteName": true, "twitterCard":"summary_large_image", "twitterCreator":"@Takazudo"}
+  "metaTags": {"description": true, "keywords":"", "ogImage":"/img/ogp.png", "ogSiteName": true, "twitterCard":"summary"}
 }

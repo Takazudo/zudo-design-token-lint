@@ -50,8 +50,7 @@ export const settings = {
     keywords: "",
     ogImage: "/img/ogp.png",
     ogSiteName: true,
-    twitterCard: "summary_large_image",
-    twitterCreator: "@Takazudo",
+    twitterCard: "summary",
   } satisfies MetaTagsConfig as MetaTagsConfig,
   docsDir: "src/content/docs",
   defaultLocale: "en" as const,
@@ -75,6 +74,7 @@ export const settings = {
   aiChatAllowedOrigins: [] as string[],
   aiChatGlobalDailyLimit: false as number | false,
   docHistory: true,
+  packageOwnedRoutes: true,
   bodyFootUtilArea: {
     docHistory: true,
     viewSourceLink: false,
@@ -86,12 +86,27 @@ export const settings = {
   sidebarResizer: true as boolean,
   sidebarToggle: true as boolean,
   imageEnlarge: true as boolean,
+  dynamicPageTransition: true as boolean,
   htmlPreview: undefined as HtmlPreviewConfig | undefined,
-  versions: [] as VersionConfig[],
+  versions: false as VersionConfig[] | false,
+  // Hybrid repo: this doc-app lives in `doc/` (cwd at build), while zdtl's
+  // Claude resources live at the REPO ROOT, one level up. The 2.5.1 preset
+  // (zudolab/zudo-doc#2558) passes claudeDir/projectRoot/scanRoot through to the
+  // claude-resources plugin, which anchors ALL relative paths on projectRoot.
+  //   - projectRoot "."  → the doc-app root (cwd = doc/). MUST be set explicitly:
+  //     when omitted, the zfb plugin substitutes its own ctx.projectRoot, which
+  //     mis-resolves claudeDir and silently drops the skills (0 skill pages).
+  //   - claudeDir "../.claude" → repo-root .claude (commands/skills/agents source).
+  //   - scanRoot ".."    → repo root, for CLAUDE.md discovery only.
+  //   - docsDir (top-level "src/content/docs") resolves against projectRoot, so
+  //     generated `claude*` pages land under doc/src/content/docs/ — NOT repo root.
+  // Do NOT set projectRoot: ".." — that pushes claudeDir AND the docs output up
+  // out of doc/ (into the repo-root linter src/).
   claudeResources: {
     claudeDir: "../.claude",
-    projectRoot: "..",
-  } as { claudeDir: string; projectRoot?: string } | false,
+    projectRoot: ".",
+    scanRoot: "..",
+  } as { claudeDir: string; projectRoot?: string; scanRoot?: string } | false,
   defaultLocaleOnlyPrefixes: [
     "/docs/claude-md/",
     "/docs/claude-skills/",
@@ -99,23 +114,7 @@ export const settings = {
     "/docs/claude-commands/",
   ] as string[],
   footer: {
-    links: [
-      {
-        title: "Docs",
-        items: [
-          { label: "Getting Started", href: "/docs/overview/getting-started" },
-          { label: "Configuration", href: "/docs/guide/configuration" },
-          { label: "CLI", href: "/docs/guide/cli" },
-        ],
-      },
-      {
-        title: "More",
-        items: [
-          { label: "GitHub", href: "https://github.com/Takazudo/zudo-design-token-lint" },
-          { label: "npm", href: "https://www.npmjs.com/package/@takazudo/zudo-design-token-lint" },
-        ],
-      },
-    ],
+    links: [],
     copyright: `Copyright © ${new Date().getFullYear()} takazudo. Built with zudo-doc.`,
   } satisfies FooterConfig as FooterConfig | false,
   headerNav: [
@@ -131,5 +130,6 @@ export const settings = {
     { type: "component", component: "theme-toggle" },
     { type: "component", component: "search" },
     { type: "component", component: "language-switcher" },
+    { type: "component", component: "version-switcher" },
   ] satisfies HeaderRightItem[] as HeaderRightItem[],
 };

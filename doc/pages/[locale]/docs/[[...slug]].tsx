@@ -24,6 +24,10 @@
 //   - Locale-first merge: locale docs take priority; base EN docs fill in
 //     pages not translated yet (shown with a fallback notice).
 //
+// Like the default-locale route, this user route SHADOWS the package-owned
+// route (.zudo-doc/routes-src/locale-docs-slug.tsx) so locale docs also render
+// through the host's pages/lib/_chrome.ts mdxExtras + island wrappers.
+//
 // Enumeration + per-entry derived data are built by the shared, memoized
 // buildDocRouteEntries (#2010); rendering by the shared renderDocPage. This
 // file owns only the route's nav source and the param/prop shapes.
@@ -34,7 +38,7 @@ import type { JSX } from "preact";
 import { resolveNavSource } from "../../lib/_nav-source-docs";
 import type { DocPageEntryProps, DocPageAutoIndexProps } from "../../lib/doc-page-props";
 import { buildDocRouteEntries } from "../../lib/_doc-route-entries";
-import { renderDocPage } from "../../lib/_doc-page-renderer";
+import { renderDocPage } from "../../lib/_chrome";
 
 export const frontmatter = { title: "Docs" };
 
