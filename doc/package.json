@@ -11,11 +11,15 @@
     "check:html": "html-validate \"dist/**/*.html\"",
     "check:pin-parity": "node scripts/check-pin-parity.mjs",
     "check:wrangler-pin": "node scripts/check-wrangler-pin.mjs",
+    "check:links": "node scripts/check-links.js --strict-broken --allowlist=.check-links-allowlist",
+    "check:template-drift": "bash scripts/check-template-drift.sh",
+    "format:md": "pnpm dlx @takazudo/mdx-formatter --write \"src/content/**/*.{md,mdx}\"",
+    "format:md:check": "pnpm dlx @takazudo/mdx-formatter --check \"src/content/**/*.{md,mdx}\"",
     "gen:z-index": "gen-z-index",
     "check:z-index": "gen-z-index --check",
     "setup:doc-skill": "bash scripts/setup-doc-skill.sh",
     "setup:doc-skill-silent": "bash scripts/setup-doc-skill.sh --silent",
-    "b4push": "pnpm check && pnpm build"
+    "b4push": "bash scripts/run-b4push.sh"
   },
   "dependencies": {
     "@takazudo/zfb": "0.1.0-next.76",

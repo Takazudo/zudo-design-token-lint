@@ -4,18 +4,23 @@ set -euo pipefail
 # b4push — local quality gate run before pushing.
 #
 # Step order (cheap → expensive):
-#   1. Type checking (zfb check)
-#   2. Build (zfb build)
-#   3. HTML validation (html-validate dist/**/*.html)
-#   4. Manual interactive smoke (operator-driven)
+#   1. Format check (mdx)
+#   2. Template drift check (needs node_modules — create-zudo-doc devDep)
+#   3. Pin parity check (pure-Node, reads package.json only)
+#   4. Wrangler pin check (needs node_modules — reads the zfb platform binary)
+#   5. Type checking (zfb check)
+#   6. Build (zfb build)
+#   7. HTML validation (html-validate dist/**/*.html)
+#   8. Link check (check-links)
+#   9. Z-index token drift check (check:z-index)
 #
 # Env overrides for non-interactive use:
-#   B4PUSH_SKIP_HTML_VALIDATE=1  — skip HTML validation (step 3)
-#   B4PUSH_SKIP_MANUAL_SMOKE=1   — skip the manual interactive smoke
+#   B4PUSH_SKIP_HTML_VALIDATE=1  — skip HTML validation (step 7)
+#   B4PUSH_SKIP_LINK_CHECK=1     — skip link check (step 8)
 
 START_TIME=$(date +%s)
 FAILURES=()
-TOTAL_STEPS=4
+TOTAL_STEPS=9
 CURRENT_STEP=0
 
 step() {
@@ -32,7 +37,47 @@ skip() { echo "⏭  $1 (skipped)"; }
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
-# ── Step 1: Type checking ─────────────────────────────
+# ── Step 1: Format check (mdx) ────────────────────────
+step "Format check (mdx)"
+if (cd "$ROOT_DIR" && pnpm format:md:check); then
+  pass "Format check passed"
+else
+  fail "Format check"
+fi
+
+# ── Step 2: Template drift check ──────────────────────
+# Requires node_modules (reads create-zudo-doc devDep templates).
+# Run `pnpm install` first if this fails with "not found".
+step "Template drift check"
+if (cd "$ROOT_DIR" && pnpm check:template-drift); then
+  pass "Template drift check passed"
+else
+  fail "Template drift check"
+fi
+
+# ── Step 3: Pin parity check ──────────────────────────
+# Pure-Node: reads package.json only, no install needed.
+# Scripts check-pin-parity.mjs + check-wrangler-pin.mjs are provided by
+# the pin-guards sub-task (#68). Steps 3–4 will fail until that branch merges.
+step "Pin parity check (check:pin-parity)"
+if (cd "$ROOT_DIR" && pnpm check:pin-parity); then
+  pass "Pin parity check passed"
+else
+  fail "Pin parity check"
+fi
+
+# ── Step 4: Wrangler pin check ────────────────────────
+# Requires node_modules (reads the zfb platform binary's embedded
+# EXPECTED_WRANGLER_VERSION). Catches a zfb bump that left the wrangler
+# pin stale, which would silently break local `zfb dev`/`preview`.
+step "Wrangler pin check (check:wrangler-pin)"
+if (cd "$ROOT_DIR" && pnpm check:wrangler-pin); then
+  pass "Wrangler pin check passed"
+else
+  fail "Wrangler pin check"
+fi
+
+# ── Step 5: Type checking ─────────────────────────────
 step "Type checking (zfb check)"
 if (cd "$ROOT_DIR" && pnpm check); then
   pass "Type checking passed"
@@ -40,7 +85,7 @@ else
   fail "Type checking"
 fi
 
-# ── Step 2: Build ─────────────────────────────────────
+# ── Step 6: Build ─────────────────────────────────────
 step "Build (zfb build)"
 if (cd "$ROOT_DIR" && pnpm build); then
   pass "Build passed"
@@ -48,7 +93,7 @@ else
   fail "Build"
 fi
 
-# ── Step 3: HTML validation ───────────────────────────
+# ── Step 7: HTML validation ───────────────────────────
 step "HTML validation (html-validate)"
 if [[ "${B4PUSH_SKIP_HTML_VALIDATE:-}" == "1" ]]; then
   skip "HTML validation (B4PUSH_SKIP_HTML_VALIDATE=1)"
@@ -60,25 +105,26 @@ else
   fi
 fi
 
-# ── Step 4: Manual interactive smoke ─────────────────
-step "Manual interactive smoke"
-if [[ "${B4PUSH_SKIP_MANUAL_SMOKE:-}" == "1" ]]; then
-  skip "Manual smoke (B4PUSH_SKIP_MANUAL_SMOKE=1)"
+# ── Step 8: Link check ───────────────────────────────
+step "Link check (check:links)"
+if [[ "${B4PUSH_SKIP_LINK_CHECK:-}" == "1" ]]; then
+  skip "Link check (B4PUSH_SKIP_LINK_CHECK=1)"
 else
-  cat <<'MANUAL'
-Run `pnpm preview` in another terminal and exercise:
-  • theme toggle (light/dark)
-  • mobile menu (narrow viewport)
-  • search dropdown (header search)
-  • code-block syntax highlighting
-
-Press [Enter] when all flows look healthy, or Ctrl-C to abort.
-MANUAL
-  if read -r _; then
-    pass "Manual smoke acknowledged"
+  if (cd "$ROOT_DIR" && pnpm check:links); then
+    pass "Link check passed"
   else
-    fail "Manual smoke (aborted)"
+    fail "Link check"
   fi
+fi
+
+# ── Step 9: Z-index token drift check ─────────────────
+# Pure Node: verifies the generated block in global.css matches
+# src/config/z-index-tokens.ts (the source of truth).
+step "Z-index token drift check (check:z-index)"
+if (cd "$ROOT_DIR" && pnpm check:z-index); then
+  pass "Z-index token drift check passed"
+else
+  fail "Z-index token drift check"
 fi
 
 # ── Summary ──────────────────────────────────────────
