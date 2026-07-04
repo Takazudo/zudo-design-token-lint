@@ -32,24 +32,17 @@ import type { VNode, JSX } from "preact";
 import { Island } from "@takazudo/zfb";
 import { settings } from "@/config/settings";
 
-import AiChatModal from "@/components/ai-chat-modal";
-import ClientRouterBootstrap from "@/components/client-router-bootstrap";
-// Import the real ImageEnlarge island directly from the package so zfb's
-// island scanner registers a single source under the "ImageEnlarge" marker.
-// The `@/components/image-enlarge` shim (a `"use client"` re-export) is kept
-// only as a stable project-local path; importing island code through it would
-// register the shim as a second source and collide with the package island.
+import { AiChatModal } from "@takazudo/zudo-doc/ai-chat-modal";
 import { ImageEnlarge, ImageEnlargeSsrFallback } from "@takazudo/zudo-doc/image-enlarge";
+import { MermaidEnlarge, MermaidEnlargeSsrFallback } from "@takazudo/zudo-doc/mermaid-enlarge";
+
+import ClientRouterBootstrap from "@/components/client-router-bootstrap";
 import { PageLoadingOverlay } from "@takazudo/zudo-doc/page-loading";
 
-// Set explicit `displayName` on each default-exported island so zfb's
-// `captureComponentName` produces a stable marker even after the SSR
-// pipeline runs the components through a function-name-rewriting layer.
-// The marker must match the third-arg literal that zfb's scanner records
-// for the same source-level identifier (zfb PR #150). esbuild preserves
-// function names by default, but the explicit assignment is a
-// belt-and-braces guard for production minification regressions.
-(AiChatModal as { displayName?: string }).displayName = "AiChatModal";
+// AiChatModal, ImageEnlarge, MermaidEnlarge pin displayName internally in the
+// package. Optional feature islands that still need explicit call-site pinning
+// inject their displayName assignment at the slot below only when selected.
+
 (ClientRouterBootstrap as { displayName?: string }).displayName =
   "ClientRouterBootstrap";
 
@@ -104,16 +97,6 @@ export function BodyEndIslands({
   basePath,
   aiChatBodyLabel = DEFAULT_AI_CHAT_BODY_LABEL,
 }: BodyEndIslandsProps): JSX.Element {
-  // Hydrates first (when="load") so the SPA-router click intercept is
-  // registered as soon as the islands runtime mounts the marker. The
-  // component renders nothing visually — the island bundle's top-level
-  // `import "@takazudo/zfb-runtime/client-router"` is what actually
-  // wires up the router (zudolab/zudo-doc#1524 W7A fix).
-  const clientRouterBootstrap = Island({
-    when: "load",
-    children: <ClientRouterBootstrap />,
-  }) as unknown as VNode;
-
   // Gated on `settings.aiAssistant` (zudolab/zudo-doc#2058): when the AI
   // assistant feature is off, neither the AiChatModal island marker nor the
   // sr-only "AI Assistant" landmark heading should reach the SSG output —
@@ -161,17 +144,38 @@ export function BodyEndIslands({
       }) as unknown as VNode)
     : null;
 
+  // Gated on `settings.mermaid`. Mirrors the imageEnlarge block: the SSR
+  // fallback is an empty, closed `<dialog class="zd-mermaid-dialog ...">` so
+  // the dist HTML carries one dialog from the start and hydration (when="idle")
+  // swaps in the real component. Unlike images (SSR-wrapped by the MDX paragraph
+  // override), mermaid renders client-side, so this island injects the enlarge
+  // button into each rendered diagram container itself.
+  const mermaidEnlarge = settings.mermaid
+    ? (Island({
+        when: "idle",
+        ssrFallback: <MermaidEnlargeSsrFallback />,
+        children: <MermaidEnlarge />,
+      }) as unknown as VNode)
+    : null;
+
   return (
     <>
-      {/* Pure SSR — no Island wrap. The component emits its overlay div and a
-          small inline script that self-wires zfb:before-preparation /
-          zfb:after-swap listeners at runtime. Its CSS lives in
-          src/styles/global.css (the component emits no inline <style>). */}
-      <PageLoadingOverlay />
-      {clientRouterBootstrap}
       {aiAssistant}
       {imageEnlarge}
+      {mermaidEnlarge}
 
+      {settings.dynamicPageTransition ? (
+        <>
+          {/* Pure SSR — no Island wrap. The component emits its overlay div,
+              inline styles, and a small inline script that self-wires
+              zfb:before-preparation / zfb:after-swap listeners at runtime. */}
+          <PageLoadingOverlay />
+          {Island({
+            when: "load",
+            children: <ClientRouterBootstrap />,
+          }) as unknown as VNode}
+        </>
+      ) : null}
     </>
   );
 }
