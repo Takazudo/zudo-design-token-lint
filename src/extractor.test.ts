@@ -58,6 +58,18 @@ describe('extractClasses', () => {
     ]);
   });
 
+  it('does not double-report a classFunction call nested inside class:list', () => {
+    const content = `<div class:list={[cn('p-4')]}>`;
+    const result = extractClasses(content);
+    expect(result).toEqual([{ className: 'p-4', line: 1 }]);
+  });
+
+  it('does not extract a token opened and closed with mismatched quotes in class:list', () => {
+    const content = `<div class:list={["p-4']}>`;
+    const result = extractClasses(content);
+    expect(result).toEqual([]);
+  });
+
   it('extracts from a multiline class:list array (Prettier style)', () => {
     const content = `<div class:list={[
   "p-4 flex",
@@ -333,7 +345,7 @@ describe('extractClasses', () => {
   });
 
   describe('should extract from multiline className attributes', () => {
-    it('basic multiline with double quotes (3 lines)', () => {
+    it('attributes each class to its own actual source line (3 lines)', () => {
       const content = `<div
   className="p-4
     bg-gray-500
@@ -342,8 +354,8 @@ describe('extractClasses', () => {
       const result = extractClasses(content);
       expect(result).toEqual([
         { className: 'p-4', line: 2 },
-        { className: 'bg-gray-500', line: 2 },
-        { className: 'm-8', line: 2 },
+        { className: 'bg-gray-500', line: 3 },
+        { className: 'm-8', line: 4 },
       ]);
     });
 
@@ -356,8 +368,8 @@ describe('extractClasses', () => {
       const result = extractClasses(content);
       expect(result).toEqual([
         { className: 'p-4', line: 2 },
-        { className: 'flex', line: 2 },
-        { className: 'gap-2', line: 2 },
+        { className: 'flex', line: 3 },
+        { className: 'gap-2', line: 4 },
       ]);
     });
 
@@ -371,10 +383,10 @@ describe('extractClasses', () => {
       const result = extractClasses(content);
       expect(result).toEqual([
         { className: 'p-4', line: 1 },
-        { className: 'm-2', line: 1 },
-        { className: 'flex', line: 1 },
-        { className: 'items-center', line: 1 },
-        { className: 'gap-4', line: 1 },
+        { className: 'm-2', line: 2 },
+        { className: 'flex', line: 3 },
+        { className: 'items-center', line: 4 },
+        { className: 'gap-4', line: 5 },
       ]);
     });
 
@@ -388,9 +400,9 @@ describe('extractClasses', () => {
 />`;
       const result = extractClasses(content);
       expect(result).toEqual([
-        { className: 'p-4', line: 2 },
-        { className: 'bg-gray-500', line: 2 },
-        { className: 'm-8', line: 2 },
+        { className: 'p-4', line: 3 },
+        { className: 'bg-gray-500', line: 4 },
+        { className: 'm-8', line: 5 },
       ]);
     });
 
@@ -404,7 +416,7 @@ describe('extractClasses', () => {
       ]);
     });
 
-    it('line numbers reference the opening line', () => {
+    it('line numbers reference each actual continuation line, not just the opening line', () => {
       const content = `<div>
   <span>text</span>
   <div
@@ -415,7 +427,7 @@ describe('extractClasses', () => {
       const result = extractClasses(content);
       expect(result).toEqual([
         { className: 'p-4', line: 4 },
-        { className: 'm-8', line: 4 },
+        { className: 'm-8', line: 5 },
       ]);
     });
 
@@ -433,8 +445,18 @@ describe('extractClasses', () => {
         { className: 'p-4', line: 1 },
         { className: 'flex', line: 1 },
         { className: 'm-8', line: 3 },
-        { className: 'gap-2', line: 3 },
+        { className: 'gap-2', line: 4 },
         { className: 'text-sm', line: 6 },
+      ]);
+    });
+
+    it('still scans the remainder of the closing line after a multiline attribute closes mid-line', () => {
+      const content = '<div className="p-4\n  m-8" id="x"><span className="gap-4">';
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'm-8', line: 2 },
+        { className: 'gap-4', line: 2 },
       ]);
     });
 
@@ -615,7 +637,7 @@ describe('extractClasses', () => {
       const result = extractClasses(content, { classAttributes: ['inputClassName'] });
       expect(result).toEqual([
         { className: 'p-4', line: 2 },
-        { className: 'm-8', line: 2 },
+        { className: 'm-8', line: 3 },
       ]);
     });
 

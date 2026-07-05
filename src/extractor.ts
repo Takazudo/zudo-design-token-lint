@@ -313,16 +313,23 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
 
     if (multilineMatch && !isInCommentSpan(commentSpans, multilineMatch.index ?? 0)) {
       const quoteChar = multilineDoubleMatch ? '"' : "'";
-      let accumulated = multilineMatch[1]; // content after opening quote on opening line
       const openLineNum = lineNum;
+      // Each line's content is attributed to its own actual source line
+      // (mirrors the per-line attribution the cn()/class:list paths already
+      // do via collectNewlineOffsets), so `--format github` annotations for
+      // continuation-line classes point at the right line instead of all
+      // collapsing onto the opening line.
+      addClasses(results, multilineMatch[1], openLineNum);
 
       // Accumulate subsequent lines until the closing quote is found.
       // Safety limit: stop after 50 lines to avoid consuming entire file on malformed input.
       const maxLines = 50;
       let linesConsumed = 0;
+      let closeCol = -1;
       while (i + 1 < lines.length && linesConsumed < maxLines) {
         i++;
         linesConsumed++;
+        const nextLineNum = i + 1;
         const nextLine = lines[i];
         // A design-token-lint-ignore comment on this continuation line
         // suppresses it — either because it was marked via ignoredLines
@@ -334,18 +341,51 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
         const closeIdx = nextLine.indexOf(quoteChar);
         if (closeIdx !== -1) {
           // Take everything before the closing quote
-          if (!skipLine) accumulated += ' ' + nextLine.substring(0, closeIdx);
+          if (!skipLine) addClasses(results, nextLine.substring(0, closeIdx), nextLineNum);
+          closeCol = closeIdx + 1; // just past the closing quote
           break;
         } else {
-          if (!skipLine) accumulated += ' ' + nextLine;
+          if (!skipLine) addClasses(results, nextLine, nextLineNum);
         }
       }
 
-      addClasses(results, accumulated, openLineNum);
+      if (closeCol !== -1) {
+        // Blank out the consumed prefix of the closing line (preserving
+        // column positions) and reprocess that line, so source after the
+        // closing quote — other attributes, utility calls — is still
+        // scanned. Mirrors the class:list/utilFn closing-line treatment
+        // above (this is the same "resume on the closing line" pattern).
+        lines[i] = ' '.repeat(closeCol) + lines[i].slice(closeCol);
+        i = i - 1;
+        continue lineLoop;
+      }
     }
   }
 
-  return results;
+  return dedupeExtractedClasses(results);
+}
+
+/**
+ * Remove duplicate (className, line) pairs. A classFunction call nested
+ * inside a class:list array (e.g. `class:list={[cn('p-4')]}`) is extracted
+ * once by the class:list path and, when the construct stays on a single
+ * line, falls through to the utility-function path which rescans the same
+ * source range and would otherwise double-report every class inside it.
+ */
+function dedupeExtractedClasses(results: ExtractedClass[]): ExtractedClass[] {
+  const seenByLine = new Map<number, Set<string>>();
+  const deduped: ExtractedClass[] = [];
+  for (const item of results) {
+    let seen = seenByLine.get(item.line);
+    if (!seen) {
+      seen = new Set<string>();
+      seenByLine.set(item.line, seen);
+    }
+    if (seen.has(item.className)) continue;
+    seen.add(item.className);
+    deduped.push(item);
+  }
+  return deduped;
 }
 
 interface BalancedScan {
@@ -528,14 +568,19 @@ function extractFromClassListArray(
 ): void {
   const newlineOffsets = collectNewlineOffsets(arrayContent);
   let cursor = 0;
-  for (const match of arrayContent.matchAll(/['"]([^'"]+)['"]/g)) {
+  // Paired-quote alternation (mirrors extractFromCallArgs) — a token opened
+  // with one quote character must close with the SAME character, so a
+  // mismatched pair like `["p-4']` (opens with ", closes with ') is never
+  // mistaken for a valid quoted literal.
+  for (const match of arrayContent.matchAll(/'([^']+)'|"([^"]+)"/g)) {
+    const value = match[1] ?? match[2] ?? '';
     const matchIndex = match.index ?? 0;
     while (cursor < newlineOffsets.length && newlineOffsets[cursor] < matchIndex) {
       cursor++;
     }
     const actualLine0 = startLine0 + cursor;
     if (ignoredLines.has(actualLine0)) continue;
-    addClasses(results, match[1], actualLine0 + 1);
+    addClasses(results, value, actualLine0 + 1);
   }
 }
 
