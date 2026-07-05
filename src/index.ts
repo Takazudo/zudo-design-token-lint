@@ -7,6 +7,14 @@ export {
   DEFAULT_CLASS_FUNCTIONS,
 } from './extractor.js';
 export { lintFile, lintContent, type LintResult } from './linter.js';
+// Additive — issue #129: extractor ignore-comment metadata (internal groundwork
+// for wave-5 ignore-hygiene reporting; does not change extractClasses()).
+export {
+  extractClassesWithMeta,
+  type IgnoreKind,
+  type IgnoreRecord,
+  type ExtractWithMetaResult,
+} from './extractor.js';
 export {
   loadConfig,
   compileConfig,

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { extractClasses, DEFAULT_CLASS_ATTRIBUTES, DEFAULT_CLASS_FUNCTIONS } from './extractor.js';
+import {
+  extractClasses,
+  extractClassesWithMeta,
+  DEFAULT_CLASS_ATTRIBUTES,
+  DEFAULT_CLASS_FUNCTIONS,
+} from './extractor.js';
 
 describe('extractClasses', () => {
   it('extracts from className="..."', () => {
@@ -843,6 +848,229 @@ describe('extractClasses', () => {
 />`;
       const result = extractClasses(content);
       expect(result).toEqual([{ className: 'p-4', line: 2 }]);
+    });
+  });
+});
+
+describe('extractClassesWithMeta', () => {
+  describe('regression: classes output is byte-identical to extractClasses()', () => {
+    // A corpus of fixtures pulled from the extractClasses() describe blocks
+    // above — every ignore style, multiline construct, and edge case those
+    // tests cover. extractClassesWithMeta().classes must match extractClasses()
+    // exactly for every one of them, since it runs through the exact same
+    // extractClassesCore(..., false) code path.
+    const fixtures: string[] = [
+      '<div className="p-4 flex bg-zd-black">',
+      "<div class='p-4 flex'>",
+      "<div className={'gap-4 hidden'}>",
+      '<div className={`px-6 relative`}>',
+      `<div class:list={["p-4 flex", 'bg-gray-500']}>`,
+      `<div class:list={[cn('p-4')]}>`,
+      `<div class:list={["p-4']}>`,
+      `<div class:list={[\n  "p-4 flex",\n  'bg-gray-500',\n]}>`,
+      `const cls = cn("p-4 flex", 'bg-zd-black');`,
+      `const cls = cn(\n  "p-4",\n  isActive && "bg-blue-500",\n  className,\n);`,
+      `const cls = cn(\n  "p-4)",\n  "m-8"\n);`,
+      `const cls = cn(cond ? 'p-2' : cx('p-4'));`,
+      `/* design-token-lint-ignore */\n<div className="p-4 flex">`,
+      `{/* design-token-lint-ignore */}\n<div className="p-4 flex">`,
+      `// design-token-lint-ignore\n<div className="p-4 flex">`,
+      `// design-token-lint-ignore-file\n<div className="p-4">\n<div className="m-8">`,
+      `/* design-token-lint-ignore */\n<div className="p-4">\n<div className="m-8">`,
+      `/* design-token-lint-ignore - vendor requires literal p-4 */\n<div className="p-4">`,
+      `{/* design-token-lint-ignore — vendor requires literal p-4 */}\n<div className="p-4">`,
+      `// design-token-lint-ignore - vendor requires literal p-4\n<div className="p-4">`,
+      `<div className="p-4"> {/* design-token-lint-ignore */}\n<div className="m-8">\n<div className="gap-2">`,
+      `{/* design-token-lint-ignore */}\n<div className="p-4">\n<div className="m-8">`,
+      `<div\n  className="p-4\n  // design-token-lint-ignore\n  m-8"\n/>`,
+      `<div\n  className="p-4\n  {/* design-token-lint-ignore */}\n  m-8"\n/>`,
+      `const cls = cn(\n  "flex",\n  // design-token-lint-ignore\n  "p-4",\n  "m-8",\n);`,
+      `<div class:list={[\n  'flex',\n  // design-token-lint-ignore\n  'p-4',\n  'm-8',\n]}>`,
+      `/* design-token-lint-ignore-file */\n<div className="p-4 flex">\n<div class="m-8">`,
+      `<div className="p-4 flex">\n/* design-token-lint-ignore-file */\n<div class="m-8">`,
+      `<div className="p-4">\n  <p>Use /* design-token-lint-ignore-file */ to skip</p>\n</div>`,
+      `<div\n  className="p-4\n    bg-gray-500\n    m-8"\n/>`,
+      `<div className="p-4\n  m-2\n  flex\n  items-center\n  gap-4"\n/>`,
+      '<div className="p-4\n  m-8" id="x"><span className="gap-4">',
+      `// design-token-lint-ignore\n<div className="p-4\n  m-8"\n/>\n<span className="flex">text</span>`,
+    ];
+
+    it.each(fixtures.map((content, i) => [i, content] as const))(
+      'fixture %i matches extractClasses()',
+      (_i, content) => {
+        expect(extractClassesWithMeta(content).classes).toEqual(extractClasses(content));
+      },
+    );
+  });
+
+  describe('reasonText across the three comment styles', () => {
+    it('captures reason text from // line comment', () => {
+      const content = `// design-token-lint-ignore - vendor requires literal p-4\n<div className="p-4">`;
+      const { ignores } = extractClassesWithMeta(content);
+      expect(ignores).toHaveLength(1);
+      expect(ignores[0].reasonText).toBe('vendor requires literal p-4');
+    });
+
+    it('captures reason text from /* */ block comment', () => {
+      const content = `/* design-token-lint-ignore - vendor requires literal p-4 */\n<div className="p-4">`;
+      const { ignores } = extractClassesWithMeta(content);
+      expect(ignores).toHaveLength(1);
+      expect(ignores[0].reasonText).toBe('vendor requires literal p-4');
+    });
+
+    it('captures reason text from {/* */} JSX comment (em dash separator)', () => {
+      const content = `{/* design-token-lint-ignore — vendor requires literal p-4 */}\n<div className="p-4">`;
+      const { ignores } = extractClassesWithMeta(content);
+      expect(ignores).toHaveLength(1);
+      expect(ignores[0].reasonText).toBe('vendor requires literal p-4');
+    });
+
+    it('reasonText is null when no reason text is present (// style)', () => {
+      const content = `// design-token-lint-ignore\n<div className="p-4">`;
+      const { ignores } = extractClassesWithMeta(content);
+      expect(ignores).toHaveLength(1);
+      expect(ignores[0].reasonText).toBeNull();
+    });
+
+    it('reasonText is null when no reason text is present (/* */ style)', () => {
+      const content = `/* design-token-lint-ignore */\n<div className="p-4">`;
+      const { ignores } = extractClassesWithMeta(content);
+      expect(ignores).toHaveLength(1);
+      expect(ignores[0].reasonText).toBeNull();
+    });
+
+    it('reasonText is null when no reason text is present ({/* */} style)', () => {
+      const content = `{/* design-token-lint-ignore */}\n<div className="p-4">`;
+      const { ignores } = extractClassesWithMeta(content);
+      expect(ignores).toHaveLength(1);
+      expect(ignores[0].reasonText).toBeNull();
+    });
+  });
+
+  describe('kind and targetLine', () => {
+    it('reports kind: next-line for an ignore comment alone on its own line', () => {
+      const content = `/* design-token-lint-ignore */\n<div className="p-4">`;
+      const { ignores } = extractClassesWithMeta(content);
+      expect(ignores).toEqual([
+        {
+          line: 1,
+          kind: 'next-line',
+          reasonText: null,
+          targetLine: 2,
+          suppressedClasses: [{ className: 'p-4', line: 2 }],
+        },
+      ]);
+    });
+
+    it('reports both same-line and next-line records for a trailing ignore comment', () => {
+      const content = `<div className="p-4"> {/* design-token-lint-ignore */}\n<div className="m-8">\n<div className="gap-2">`;
+      const { ignores } = extractClassesWithMeta(content);
+      expect(ignores).toEqual([
+        {
+          line: 1,
+          kind: 'same-line',
+          reasonText: null,
+          targetLine: 1,
+          suppressedClasses: [{ className: 'p-4', line: 1 }],
+        },
+        {
+          line: 1,
+          kind: 'next-line',
+          reasonText: null,
+          targetLine: 2,
+          suppressedClasses: [{ className: 'm-8', line: 2 }],
+        },
+      ]);
+    });
+
+    it('reports kind: file for a file-level ignore, with the full-file candidate set suppressed', () => {
+      const content = `/* design-token-lint-ignore-file */\n<div className="p-4 flex">\n<div class="m-8">`;
+      const { classes, ignores } = extractClassesWithMeta(content);
+      expect(classes).toEqual([]);
+      expect(ignores).toEqual([
+        {
+          line: 1,
+          kind: 'file',
+          reasonText: null,
+          targetLine: 0,
+          suppressedClasses: [
+            { className: 'p-4', line: 2 },
+            { className: 'flex', line: 2 },
+            { className: 'm-8', line: 3 },
+          ],
+        },
+      ]);
+    });
+
+    it('reports kind: file when the file-level comment is mid-file', () => {
+      const content = `<div className="p-4 flex">\n/* design-token-lint-ignore-file */\n<div class="m-8">`;
+      const { classes, ignores } = extractClassesWithMeta(content);
+      expect(classes).toEqual([]);
+      expect(ignores).toEqual([
+        {
+          line: 2,
+          kind: 'file',
+          reasonText: null,
+          targetLine: 0,
+          suppressedClasses: [
+            { className: 'p-4', line: 1 },
+            { className: 'flex', line: 1 },
+            { className: 'm-8', line: 3 },
+          ],
+        },
+      ]);
+    });
+
+    it('returns no ignore records when the file has no ignore comments', () => {
+      const content = '<div className="p-4 flex">';
+      const { ignores } = extractClassesWithMeta(content);
+      expect(ignores).toEqual([]);
+    });
+  });
+
+  describe('suppressed-candidate attribution for a multiline construct swallowed by one ignore', () => {
+    it('attributes every line of a multiline attribute to the single next-line ignore that swallowed it', () => {
+      const content = `// design-token-lint-ignore\n<div className="p-4\n  m-8"\n/>\n<span className="flex">text</span>`;
+      const { classes, ignores } = extractClassesWithMeta(content);
+      expect(classes).toEqual([{ className: 'flex', line: 5 }]);
+      expect(ignores).toEqual([
+        {
+          line: 1,
+          kind: 'next-line',
+          reasonText: null,
+          targetLine: 2,
+          suppressedClasses: [
+            { className: 'p-4', line: 2 },
+            { className: 'm-8', line: 3 },
+          ],
+        },
+      ]);
+    });
+
+    it('suppresses inner cn() argument lines individually without touching unrelated arguments', () => {
+      const content = `const cls = cn(\n  "flex",\n  // design-token-lint-ignore\n  "p-4",\n  "m-8",\n);`;
+      const { classes, ignores } = extractClassesWithMeta(content);
+      expect(classes).toEqual([
+        { className: 'flex', line: 2 },
+        { className: 'm-8', line: 5 },
+      ]);
+      expect(ignores).toEqual([
+        {
+          line: 3,
+          kind: 'next-line',
+          reasonText: null,
+          targetLine: 4,
+          suppressedClasses: [{ className: 'p-4', line: 4 }],
+        },
+      ]);
+    });
+  });
+
+  describe('ExtractorOptions passthrough', () => {
+    it('respects custom classAttributes/classFunctions like extractClasses()', () => {
+      const content = '<div inputClassName="p-4">';
+      const { classes } = extractClassesWithMeta(content, { classAttributes: ['inputClassName'] });
+      expect(classes).toEqual([{ className: 'p-4', line: 1 }]);
     });
   });
 });
