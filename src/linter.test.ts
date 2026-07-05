@@ -73,3 +73,82 @@ describe('lintContent', () => {
     expect(results).toEqual([]);
   });
 });
+
+describe('lintContent — CSS/SCSS dispatch (issue #131)', () => {
+  afterEach(() => {
+    setConfig(compileConfig(DEFAULT_CONFIG));
+  });
+
+  const CSS = `.modal {
+  position: fixed;
+  z-index: 9999;
+  background: #ffe4e4;
+}`;
+
+  it('ZERO behavior change when the css section is absent (regression pin)', () => {
+    // DEFAULT_CONFIG has no `css` section, so a .css file must fall through to
+    // the Tailwind path and produce no CSS declaration violations at all —
+    // exactly as before this feature existed.
+    setConfig(compileConfig(DEFAULT_CONFIG));
+    expect(getConfig().css).toBeUndefined();
+    expect(lintContent('styles.css', CSS)).toEqual([]);
+    expect(lintContent('styles.scss', CSS)).toEqual([]);
+  });
+
+  it('flags raw z-index and color literals when css is enabled', () => {
+    setConfig(compileConfig({ ...DEFAULT_CONFIG, css: { zIndex: true, colorLiterals: true } }));
+    const results = lintContent('styles.css', CSS);
+    expect(results).toEqual([
+      {
+        filePath: 'styles.css',
+        line: 3,
+        className: 'z-index: 9999',
+        reason: expect.stringContaining('z-index'),
+      },
+      {
+        filePath: 'styles.css',
+        line: 4,
+        className: 'background: #ffe4e4',
+        reason: expect.stringContaining('color literal'),
+      },
+    ]);
+  });
+
+  it('passes token references and only flags what each enabled rule targets', () => {
+    setConfig(compileConfig({ ...DEFAULT_CONFIG, css: { zIndex: true } }));
+    const css = `.a {
+  z-index: var(--z-toast);
+  z-index: calc(var(--z-modal) + 1);
+  color: rgb(1, 2, 3);
+}`;
+    // Only z-index enabled: the var/calc forms pass, and the color literal is
+    // not scanned because colorLiterals is off.
+    expect(lintContent('a.css', css)).toEqual([]);
+  });
+
+  it('honors an escape-hatch ignore comment on a raw z-index', () => {
+    setConfig(compileConfig({ ...DEFAULT_CONFIG, css: { zIndex: true } }));
+    const css = `.a {
+  /* design-token-lint-ignore */
+  z-index: 9999;
+}`;
+    expect(lintContent('a.css', css)).toEqual([]);
+  });
+
+  it('lints .scss files too', () => {
+    setConfig(compileConfig({ ...DEFAULT_CONFIG, css: { zIndex: true } }));
+    const scss = `.a {
+  z-index: 42; // this trailing scss comment is ignored
+}`;
+    const results = lintContent('a.scss', scss);
+    expect(results).toHaveLength(1);
+    expect(results[0].className).toBe('z-index: 42');
+  });
+
+  it('a non-CSS file is unaffected by the css section', () => {
+    setConfig(compileConfig({ ...DEFAULT_CONFIG, css: { zIndex: true, colorLiterals: true } }));
+    // The .tsx path is unchanged even with css enabled.
+    const results = lintContent('c.tsx', `<div className="p-4">`);
+    expect(results.map((r) => r.className)).toEqual(['p-4']);
+  });
+});

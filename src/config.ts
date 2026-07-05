@@ -7,6 +7,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import type { CompiledCssConfig } from './css-rules.js';
 
 /**
  * Thrown by loadConfig when a config file exists but cannot be used —
@@ -91,6 +92,28 @@ export interface LintConfig {
    * `— did you mean "<value>"?`. Message-only: this does not drive `--fix`.
    */
   suggestions?: Record<string, string>;
+  /**
+   * Opt-in CSS/SCSS declaration scanning (issue #131). ENTIRELY absent by
+   * default: when this field is omitted, no CSS scanning happens and there is
+   * zero behavior change to the Tailwind class path. Every sub-flag is itself
+   * default-OFF, so `"css": {}` scans nothing until a rule is turned on.
+   */
+  css?: CssConfig;
+}
+
+/**
+ * The optional `css` config section. All fields are opt-in (v1). `zIndex`
+ * and `colorLiterals` toggle the two declaration-value rule kinds; `patterns`
+ * lists the file globs the CLI scans for `.css`/`.scss` files (alongside the
+ * existing Tailwind `patterns`).
+ */
+export interface CssConfig {
+  /** Flag bare integer `z-index` values (allow `var(--z-*)`, `calc(var(...) …)`, keywords). Default false. */
+  zIndex?: boolean;
+  /** Flag raw color literals (`#hex`, `rgb()/rgba()`, `hsl()/hsla()`, `oklch()/oklab()`). Default false. */
+  colorLiterals?: boolean;
+  /** File globs the CLI scans for CSS/SCSS declaration violations. */
+  patterns?: string[];
 }
 
 /**
@@ -508,6 +531,13 @@ export interface CompiledConfig {
   classFunctions: string[];
   /** Normalized base class -> semantic replacement token, consulted at match time (see `LintConfig.suggestions`) */
   suggestions: Map<string, string>;
+  /**
+   * Resolved CSS scanning config, or `undefined` when the config had no `css`
+   * section. `undefined` is the load-bearing "off" signal: the linter only
+   * dispatches CSS/SCSS files through the declaration rules when this is set,
+   * so an absent `css` section means zero behavior change.
+   */
+  css?: CompiledCssConfig;
 }
 
 /**
@@ -580,6 +610,17 @@ export function compileConfig(config: LintConfig): CompiledConfig {
     classAttributes: config.classAttributes ?? DEFAULT_CONFIG.classAttributes,
     classFunctions: config.classFunctions ?? DEFAULT_CONFIG.classFunctions,
     suggestions: new Map(Object.entries(config.suggestions ?? {})),
+    // Only present when the config actually had a `css` section — an absent
+    // section leaves this undefined so the linter skips CSS entirely.
+    ...(config.css
+      ? {
+          css: {
+            zIndex: config.css.zIndex ?? false,
+            colorLiterals: config.css.colorLiterals ?? false,
+            patterns: config.css.patterns ?? [],
+          },
+        }
+      : {}),
   };
 }
 
@@ -669,6 +710,29 @@ function validateConfigFields(parsed: Record<string, unknown>, filename: string)
       `Invalid config ${filename}: "suggestions" must be an object mapping class names to string suggestions`,
     );
   }
+  validateCssField(parsed.css, filename);
+}
+
+/**
+ * Validate the optional `css` section: it must be an object (not an array),
+ * with optional boolean `zIndex`/`colorLiterals` and an optional string-array
+ * `patterns`. Throws ConfigError naming the offending field, matching the
+ * validation style of the rest of the config.
+ */
+function validateCssField(value: unknown, filename: string): void {
+  if (value === undefined) return;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ConfigError(`Invalid config ${filename}: "css" must be an object`);
+  }
+  const css = value as Record<string, unknown>;
+  for (const flag of ['zIndex', 'colorLiterals'] as const) {
+    if (css[flag] !== undefined && typeof css[flag] !== 'boolean') {
+      throw new ConfigError(`Invalid config ${filename}: "css.${flag}" must be a boolean`);
+    }
+  }
+  if (css.patterns !== undefined && !isStringArray(css.patterns)) {
+    throw new ConfigError(`Invalid config ${filename}: "css.patterns" must be an array of strings`);
+  }
 }
 
 /**
@@ -725,6 +789,7 @@ export async function loadConfig(cwd: string): Promise<LintConfig> {
       prohibitedAdd: p.prohibitedAdd,
       allowedAdd: p.allowedAdd,
       suggestions: p.suggestions,
+      css: p.css,
     };
   }
 

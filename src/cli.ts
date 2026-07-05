@@ -288,16 +288,26 @@ export async function runMain(opts: MainOptions): Promise<number> {
   }
   setConfig(compiled);
 
+  // CSS/SCSS globs from the opt-in `css.patterns` section are scanned
+  // ALONGSIDE the Tailwind patterns, but only when the user did not pass
+  // explicit CLI patterns (mirroring how `config.patterns` is only consulted
+  // in that same "no CLI args" case). When the `css` section is absent this is
+  // always empty, so pattern resolution is byte-identical to before.
+  const usingCliPatterns = parsed.patterns.length > 0;
+  const cssPatterns = !usingCliPatterns ? (config.css?.patterns ?? []) : [];
+
   // Resolve patterns: CLI args > config file > defaults. An explicit
   // `"patterns": []` in the config is a distinct case from an *absent*
   // `patterns` field: `?? DEFAULT_PATTERNS` only falls back on
   // null/undefined, so `[]` would otherwise silently mean "match nothing"
   // and surface as the generic "No files matched" error further down. Catch
-  // it here with a message that names the actual cause.
+  // it here with a message that names the actual cause — unless the `css`
+  // section supplied patterns, in which case there is still something to scan.
   if (
     parsed.patterns.length === 0 &&
     config.patterns !== undefined &&
-    config.patterns.length === 0
+    config.patterns.length === 0 &&
+    cssPatterns.length === 0
   ) {
     stderr(
       chalk.red(
@@ -307,8 +317,8 @@ export async function runMain(opts: MainOptions): Promise<number> {
     );
     return 2;
   }
-  const patterns =
-    parsed.patterns.length > 0 ? parsed.patterns : (config.patterns ?? DEFAULT_PATTERNS);
+  const basePatterns = usingCliPatterns ? parsed.patterns : (config.patterns ?? DEFAULT_PATTERNS);
+  const patterns = [...basePatterns, ...cssPatterns];
 
   // Merge ignore patterns: CLI defaults + config ignore patterns
   const ignorePatterns = [...DEFAULT_IGNORE_PATTERNS, ...compiled.ignore];

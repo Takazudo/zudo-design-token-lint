@@ -998,3 +998,78 @@ describe('runMain — __inbox/ is no longer ignored by default', () => {
     expect(err).toContain('Found 1 violation(s)');
   });
 });
+
+describe('runMain — CSS scanning wiring (issue #131)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-css-'));
+    mkdirSync(join(tmpDir, 'src'), { recursive: true });
+    // A Tailwind violation reachable via DEFAULT_PATTERNS.
+    writeFileSync(join(tmpDir, 'src', 'comp.tsx'), `<div className="p-4">`);
+    // A CSS violation reachable only via css.patterns.
+    writeFileSync(
+      join(tmpDir, 'src', 'styles.css'),
+      `.modal {\n  z-index: 9999;\n  background: #ffe4e4;\n}`,
+    );
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('scans css.patterns alongside the Tailwind patterns', async () => {
+    writeFileSync(
+      join(tmpDir, '.design-token-lint.json'),
+      JSON.stringify({ css: { zIndex: true, colorLiterals: true, patterns: ['src/**/*.css'] } }),
+    );
+    const io = makeIO();
+    const code = await runMain({
+      args: ['--json'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    const results = JSON.parse(io.stdout[0]) as { className: string; filePath: string }[];
+    const classNames = results.map((r) => r.className).sort();
+    // Tailwind p-4 (from the default .tsx pattern) plus the two CSS violations.
+    expect(classNames).toEqual(['background: #ffe4e4', 'p-4', 'z-index: 9999']);
+  });
+
+  it('does not scan the .css file when the css section is absent (regression pin)', async () => {
+    // No config at all — the .css file is not covered by DEFAULT_PATTERNS and
+    // no css section exists, so only the Tailwind violation is reported.
+    const io = makeIO();
+    const code = await runMain({
+      args: ['--json'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    const results = JSON.parse(io.stdout[0]) as { className: string }[];
+    expect(results.map((r) => r.className)).toEqual(['p-4']);
+  });
+
+  it('lets css.patterns be the only thing scanned when patterns is []', async () => {
+    writeFileSync(
+      join(tmpDir, '.design-token-lint.json'),
+      JSON.stringify({ patterns: [], css: { zIndex: true, patterns: ['src/**/*.css'] } }),
+    );
+    const io = makeIO();
+    const code = await runMain({
+      args: ['--json'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    const results = JSON.parse(io.stdout[0]) as { className: string }[];
+    // Only the css z-index violation (colorLiterals off, tailwind patterns empty).
+    expect(results.map((r) => r.className)).toEqual(['z-index: 9999']);
+  });
+});

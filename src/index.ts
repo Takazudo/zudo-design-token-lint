@@ -26,7 +26,21 @@ export {
   type CompiledConfig,
   type CompiledRule,
   type ConfigPreset,
+  type CssConfig,
 } from './config.js';
+
+// --- issue #131: CSS/SCSS declaration scanning (opt-in) ---
+export {
+  extractCssDeclarations,
+  extractCssDeclarationsWithMeta,
+  type CssDeclaration,
+  type CssExtractorOptions,
+  type CssIgnoreKind,
+  type CssIgnoreRecord,
+  type CssExtractWithMetaResult,
+} from './css-extractor.js';
+export { checkDeclaration, type CssViolation, type CompiledCssConfig } from './css-rules.js';
+// --- end issue #131 additions ---
 
 // --- issue #128: structured prohibited entries (reason/category) ---
 export {

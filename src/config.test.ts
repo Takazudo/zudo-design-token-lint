@@ -1010,3 +1010,82 @@ describe('suggestions map — did-you-mean hints (issue #130)', () => {
     }
   });
 });
+
+describe('css config (issue #131)', () => {
+  it('compileConfig leaves css undefined when the section is absent', () => {
+    const compiled = compileConfig(DEFAULT_CONFIG);
+    expect(compiled.css).toBeUndefined();
+  });
+
+  it('compileConfig resolves css flags with all defaults OFF', () => {
+    const compiled = compileConfig({ ...DEFAULT_CONFIG, css: {} });
+    expect(compiled.css).toEqual({ zIndex: false, colorLiterals: false, patterns: [] });
+  });
+
+  it('compileConfig carries through explicit css flags and patterns', () => {
+    const compiled = compileConfig({
+      ...DEFAULT_CONFIG,
+      css: { zIndex: true, colorLiterals: true, patterns: ['src/**/*.css'] },
+    });
+    expect(compiled.css).toEqual({
+      zIndex: true,
+      colorLiterals: true,
+      patterns: ['src/**/*.css'],
+    });
+  });
+
+  it('loadConfig passes the css section through', async () => {
+    const dir = join(tmpdir(), `dtl-test-css-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, '.design-token-lint.json'),
+      JSON.stringify({ ignore: [], css: { zIndex: true, patterns: ['a/**/*.css'] } }),
+    );
+    try {
+      const config = await loadConfig(dir);
+      expect(config.css).toEqual({ zIndex: true, patterns: ['a/**/*.css'] });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('loadConfig rejects a non-object css section', async () => {
+    const dir = join(tmpdir(), `dtl-test-css-bad-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, '.design-token-lint.json'), JSON.stringify({ ignore: [], css: [] }));
+    try {
+      await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
+      await expect(loadConfig(dir)).rejects.toThrow(/"css" must be an object/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('loadConfig rejects a non-boolean css.zIndex', async () => {
+    const dir = join(tmpdir(), `dtl-test-css-zbad-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, '.design-token-lint.json'),
+      JSON.stringify({ ignore: [], css: { zIndex: 'yes' } }),
+    );
+    try {
+      await expect(loadConfig(dir)).rejects.toThrow(/"css.zIndex" must be a boolean/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('loadConfig rejects a non-array css.patterns', async () => {
+    const dir = join(tmpdir(), `dtl-test-css-pbad-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, '.design-token-lint.json'),
+      JSON.stringify({ ignore: [], css: { patterns: 'src/**/*.css' } }),
+    );
+    try {
+      await expect(loadConfig(dir)).rejects.toThrow(/"css.patterns" must be an array of strings/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});

@@ -48,6 +48,7 @@ Create a `.design-token-lint.json` or `design-token-lint.config.json` file at yo
 | `extends` | `string \| string[]` | Named preset(s) to inherit `prohibited`/`allowed` patterns from |
 | `prohibitedAdd` | `string[]` | Patterns appended to the resolved `prohibited` list (inherited or default) |
 | `allowedAdd` | `string[]` | Patterns appended to the resolved `allowed` list (inherited or default) |
+| `css` | `object` | Opt-in CSS/SCSS declaration scanning: `{ zIndex?, colorLiterals?, patterns? }` (all default-OFF) |
 
 All fields are optional and fall back to built-in defaults.
 
@@ -304,6 +305,81 @@ Use this to add support for additional class-merging utilities in your project:
 ```
 
 This is useful when using libraries like `class-variance-authority` (`cva`), `tailwind-variants` (`tv`), or additional utilities from `tailwind-merge` such as `twJoin`.
+
+### css
+
+Opt-in scanning of plain **CSS/SCSS declaration values** — an extension beyond Tailwind class attributes. This whole section is **absent by default**, and every rule inside it is itself **default-OFF**, so nothing changes until you both add the `css` section and turn a rule on.
+
+```json
+{
+  "css": {
+    "zIndex": true,
+    "colorLiterals": true,
+    "patterns": ["src/**/*.css", "src/**/*.scss"]
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `zIndex` | `boolean` | Flag bare integer `z-index` values (default `false`) |
+| `colorLiterals` | `boolean` | Flag raw color literals in any declaration value (default `false`) |
+| `patterns` | `string[]` | File globs the CLI scans for `.css`/`.scss` files, **in addition to** the Tailwind `patterns` |
+
+`css.patterns` is scanned alongside the normal `patterns` when the CLI is run without explicit file arguments. To scan **only** CSS, set the top-level `"patterns": []` and list your CSS globs under `css.patterns`.
+
+Violations are reported in the same flat shape as Tailwind violations, with the offending declaration in the `className` field in a stable `property: value` form (e.g. `z-index: 9999`).
+
+#### `zIndex`
+
+Forbids raw integer `z-index` values, enforcing the [semantic z-index tier system](https://zudo-css-wisdom.takazudomodular.com/). Mirrors the allow/forbid table from the z-index strategy:
+
+| Allowed | Forbidden |
+|---|---|
+| `z-index: var(--z-modal);` | `z-index: 100;` |
+| `z-index: calc(var(--z-modal) + 1);` | `z-index: 9999;` |
+| `z-index: auto;` / `inherit;` / `initial;` / `unset;` / `revert;` | `z-index: -1;` |
+| Raw integer with a `/* design-token-lint-ignore */` escape hatch | Bare raw integer with no escape comment |
+
+A `calc()` counts as allowed only when it contains a `var()` reference; `calc(100 + 1)` (raw arithmetic) is still flagged. A trailing `!important` does not exempt a raw integer.
+
+#### `colorLiterals`
+
+Forbids raw color literals embedded in declaration values:
+
+| Allowed | Forbidden |
+|---|---|
+| `color: var(--fg);` | `background: #ffe4e4;` |
+| `color: transparent;` / `currentColor;` | `color: rgb(1, 2, 3);` |
+| Keyword-only values (`red`, `inherit`, `none`) | `color: hsl(0 95% 92%);` |
+| — | `color: oklch(45% 0.18 27);` / `oklab(...)` |
+
+The flagged forms are `#hex` (3/4/6/8-digit), `rgb()`/`rgba()`, `hsl()`/`hsla()`, and `oklch()`/`oklab()`. Named colors and other keyword-only values are allowed — this rule targets literal values, not every color.
+
+#### Escape hatch
+
+Use the same `design-token-lint-ignore` comment as the Tailwind class rules. In CSS it suppresses the **next line** (or, as a trailing comment, its own line):
+
+```css
+/* Legacy third-party widget — remove once migrated, tracked at #123. */
+/* design-token-lint-ignore */
+.legacy-widget {
+  z-index: 9999;
+}
+```
+
+Note that the comment suppresses the **declaration on the immediately following line**, so place it directly above the `z-index:` / color declaration, not above the selector. A trailing reason (`/* design-token-lint-ignore - why */`) is tolerated. `design-token-lint-ignore-file` suppresses the whole file.
+
+#### Scope and known limitations (v1)
+
+CSS scanning v1 is strictly **declaration-based** and line/regex-driven (no PostCSS, no AST — consistent with the Tailwind extractor). It correctly handles `/* */` comments (including multi-line spans), string literals, `url(...)` values, and SCSS `//` line comments. The following are **known false negatives** — values that embed a literal but are **not** flagged in v1, by design:
+
+- **Custom-property definitions** holding a literal (`--brand: #f00;`). Distinguishing a palette-definition zone (`:root`, `@theme`) from a semantic token that should reference the palette needs zone awareness, which is a deferred later pass.
+- **SCSS variable declarations** (`$brand: #f00;`) — same reason as custom properties.
+- **SCSS maps** and other nested/interpolated SCSS constructs.
+- **Values split across complex multi-line syntax** beyond a single declaration.
+
+Zone-aware scanning (allowing literals only in palette-definition zones) is out of scope for this version.
 
 ## Built-in Defaults
 
