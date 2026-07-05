@@ -5,7 +5,7 @@ sidebar_position: 9994
 category: changelog
 ---
 
-An audit-driven sweep across the extractor, config, and CLI, plus three sizable new opt-in features: config `extends`/presets, opt-in CSS/SCSS declaration scanning, and ignore-hygiene enforcement. Not yet published to npm as of this writing — `package.json` was still at `1.1.0-next.2` when this round of changes landed.
+An audit-driven sweep across the extractor, config, and CLI, plus three sizable new opt-in features: config `extends`/presets, opt-in CSS/SCSS declaration scanning, and ignore-hygiene enforcement.
 
 <Warning>
 
@@ -162,6 +162,8 @@ Both `p-4` and `m-8` above are suppressed. See [Ignore Syntax](../guide/ignore-s
 - `"patterns": []` in config now fails fast with a message naming the field, instead of falling through to the generic "no files matched" error (b5fcac4)
 - Removed a redundant `err instanceof ConfigError` check in the config-load catch (`ConfigError` already extends `Error`) (b5fcac4)
 - The `semanticPrefixes` spacing bypass and the `value === '0'` zero bypass are unaffected by this round, but the previously-dead `value === '1px'` branch was removed — `p-1px` and friends were already passing on their own merits (non-numeric values never match the `{n}` pattern), not via that branch (0acf823)
+- The opt-in `css` `colorLiterals` rule no longer reports a hex-length `url()` fragment reference (e.g. `url(#fff)`, `url(#123456)`) as a raw color literal — `url(...)` spans are blanked before the hex scan (63350c2)
+- `cn()`/`class:list` string-literal scanning is now backslash-escape aware: an escaped quote inside one argument (e.g. `cn('it\'s', 'p-4')`) no longer desyncs parsing and silently drops a sibling argument's violation (5f8ba7a)
 
 ## Testing & CI
 
@@ -169,8 +171,8 @@ Both `p-4` and `m-8` above are suppressed. See [Ignore Syntax](../guide/ignore-s
 - A second golden fixture exercises the default-config path (no config file), including the new sizing-ban defaults; `pnpm golden:update` regenerates both fixtures (3d77990)
 - `vitest.config.ts` now defines separate `unit`/`subprocess` projects so `vitest run --project unit` runs dist-free (3d77990)
 - New `src/test-utils.ts` shared helpers replaced 36 duplicated temp-directory setup/teardown blocks across `cli.test.ts`/`config.test.ts` (3d77990)
-- `ci.yml`'s test job now runs a Node 18.x/20.x/22.x matrix (3d77990)
-- Total test count grew from 408 (start of this round) to 654 across the full sweep
+- `ci.yml`'s test job now runs a Node 20.x/22.x/24.x matrix — Vitest 4 requires Node ≥20, so the matrix tracks the tooling-supported versions while the published runtime keeps its `engines: ">=18"` floor (3d77990, 63350c2)
+- Total test count grew from 408 (start of this round) to 665 across the full sweep
 
 ## Docs
 
