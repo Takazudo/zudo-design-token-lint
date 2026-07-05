@@ -99,6 +99,28 @@ export interface LintConfig {
    * default-OFF, so `"css": {}` scans nothing until a rule is turned on.
    */
   css?: CssConfig;
+  /**
+   * Opt-in ignore hygiene (issue #132), grounded in zudo-css-wisdom's
+   * "block by default, allow with a documented reason" guidance. Default
+   * `false` — when omitted, ignore comments behave exactly as before (silent
+   * suppression, no hygiene reporting).
+   *
+   * When `true`, a `design-token-lint-ignore` comment with no trailing reason
+   * text that shields a real violation is reported instead of silently
+   * suppressing it — with the distinct, stable reason `suppressed without
+   * documented reason`, anchored at the suppressed class/declaration's line.
+   * A reason-carrying ignore still suppresses silently. Does NOT apply to
+   * `design-token-lint-ignore-file` in this round.
+   */
+  requireIgnoreReason?: boolean;
+  /**
+   * Opt-in ignore hygiene (issue #132), analog of ESLint's
+   * `reportUnusedDisableDirectives`. Default `false`. When `true`, an ignore
+   * comment that suppressed no actual violation (nothing on the line(s) it
+   * covers was ever a violation) is itself reported, anchored at the
+   * comment's own line with `className: "design-token-lint-ignore"`.
+   */
+  reportUnusedIgnores?: boolean;
 }
 
 /**
@@ -538,6 +560,10 @@ export interface CompiledConfig {
    * so an absent `css` section means zero behavior change.
    */
   css?: CompiledCssConfig;
+  /** Resolved `requireIgnoreReason` flag (issue #132). Always concrete — defaults to `false`. */
+  requireIgnoreReason: boolean;
+  /** Resolved `reportUnusedIgnores` flag (issue #132). Always concrete — defaults to `false`. */
+  reportUnusedIgnores: boolean;
 }
 
 /**
@@ -621,6 +647,8 @@ export function compileConfig(config: LintConfig): CompiledConfig {
           },
         }
       : {}),
+    requireIgnoreReason: config.requireIgnoreReason ?? false,
+    reportUnusedIgnores: config.reportUnusedIgnores ?? false,
   };
 }
 
@@ -640,6 +668,9 @@ const STRING_ARRAY_FIELDS = [
 // Config fields whose value, when present, must be an array of strings and/or
 // structured `{pattern, reason?, category?}` objects.
 const PROHIBITED_ARRAY_FIELDS = ['prohibited', 'prohibitedAdd'] as const;
+
+// Top-level config fields whose value, when present, must be a boolean.
+const BOOLEAN_FIELDS = ['requireIgnoreReason', 'reportUnusedIgnores'] as const;
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((v) => typeof v === 'string');
@@ -691,6 +722,12 @@ function validateConfigFields(parsed: Record<string, unknown>, filename: string)
         `Invalid config ${filename}: "${field}" must be an array of strings or ` +
           '{pattern, reason?, category?} objects',
       );
+    }
+  }
+  for (const field of BOOLEAN_FIELDS) {
+    const value = parsed[field];
+    if (value !== undefined && typeof value !== 'boolean') {
+      throw new ConfigError(`Invalid config ${filename}: "${field}" must be a boolean`);
     }
   }
   if (
@@ -790,6 +827,8 @@ export async function loadConfig(cwd: string): Promise<LintConfig> {
       allowedAdd: p.allowedAdd,
       suggestions: p.suggestions,
       css: p.css,
+      requireIgnoreReason: p.requireIgnoreReason,
+      reportUnusedIgnores: p.reportUnusedIgnores,
     };
   }
 

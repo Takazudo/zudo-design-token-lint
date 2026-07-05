@@ -1026,6 +1026,24 @@ describe('extractClassesWithMeta', () => {
       const { ignores } = extractClassesWithMeta(content);
       expect(ignores).toEqual([]);
     });
+
+    it('does not misread a non-alone design-token-lint-ignore-file mention as a bare line-ignore with reason "-file"', () => {
+      // IGNORE_FILE_PATTERNS only matches when the comment is ALONE on its
+      // line, so this mid-sentence mention isn't a real file-level ignore —
+      // but the unanchored block-comment line-ignore pattern used to also
+      // match it (its `\b` boundary was satisfied right before "-file"),
+      // producing a bogus same-line/next-line record with reasonText "file".
+      const content = `<div className="p-4">
+  <p>Use /* design-token-lint-ignore-file */ to skip</p>
+</div>
+<div className="m-8">`;
+      const { classes, ignores } = extractClassesWithMeta(content);
+      expect(classes).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'm-8', line: 4 },
+      ]);
+      expect(ignores).toEqual([]);
+    });
   });
 
   describe('suppressed-candidate attribution for a multiline construct swallowed by one ignore', () => {

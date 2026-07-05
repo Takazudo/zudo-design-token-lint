@@ -152,3 +152,215 @@ describe('lintContent — CSS/SCSS dispatch (issue #131)', () => {
     expect(results.map((r) => r.className)).toEqual(['p-4']);
   });
 });
+
+describe('lintContent — ignore hygiene: requireIgnoreReason / reportUnusedIgnores (issue #132)', () => {
+  afterEach(() => {
+    setConfig(compileConfig(DEFAULT_CONFIG));
+  });
+
+  describe('both flags false — regression pin (byte-identical to before)', () => {
+    it('a bare ignore over a violation still suppresses silently, and an unused ignore is silent too', () => {
+      const content = `// design-token-lint-ignore
+<div className="p-4">
+<div className="flex">
+// design-token-lint-ignore
+<div className="flex">`;
+      expect(lintContent('a.tsx', content)).toEqual([]);
+    });
+
+    it('CSS: a bare ignore over a raw z-index still suppresses silently', () => {
+      setConfig(compileConfig({ ...DEFAULT_CONFIG, css: { zIndex: true } }));
+      const css = `.a {
+  /* design-token-lint-ignore */
+  z-index: 9999;
+}`;
+      expect(lintContent('a.css', css)).toEqual([]);
+    });
+  });
+
+  describe('requireIgnoreReason', () => {
+    it('reports the distinct reason at the suppressed class line when the ignore is bare', () => {
+      setConfig(compileConfig({ ...DEFAULT_CONFIG, requireIgnoreReason: true }));
+      const content = `// design-token-lint-ignore
+<div className="p-4">`;
+      expect(lintContent('a.tsx', content)).toEqual([
+        {
+          filePath: 'a.tsx',
+          line: 2,
+          className: 'p-4',
+          reason: 'suppressed without documented reason',
+        },
+      ]);
+    });
+
+    it('a reason-carrying ignore over the same violation still suppresses silently', () => {
+      setConfig(compileConfig({ ...DEFAULT_CONFIG, requireIgnoreReason: true }));
+      const content = `// design-token-lint-ignore - vendor requires literal p-4
+<div className="p-4">`;
+      expect(lintContent('a.tsx', content)).toEqual([]);
+    });
+
+    it('does not apply to a bare file-level ignore (out of scope this round)', () => {
+      setConfig(compileConfig({ ...DEFAULT_CONFIG, requireIgnoreReason: true }));
+      const content = `// design-token-lint-ignore-file
+<div className="p-4">`;
+      expect(lintContent('a.tsx', content)).toEqual([]);
+    });
+
+    it('a bare ignore over a clean line reports nothing (nothing to require a reason for)', () => {
+      setConfig(compileConfig({ ...DEFAULT_CONFIG, requireIgnoreReason: true }));
+      const content = `// design-token-lint-ignore
+<div className="flex">`;
+      expect(lintContent('a.tsx', content)).toEqual([]);
+    });
+
+    it('CSS: reports the distinct reason at the declaration line when the ignore is bare', () => {
+      setConfig(
+        compileConfig({ ...DEFAULT_CONFIG, css: { zIndex: true }, requireIgnoreReason: true }),
+      );
+      const css = `.a {
+  /* design-token-lint-ignore */
+  z-index: 9999;
+}`;
+      expect(lintContent('a.css', css)).toEqual([
+        {
+          filePath: 'a.css',
+          line: 3,
+          className: 'z-index: 9999',
+          reason: 'suppressed without documented reason',
+        },
+      ]);
+    });
+  });
+
+  describe('reportUnusedIgnores', () => {
+    it('reports an ignore that suppressed nothing at the comment line, with className "design-token-lint-ignore"', () => {
+      setConfig(compileConfig({ ...DEFAULT_CONFIG, reportUnusedIgnores: true }));
+      const content = `// design-token-lint-ignore
+<div className="flex">`;
+      expect(lintContent('a.tsx', content)).toEqual([
+        {
+          filePath: 'a.tsx',
+          line: 1,
+          className: 'design-token-lint-ignore',
+          reason: 'Unused design-token-lint-ignore comment — suppressed no violation',
+        },
+      ]);
+    });
+
+    it('does not report an ignore that actually suppressed a violation', () => {
+      setConfig(compileConfig({ ...DEFAULT_CONFIG, reportUnusedIgnores: true }));
+      const content = `// design-token-lint-ignore
+<div className="p-4">`;
+      expect(lintContent('a.tsx', content)).toEqual([]);
+    });
+
+    it('a trailing same-line ignore over two clean lines is reported once, not twice', () => {
+      setConfig(compileConfig({ ...DEFAULT_CONFIG, reportUnusedIgnores: true }));
+      const content = `<div className="flex"> {/* design-token-lint-ignore */}
+<div className="grid">`;
+      expect(lintContent('a.tsx', content)).toEqual([
+        {
+          filePath: 'a.tsx',
+          line: 1,
+          className: 'design-token-lint-ignore',
+          reason: 'Unused design-token-lint-ignore comment — suppressed no violation',
+        },
+      ]);
+    });
+
+    it('a trailing same-line ignore is NOT unused when either side suppressed a violation', () => {
+      setConfig(compileConfig({ ...DEFAULT_CONFIG, reportUnusedIgnores: true }));
+      const content = `<div className="flex"> {/* design-token-lint-ignore */}
+<div className="p-4">`;
+      expect(lintContent('a.tsx', content)).toEqual([]);
+    });
+
+    it('CSS: reports an ignore over a clean declaration at the comment line', () => {
+      setConfig(
+        compileConfig({ ...DEFAULT_CONFIG, css: { zIndex: true }, reportUnusedIgnores: true }),
+      );
+      const css = `.a {
+  /* design-token-lint-ignore */
+  color: red;
+}`;
+      expect(lintContent('a.css', css)).toEqual([
+        {
+          filePath: 'a.css',
+          line: 2,
+          className: 'design-token-lint-ignore',
+          reason: 'Unused design-token-lint-ignore comment — suppressed no violation',
+        },
+      ]);
+    });
+  });
+
+  describe('both flags together', () => {
+    it('a bare ignore that suppressed a violation reports only the requireIgnoreReason finding', () => {
+      setConfig(
+        compileConfig({
+          ...DEFAULT_CONFIG,
+          requireIgnoreReason: true,
+          reportUnusedIgnores: true,
+        }),
+      );
+      const content = `// design-token-lint-ignore
+<div className="p-4">`;
+      expect(lintContent('a.tsx', content)).toEqual([
+        {
+          filePath: 'a.tsx',
+          line: 2,
+          className: 'p-4',
+          reason: 'suppressed without documented reason',
+        },
+      ]);
+    });
+  });
+
+  it('interleaves hygiene findings with normal violations in top-down line order', () => {
+    setConfig(compileConfig({ ...DEFAULT_CONFIG, requireIgnoreReason: true }));
+    const content = `<div className="bg-gray-500">
+// design-token-lint-ignore
+<div className="p-4">
+<div className="m-8">`;
+    expect(lintContent('a.tsx', content)).toEqual([
+      {
+        filePath: 'a.tsx',
+        line: 1,
+        className: 'bg-gray-500',
+        reason: expect.stringContaining('Default Tailwind color'),
+      },
+      {
+        filePath: 'a.tsx',
+        line: 3,
+        className: 'p-4',
+        reason: 'suppressed without documented reason',
+      },
+      {
+        filePath: 'a.tsx',
+        line: 4,
+        className: 'm-8',
+        reason: expect.stringContaining('Numeric spacing'),
+      },
+    ]);
+  });
+
+  it('hygiene findings use the exact flat LintResult shape (--json / --format github stay well-formed)', () => {
+    setConfig(
+      compileConfig({ ...DEFAULT_CONFIG, requireIgnoreReason: true, reportUnusedIgnores: true }),
+    );
+    const content = `// design-token-lint-ignore
+<div className="p-4">
+// design-token-lint-ignore
+<div className="flex">`;
+    const results = lintContent('a.tsx', content);
+    expect(results.length).toBeGreaterThan(0);
+    for (const r of results) {
+      expect(Object.keys(r).sort()).toEqual(['className', 'filePath', 'line', 'reason']);
+      expect(typeof r.filePath).toBe('string');
+      expect(typeof r.line).toBe('number');
+      expect(typeof r.className).toBe('string');
+      expect(typeof r.reason).toBe('string');
+    }
+  });
+});

@@ -1089,3 +1089,66 @@ describe('css config (issue #131)', () => {
     }
   });
 });
+
+describe('requireIgnoreReason / reportUnusedIgnores config (issue #132)', () => {
+  it('compileConfig resolves both flags to false when absent', () => {
+    const compiled = compileConfig(DEFAULT_CONFIG);
+    expect(compiled.requireIgnoreReason).toBe(false);
+    expect(compiled.reportUnusedIgnores).toBe(false);
+  });
+
+  it('compileConfig carries through explicit true values', () => {
+    const compiled = compileConfig({
+      ...DEFAULT_CONFIG,
+      requireIgnoreReason: true,
+      reportUnusedIgnores: true,
+    });
+    expect(compiled.requireIgnoreReason).toBe(true);
+    expect(compiled.reportUnusedIgnores).toBe(true);
+  });
+
+  it('loadConfig passes both flags through', async () => {
+    const dir = join(tmpdir(), `dtl-test-hygiene-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, '.design-token-lint.json'),
+      JSON.stringify({ ignore: [], requireIgnoreReason: true, reportUnusedIgnores: true }),
+    );
+    try {
+      const config = await loadConfig(dir);
+      expect(config.requireIgnoreReason).toBe(true);
+      expect(config.reportUnusedIgnores).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('loadConfig rejects a non-boolean requireIgnoreReason', async () => {
+    const dir = join(tmpdir(), `dtl-test-hygiene-bad1-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, '.design-token-lint.json'),
+      JSON.stringify({ ignore: [], requireIgnoreReason: 'yes' }),
+    );
+    try {
+      await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
+      await expect(loadConfig(dir)).rejects.toThrow(/"requireIgnoreReason" must be a boolean/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('loadConfig rejects a non-boolean reportUnusedIgnores', async () => {
+    const dir = join(tmpdir(), `dtl-test-hygiene-bad2-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, '.design-token-lint.json'),
+      JSON.stringify({ ignore: [], reportUnusedIgnores: 1 }),
+    );
+    try {
+      await expect(loadConfig(dir)).rejects.toThrow(/"reportUnusedIgnores" must be a boolean/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});

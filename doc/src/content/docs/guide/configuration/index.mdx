@@ -49,6 +49,8 @@ Create a `.design-token-lint.json` or `design-token-lint.config.json` file at yo
 | `prohibitedAdd` | `string[]` | Patterns appended to the resolved `prohibited` list (inherited or default) |
 | `allowedAdd` | `string[]` | Patterns appended to the resolved `allowed` list (inherited or default) |
 | `css` | `object` | Opt-in CSS/SCSS declaration scanning: `{ zIndex?, colorLiterals?, patterns? }` (all default-OFF) |
+| `requireIgnoreReason` | `boolean` | Report a bare (reason-less) `design-token-lint-ignore` that shields a real violation, instead of suppressing it silently (default `false`) |
+| `reportUnusedIgnores` | `boolean` | Report a `design-token-lint-ignore` comment that suppressed nothing (default `false`) |
 
 All fields are optional and fall back to built-in defaults.
 
@@ -380,6 +382,62 @@ CSS scanning v1 is strictly **declaration-based** and line/regex-driven (no Post
 - **Values split across complex multi-line syntax** beyond a single declaration.
 
 Zone-aware scanning (allowing literals only in palette-definition zones) is out of scope for this version.
+
+### `requireIgnoreReason` / `reportUnusedIgnores`
+
+Two opt-in flags, both **default `false`**, that keep [ignore comments](../ignore-syntax/index.mdx) from becoming a silent, undocumented escape hatch:
+
+```json
+{
+  "requireIgnoreReason": true,
+  "reportUnusedIgnores": true
+}
+```
+
+Both flags read the same `design-token-lint-ignore` / `design-token-lint-ignore-file` comments described in the [Ignore Syntax](../ignore-syntax/index.mdx) guide — there is no new comment form to learn. They apply everywhere an ignore comment is honored: Tailwind class attributes/utility calls **and** the [`css`](#css) declaration-scanning path.
+
+#### `requireIgnoreReason`
+
+Normally, a `design-token-lint-ignore` comment suppresses the class/declaration it covers whether or not it carries a reason. With `requireIgnoreReason: true`, a **bare** ignore (no trailing reason text) that shields a **real violation** is reported instead of silently disappearing:
+
+```tsx
+// design-token-lint-ignore
+<div className="p-4">
+```
+
+```text
+L2: p-4 — suppressed without documented reason
+```
+
+Add a reason after a `-`, `–`, `—`, or `:` separator and the same ignore suppresses silently again, exactly as before:
+
+```tsx
+// design-token-lint-ignore - vendor requires literal p-4
+<div className="p-4">
+```
+
+An ignore that doesn't shield an actual violation is unaffected by this flag (see `reportUnusedIgnores` below), and `design-token-lint-ignore-file` is not covered by this flag in this version — a bare file-level ignore never triggers this finding.
+
+<Note>
+
+The reported reason string — `suppressed without documented reason` — is stable and greppable by design; it does not change based on the underlying violation.
+
+</Note>
+
+#### `reportUnusedIgnores`
+
+The analog of ESLint's `reportUnusedDisableDirectives`. With `reportUnusedIgnores: true`, a `design-token-lint-ignore` comment that suppressed **nothing** — every class/declaration it covers already passed — is itself reported, anchored at the comment's own line:
+
+```tsx
+// design-token-lint-ignore
+<div className="flex">
+```
+
+```text
+L1: design-token-lint-ignore — Unused design-token-lint-ignore comment — suppressed no violation
+```
+
+The finding's `className` is the literal string `"design-token-lint-ignore"` (there is no offending class to name — the comment itself is the problem), so `--json` and `--format github` output stay in the same flat `LintResult` shape as every other finding. An ignore comment that suppresses at least one real violation is never reported as unused, even if it also covers other, already-clean lines — and a reason-carrying ignore is just as reportable as a bare one here, since the flag is about whether the comment did anything, not whether it's documented.
 
 ## Built-in Defaults
 

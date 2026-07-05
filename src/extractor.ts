@@ -58,9 +58,18 @@ function escapeRegExp(s: string): string {
 // trailing reason text (e.g. `{/* design-token-lint-ignore — reason */}`) via
 // a capturing group — the reason text itself isn't consumed yet, but a future
 // change may surface it in lint output.
+// The `(?!-file)` guard on the two block-comment forms keeps a
+// `design-token-lint-ignore-file` comment that ISN'T alone on its own line
+// (so IGNORE_FILE_PATTERNS below doesn't match it) from being misread as a
+// bare line-ignore with reason text "-file" — `\b` alone is satisfied right
+// after "ignore" (a word/non-word boundary exists before the "-" too) so it
+// doesn't reject the "-file" suffix on its own. Mirrors the `(?!-file)`
+// lookahead already used by the CSS extractor's LINE_DIRECTIVE. The `//`
+// form doesn't need this: its `(?!\S)` already rejects any non-whitespace
+// character (including "-") right after "ignore".
 const IGNORE_PATTERNS = [
-  /\/\*\s*design-token-lint-ignore\b([^*]*)\*\//,
-  /\{\/\*\s*design-token-lint-ignore\b([^*]*)\*\/\}/,
+  /\/\*\s*design-token-lint-ignore(?!-file)\b([^*]*)\*\//,
+  /\{\/\*\s*design-token-lint-ignore(?!-file)\b([^*]*)\*\/\}/,
   /\/\/\s*design-token-lint-ignore(?!\S)(.*)$/,
 ];
 
