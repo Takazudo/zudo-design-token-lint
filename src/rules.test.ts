@@ -97,6 +97,62 @@ describe('checkClass', () => {
     });
   });
 
+  describe('numeric sizing scale — prohibited by default (issue #128, decision D1)', () => {
+    it.each([
+      ['w-4', 'Numeric width'],
+      ['h-8', 'Numeric height'],
+      ['size-6', 'Numeric size'],
+      ['min-w-4', 'Numeric min-width'],
+      ['max-w-8', 'Numeric max-width'],
+      ['min-h-2', 'Numeric min-height'],
+      ['max-h-12', 'Numeric max-height'],
+      ['basis-4', 'Numeric flex-basis'],
+    ])('flags %s with a sizing-specific reason and category', (cls, reasonPrefix) => {
+      const result = checkClass(cls);
+      expect(result).not.toBeNull();
+      expect(result!.reason).toContain(reasonPrefix);
+      expect(result!.reason).toContain(cls);
+      expect(result!.category).toBe('sizing');
+    });
+
+    it.each(['sm:w-4', 'hover:h-8', '-min-w-4', 'w-4!'])(
+      'flags %s (variant/negative/important forms)',
+      (cls) => {
+        const result = checkClass(cls);
+        expect(result).not.toBeNull();
+        expect(result!.category).toBe('sizing');
+      },
+    );
+  });
+
+  describe('numeric sizing scale — allowed exceptions (issue #128)', () => {
+    it.each([
+      'w-1/2',
+      'h-1/3',
+      'size-1/2',
+      'min-w-1/2',
+      'max-w-2/3',
+      'w-icon-md',
+      'h-icon-md',
+      'w-[32px]',
+      'h-[10rem]',
+      'size-[24px]',
+      'w-0',
+      'h-0',
+      'size-0',
+      'min-w-0',
+      'max-w-0',
+      'min-h-0',
+      'max-h-0',
+      'basis-0',
+      'w-full',
+      'h-full',
+      'w-auto',
+    ])('allows %s', (cls) => {
+      expect(checkClass(cls)).toBeNull();
+    });
+  });
+
   describe('default Tailwind colors — prohibited', () => {
     it.each([
       'bg-gray-500',

@@ -83,6 +83,46 @@ describe('compilePattern', () => {
   });
 });
 
+describe('compilePattern — options bag (issue #128)', () => {
+  it('accepts an options object with a custom reason, overriding the shape-inferred default', () => {
+    const rule = compilePattern('w-{n}', { reason: 'Numeric width "{CLASS}" — use a token' });
+    expect(rule.reasonTemplate).toBe('Numeric width "{CLASS}" — use a token');
+    expect(rule.isSpacingRule).toBe(true);
+  });
+
+  it('accepts an options object with a category, surfaced on the compiled rule', () => {
+    const rule = compilePattern('z-{n}', { category: 'z-index' });
+    expect(rule.category).toBe('z-index');
+  });
+
+  it('has no category when none is given (flat shape preserved)', () => {
+    const rule = compilePattern('p-{n}');
+    expect(rule.category).toBeUndefined();
+  });
+
+  it('a custom reason wins over suggestionSuffix when both are given', () => {
+    const rule = compilePattern('w-{n}', {
+      suggestionSuffix: 'use hsp-* tokens',
+      reason: 'Numeric width "{CLASS}" — use a sizing token',
+    });
+    expect(rule.reasonTemplate).toBe('Numeric width "{CLASS}" — use a sizing token');
+    expect(rule.reasonTemplate).not.toContain('hsp-');
+  });
+
+  it('still accepts a bare string as suggestionSuffix (legacy call shape, regression)', () => {
+    const rule = compilePattern('p-{n}', 'use hgap-*/vgap-* tokens');
+    expect(rule.reasonTemplate).toContain('use hgap-*/vgap-* tokens');
+    expect(rule.category).toBeUndefined();
+  });
+
+  it('applies a custom reason to the exact-match (no-placeholder) pattern shape too', () => {
+    const rule = compilePattern('hidden', { reason: 'Do not hide "{CLASS}"', category: 'layout' });
+    expect(rule.reasonTemplate).toBe('Do not hide "{CLASS}"');
+    expect(rule.category).toBe('layout');
+    expect(rule.valuePattern.source).toBe('^$');
+  });
+});
+
 describe('compilePattern — exact patterns with variant/negative/important shapes', () => {
   it('does not throw for an exact pattern with a leading "-"', () => {
     const rule = compilePattern('-mt-px');
@@ -241,6 +281,132 @@ describe('checkClassWithConfig', () => {
     expect(colorViolation).not.toBeNull();
     expect(colorViolation!.reason).toContain('use hgap-*/vgap-* or zd-* tokens');
     expect(colorViolation!.reason).toContain('Default Tailwind color');
+  });
+});
+
+describe('structured prohibited entries — object {pattern, reason?, category?} (issue #128)', () => {
+  it('a plain string entry compiles unchanged alongside an object entry', () => {
+    const custom: LintConfig = {
+      prohibited: ['p-{n}', { pattern: 'w-{n}', reason: 'Numeric width "{CLASS}"' }],
+      allowed: [],
+      ignore: [],
+    };
+    const compiled = compileConfig(custom);
+    expect(compiled.rules).toHaveLength(2);
+
+    const spacing = checkClassWithConfig('p-4', compiled);
+    expect(spacing).not.toBeNull();
+    expect(spacing!.reason).toContain('Numeric spacing');
+    expect(spacing!.category).toBeUndefined();
+  });
+
+  it('an object entry with a custom reason and category is surfaced on the violation', () => {
+    const custom: LintConfig = {
+      prohibited: [{ pattern: 'w-{n}', reason: 'Numeric width "{CLASS}"', category: 'sizing' }],
+      allowed: [],
+      ignore: [],
+    };
+    const compiled = compileConfig(custom);
+    const result = checkClassWithConfig('w-4', compiled);
+    expect(result).not.toBeNull();
+    expect(result!.reason).toBe('Numeric width "w-4"');
+    expect(result!.category).toBe('sizing');
+  });
+
+  it('an object entry without reason/category falls back to shape-inferred defaults, no category', () => {
+    const custom: LintConfig = {
+      prohibited: [{ pattern: 'w-{n}' }],
+      allowed: [],
+      ignore: [],
+    };
+    const compiled = compileConfig(custom);
+    const result = checkClassWithConfig('w-4', compiled);
+    expect(result).not.toBeNull();
+    expect(result!.reason).toContain('Numeric spacing');
+    expect(result!.category).toBeUndefined();
+  });
+
+  it('loadConfig accepts an object-shaped prohibited entry from a JSON config file', async () => {
+    const dir = join(tmpdir(), `dtl-test-prohibited-obj-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const configPath = join(dir, '.design-token-lint.json');
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        prohibited: [{ pattern: 'w-{n}', reason: 'Numeric width "{CLASS}"', category: 'sizing' }],
+        allowed: [],
+        ignore: [],
+      }),
+    );
+    try {
+      const config = await loadConfig(dir);
+      const compiled = compileConfig(config);
+      const result = checkClassWithConfig('w-8', compiled);
+      expect(result).not.toBeNull();
+      expect(result!.reason).toBe('Numeric width "w-8"');
+      expect(result!.category).toBe('sizing');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('loadConfig rejects a prohibited object entry missing "pattern"', async () => {
+    const dir = join(tmpdir(), `dtl-test-prohibited-bad-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const configPath = join(dir, '.design-token-lint.json');
+    await writeFile(
+      configPath,
+      JSON.stringify({ prohibited: [{ reason: 'missing pattern' }], ignore: [] }),
+    );
+    try {
+      await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
+      await expect(loadConfig(dir)).rejects.toThrow(
+        /"prohibited" must be an array of strings or \{pattern, reason\?, category\?\} objects/,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('loadConfig rejects a prohibited object entry with a non-string "reason"', async () => {
+    const dir = join(tmpdir(), `dtl-test-prohibited-bad-reason-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const configPath = join(dir, '.design-token-lint.json');
+    await writeFile(
+      configPath,
+      JSON.stringify({ prohibited: [{ pattern: 'w-{n}', reason: 123 }], ignore: [] }),
+    );
+    try {
+      await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('loadConfig accepts an object-shaped prohibitedAdd entry from a JSON config file', async () => {
+    const dir = join(tmpdir(), `dtl-test-prohibitedadd-obj-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const configPath = join(dir, '.design-token-lint.json');
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        extends: ['default'],
+        prohibitedAdd: [
+          { pattern: 'z-{n}', reason: 'Numeric z-index "{CLASS}"', category: 'z-index' },
+        ],
+        ignore: [],
+      }),
+    );
+    try {
+      const config = await loadConfig(dir);
+      const compiled = compileConfig(config);
+      const result = checkClassWithConfig('z-10', compiled);
+      expect(result).not.toBeNull();
+      expect(result!.reason).toBe('Numeric z-index "z-10"');
+      expect(result!.category).toBe('z-index');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -669,5 +835,49 @@ describe('extends / presets', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('"z-index" preset (decision D3, issue #128)', () => {
+  it('is registered in CONFIG_PRESETS with a z-{n} rule and z-0 allowed', () => {
+    expect(CONFIG_PRESETS['z-index']).toEqual({
+      prohibited: [
+        {
+          pattern: 'z-{n}',
+          reason: 'Numeric z-index "{CLASS}" — use a semantic z tier token',
+          category: 'z-index',
+        },
+      ],
+      allowed: ['z-0'],
+    });
+  });
+
+  it('is NOT part of DEFAULT_CONFIG — z-10 passes without extends', () => {
+    expect(checkClassWithConfig('z-10', compileConfig(DEFAULT_CONFIG))).toBeNull();
+  });
+
+  it('extends: ["default", "z-index"] flags z-10 with the z-specific message, and still flags default rules', () => {
+    const compiled = compileConfig({ ignore: [], extends: ['default', 'z-index'] });
+    const result = checkClassWithConfig('z-10', compiled);
+    expect(result).not.toBeNull();
+    expect(result!.reason).toBe('Numeric z-index "z-10" — use a semantic z tier token');
+    expect(result!.category).toBe('z-index');
+    // Default rules are still layered in.
+    expect(checkClassWithConfig('p-4', compiled)).not.toBeNull();
+    expect(checkClassWithConfig('bg-gray-500', compiled)).not.toBeNull();
+  });
+
+  it('extends: ["default", "z-index"] does not flag z-0 (explicit allowed entry)', () => {
+    const compiled = compileConfig({ ignore: [], extends: ['default', 'z-index'] });
+    expect(checkClassWithConfig('z-0', compiled)).toBeNull();
+  });
+
+  it('extends: ["z-index"] alone flags ONLY z classes — no default rules apply', () => {
+    const compiled = compileConfig({ ignore: [], extends: ['z-index'] });
+    expect(compiled.rules).toHaveLength(1);
+    expect(checkClassWithConfig('z-10', compiled)).not.toBeNull();
+    // Default-only violations must NOT be flagged when "default" isn't listed.
+    expect(checkClassWithConfig('p-4', compiled)).toBeNull();
+    expect(checkClassWithConfig('bg-gray-500', compiled)).toBeNull();
   });
 });
