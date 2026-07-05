@@ -124,5 +124,34 @@ describe('CLI subprocess — node dist/cli.js', () => {
       expect(result.code).toBe(2);
       expect(result.stderr).toContain('Failed to parse .design-token-lint.json');
     });
+
+    it('accepts --format=github and prints an ::error annotation on stdout', async () => {
+      const projectDir = join(tmpDir, 'format-equals');
+      await mkdir(join(projectDir, 'src'), { recursive: true });
+      await writeFile(join(projectDir, 'src', 'dirty.tsx'), '<div className="p-4" />');
+      const result = await runCli(['--format=github'], projectDir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toMatch(/^::error file=.*dirty\.tsx,line=\d+::/m);
+    });
+
+    it('does not crash when a pattern also matches a directory (nodir glob)', async () => {
+      const projectDir = join(tmpDir, 'nodir');
+      // A directory literally named "*.tsx" is matched by the default glob
+      // pattern just like a real file — pre-fix this crashed with EISDIR.
+      await mkdir(join(projectDir, 'src', 'dirname.tsx'), { recursive: true });
+      await writeFile(join(projectDir, 'src', 'real.tsx'), '<div className="flex" />');
+      const result = await runCli([], projectDir);
+      expect(result.code).toBe(0);
+      expect(result.stderr).not.toContain('EISDIR');
+    });
+
+    it('lints files under __inbox/ (old default-ignore pattern was removed)', async () => {
+      const projectDir = join(tmpDir, 'inbox');
+      await mkdir(join(projectDir, 'src', '__inbox'), { recursive: true });
+      await writeFile(join(projectDir, 'src', '__inbox', 'scratch.tsx'), '<div className="p-4" />');
+      const result = await runCli([], projectDir);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain('__inbox');
+    });
   });
 });

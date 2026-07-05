@@ -168,6 +168,62 @@ describe('parseArgs', () => {
       message: '--format requires a value: human or github',
     });
   });
+
+  it('accepts the --format=github equals form', () => {
+    expect(parseArgs(['--format=github', 'src/**/*.tsx'])).toEqual({
+      kind: 'run',
+      patterns: ['src/**/*.tsx'],
+      json: false,
+      format: 'github',
+    });
+  });
+
+  it('accepts the --format=human equals form', () => {
+    expect(parseArgs(['--format=human'])).toEqual({
+      kind: 'run',
+      patterns: [],
+      json: false,
+      format: 'human',
+    });
+  });
+
+  it('rejects --format= with an invalid equals-form value', () => {
+    expect(parseArgs(['--format=xml'])).toEqual({
+      kind: 'error',
+      message: '--format requires a value: human or github',
+    });
+  });
+
+  it('rejects --format= with no value after the equals sign', () => {
+    expect(parseArgs(['--format='])).toEqual({
+      kind: 'error',
+      message: '--format requires a value: human or github',
+    });
+  });
+
+  it('treats everything after a "--" terminator as literal patterns', () => {
+    expect(parseArgs(['--', '--weird-flag-like-dir/**'])).toEqual({
+      kind: 'run',
+      patterns: ['--weird-flag-like-dir/**'],
+      json: false,
+    });
+  });
+
+  it('does not treat -h after "--" as the help flag', () => {
+    expect(parseArgs(['--', '-h'])).toEqual({
+      kind: 'run',
+      patterns: ['-h'],
+      json: false,
+    });
+  });
+
+  it('parses flags before "--" and literal patterns after it together', () => {
+    expect(parseArgs(['--json', '--', '-x', 'src/**/*.tsx'])).toEqual({
+      kind: 'run',
+      patterns: ['-x', 'src/**/*.tsx'],
+      json: true,
+    });
+  });
 });
 
 describe('readPackageVersion', () => {
@@ -782,5 +838,163 @@ describe('runMain — human mode is unchanged by the new flags', () => {
     expect(err).toContain('dirty.tsx');
     expect(err).toContain('p-4');
     expect(err).toContain('Found 1 violation(s) in 1 file(s).');
+  });
+});
+
+describe('runMain — directory matches do not crash (nodir glob)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-nodir-'));
+    mkdirSync(join(tmpDir, 'src'), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('lints files only when a directory literally named "*.tsx" is also matched', async () => {
+    // A directory whose name ends in .tsx is matched by the default pattern
+    // src/**/*.{tsx,jsx,astro} just like a real file would be. Pre-fix, glob
+    // returned it too and readFile blew up with EISDIR.
+    mkdirSync(join(tmpDir, 'src', 'dirname.tsx'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'real.tsx'), `<div className="flex">`);
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(0);
+    expect(io.stderr.join('\n')).toContain('No design token violations found');
+  });
+
+  it('lints files only for a broad "src/**" pattern that also matches directories', async () => {
+    mkdirSync(join(tmpDir, 'src', 'subdir'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'subdir', 'dirty.tsx'), `<div className="p-4">`);
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    expect(io.stderr.join('\n')).toContain('Found 1 violation(s)');
+  });
+});
+
+describe('runMain — unreadable file reports cleanly instead of crashing', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-unreadable-'));
+    mkdirSync(join(tmpDir, 'src'), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('exits 2 with a one-line message naming the file, not a raw stack dump', async () => {
+    // A broken symlink is matched by glob (nodir only excludes directories)
+    // but fails to read with ENOENT — this models both "unreadable file"
+    // and the "deleted/replaced between glob and read" race the fix guards
+    // against, without depending on root/non-root permission semantics.
+    symlinkSync(
+      join(tmpDir, 'src', 'does-not-exist-target.tsx'),
+      join(tmpDir, 'src', 'broken.tsx'),
+    );
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(2);
+    const err = io.stderr.join('\n');
+    expect(err).toContain('Failed to read');
+    expect(err).toContain('broken.tsx');
+    // Clean single-line report, not a raw Node stack trace.
+    expect(err).not.toContain('    at ');
+    expect(io.stdout).toEqual([]);
+  });
+});
+
+describe('runMain — patterns: [] in config', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-empty-patterns-'));
+    mkdirSync(join(tmpDir, 'src'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'dirty.tsx'), `<div className="p-4">`);
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('exits 2 naming the empty "patterns" config field instead of the generic no-match message', async () => {
+    writeFileSync(join(tmpDir, '.design-token-lint.json'), JSON.stringify({ patterns: [] }));
+    const io = makeIO();
+    const code = await runMain({
+      args: [],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(2);
+    const err = io.stderr.join('\n');
+    expect(err).toContain('"patterns"');
+    expect(err).not.toContain('No files matched any of the configured patterns');
+  });
+
+  it('CLI args still win over an empty config.patterns (no error)', async () => {
+    writeFileSync(join(tmpDir, '.design-token-lint.json'), JSON.stringify({ patterns: [] }));
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    expect(io.stderr.join('\n')).toContain('Found 1 violation(s)');
+  });
+});
+
+describe('runMain — __inbox/ is no longer ignored by default', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-inbox-'));
+    mkdirSync(join(tmpDir, 'src', '__inbox'), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('lints a violating file under a directory named __inbox/ (old default-ignore is gone)', async () => {
+    writeFileSync(join(tmpDir, 'src', '__inbox', 'scratch.tsx'), `<div className="p-4">`);
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    const err = io.stderr.join('\n');
+    expect(err).toContain('__inbox');
+    expect(err).toContain('Found 1 violation(s)');
   });
 });
