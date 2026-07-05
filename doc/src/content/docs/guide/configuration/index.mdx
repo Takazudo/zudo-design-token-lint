@@ -36,7 +36,7 @@ Create a `.design-token-lint.json` or `design-token-lint.config.json` file at yo
 
 | Field | Type | Description |
 |---|---|---|
-| `prohibited` | `string[]` | Patterns to flag as violations |
+| `prohibited` | `(string \| ProhibitedEntry)[]` | Patterns to flag as violations — a plain string, or a structured `{pattern, reason?, category?}` object |
 | `allowed` | `string[]` | Exceptions that always pass, even if they match a prohibited pattern |
 | `ignore` | `string[]` | File glob patterns to skip entirely |
 | `patterns` | `string[]` | File glob patterns to scan (used when no CLI args are given) |
@@ -64,6 +64,29 @@ Examples:
 - `bg-{color}-{shade}` matches `bg-red-500`, `bg-blue-300`
 - `gap-x-{n}` matches `gap-x-2`, `gap-x-6`
 
+#### Structured entries
+
+Instead of a plain string, an entry can be an object to override the default violation message and tag the rule with a category:
+
+```json
+{
+  "prohibited": [
+    "p-{n}",
+    {
+      "pattern": "w-{n}",
+      "reason": "Numeric width \"{CLASS}\" — use a semantic sizing token or arbitrary value",
+      "category": "sizing"
+    }
+  ]
+}
+```
+
+- **`pattern`** (required) — same placeholder syntax as a plain string entry.
+- **`reason`** (optional) — full replacement for the violation message. Supports the `{CLASS}` placeholder (replaced with the actual class name). When omitted, the pattern-shape-inferred default message is used, same as a plain string entry.
+- **`category`** (optional) — a free-form tag (e.g. `"sizing"`, `"z-index"`) copied onto the resulting `Violation.category` when this rule matches, so tooling can group or filter violations by rule family. Plain string entries never produce a `category`.
+
+A plain string entry is always equivalent to `{ pattern: theString }` with no `reason`/`category` override — mixing string and object entries in the same `prohibited` array is fine.
+
 ### `allowed`
 
 An allowlist checked before prohibited patterns are matched. Each entry can take either form:
@@ -83,11 +106,18 @@ Inherit `prohibited`/`allowed` patterns from one or more built-in presets instea
 }
 ```
 
-Currently there's one registered preset:
+Currently there are two registered presets:
 
 - **`default`** — the built-in `prohibited`/`allowed` lists described in [Built-in Defaults](#built-in-defaults) below.
+- **`z-index`** — opt-in numeric z-index ban: flags `z-{n}` (e.g. `z-10`, `z-50`) with a z-index-specific message, allows `z-0`. NOT part of `default` — list it explicitly to enable it:
 
-When `extends` is an array, layers merge in the order given. Presets never auto-compose with `default` on your behalf — if you want the defaults plus another preset, list both explicitly: `"extends": ["default", "some-other-preset"]`.
+  ```json
+  {
+    "extends": ["default", "z-index"]
+  }
+  ```
+
+When `extends` is an array, layers merge in the order given. Presets never auto-compose with `default` on your behalf — if you want the defaults plus another preset, list both explicitly: `"extends": ["default", "some-other-preset"]`. `"extends": ["z-index"]` alone enables only the z-index rule, with no default rules at all.
 
 An unknown preset name is a config error (the CLI exits with a clear message).
 
@@ -110,6 +140,12 @@ Append extra entries on top of whatever `prohibited`/`allowed` resolved to — t
 ```
 
 This keeps every default rule and adds a `z-{n}` spacing-style rule plus a `z-0` exception, without re-listing the ~70 built-in `prohibited` patterns.
+
+<Note>
+
+This particular `z-{n}`/`z-0` combination now ships as the built-in [`z-index` preset](#extends) — `"extends": ["default", "z-index"]` does the same thing with a z-index-specific violation message. `prohibitedAdd`/`allowedAdd` remain the right tool for project-specific rules that aren't covered by a registered preset.
+
+</Note>
 
 Plain `prohibited`/`allowed` (when present) keep **replace** semantics — they win outright over `extends`, and `prohibitedAdd`/`allowedAdd` still append on top of that explicit list:
 
@@ -228,8 +264,15 @@ If no config file exists, the linter uses these defaults. This same `prohibited`
 
 - **Prohibited**: all standard spacing utilities (`p-*`, `m-*`, `gap-*`, `inset-*`, `scroll-*`) with numeric values, plus all color utilities (`bg-*`, `text-*`, `border-*`, `ring-*`, etc.) with default Tailwind color-shade combinations
 - **Logical and v4 color utilities**: `border-s-*`, `border-e-*`, `ring-offset-*`, `inset-ring-*`, `inset-shadow-*`, `text-shadow-*` with default Tailwind color-shade combinations
+- **Numeric sizing scale**: `w-{n}`, `h-{n}`, `size-{n}`, `min-w-{n}`, `max-w-{n}`, `min-h-{n}`, `max-h-{n}`, `basis-{n}` — each flagged with a sizing-specific message and `category: "sizing"` on the resulting `Violation` (see [Structured entries](#structured-entries)). Fraction utilities (`w-1/2`), arbitrary values (`w-[32px]`), and zero (`w-0`) still pass — see [What Passes Automatically](#what-passes-automatically) below.
 - **Allowed**: `p-0`, `m-0`, `gap-0`, `p-1px`
 - **Ignore**: `**/*.test.*`, `**/*.stories.*`
+
+<Note>
+
+**Behavior change (`next` channel)**: the numeric sizing scale ban is new — projects that relied on the previous defaults and used raw numeric `w-*`/`h-*`/`size-*`/etc. classes will see new violations after upgrading. Opt out per-class via `allowed` (e.g. `"allowed": ["w-4"]`), or drop just these rules by supplying your own `prohibited`/`extends` combination that omits them.
+
+</Note>
 
 See the [package README](https://github.com/Takazudo/zudo-design-token-lint/blob/main/README.md) for the full default list.
 

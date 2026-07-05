@@ -34,9 +34,15 @@ import {
   setConfig,
   getConfig,
   DEFAULT_CONFIG,
+  CONFIG_PRESETS,
+  DEFAULT_PRESET_NAME,
   type LintConfig,
   type CompiledConfig,
   type CompiledRule,
+  type ConfigPreset,
+  type ProhibitedEntry,
+  type ProhibitedConfigEntry,
+  type CompilePatternOptions,
 
   // Class extraction
   extractClasses,
@@ -105,8 +111,11 @@ Returns `Violation | null`:
 interface Violation {
   className: string;
   reason: string;
+  category?: string; // present only when the matched rule set a category
 }
 ```
+
+`category` is an optional, additive field — it's only populated when the matching rule came from a structured `prohibited` entry (see `compilePattern` below) that set a `category`. Plain string `prohibited` entries never produce a `category`, so existing code destructuring `{ className, reason }` keeps working unchanged.
 
 ### `checkClassWithConfig(className, compiledConfig)`
 
@@ -143,6 +152,36 @@ const compiled = compileConfig({
 });
 ```
 
+#### Structured prohibited entries
+
+Each `prohibited`/`prohibitedAdd` entry accepts either a plain pattern string (unchanged) or a structured object:
+
+```ts
+interface ProhibitedEntry {
+  pattern: string;
+  reason?: string; // full reason override — supports "{CLASS}"
+  category?: string; // rule-family tag, surfaced on Violation.category when this rule matches
+}
+
+type ProhibitedConfigEntry = string | ProhibitedEntry;
+
+const compiled = compileConfig({
+  prohibited: [
+    'p-{n}', // plain string — unchanged behavior, no category
+    {
+      pattern: 'w-{n}',
+      reason: 'Numeric width "{CLASS}" — use a semantic sizing token or arbitrary value',
+      category: 'sizing',
+    },
+  ],
+  allowed: [],
+  ignore: [],
+});
+
+checkClassWithConfig('w-4', compiled);
+// { className: 'w-4', reason: 'Numeric width "w-4" — use a semantic sizing token or arbitrary value', category: 'sizing' }
+```
+
 ### `setConfig(compiled)` / `getConfig()`
 
 Set or get the global compiled config used by `checkClass()` and `lintFile()`.
@@ -152,7 +191,7 @@ setConfig(compiled);
 const active = getConfig();
 ```
 
-### `compilePattern(pattern)`
+### `compilePattern(pattern, options?)`
 
 Compile a single pattern string (like `p-{n}`) into a `CompiledRule`.
 
@@ -160,6 +199,24 @@ Compile a single pattern string (like `p-{n}`) into a `CompiledRule`.
 const rule = compilePattern('bg-{color}-{shade}');
 // { prefix: 'bg', valuePattern: /^(slate|gray|...)-(\d{2,3})$/, reasonTemplate: '...', isSpacingRule: false }
 ```
+
+The second argument accepts either a bare string (legacy shape, equivalent to `{ suggestionSuffix }`) or a `CompilePatternOptions` bag:
+
+```ts
+interface CompilePatternOptions {
+  suggestionSuffix?: string; // tweaks the shape-inferred default reason (spacing/color patterns only)
+  reason?: string; // full reason override — supports "{CLASS}"; wins over suggestionSuffix
+  category?: string; // rule-family tag carried onto CompiledRule.category and, on a match, Violation.category
+}
+
+const rule = compilePattern('w-{n}', {
+  reason: 'Numeric width "{CLASS}" — use a semantic sizing token or arbitrary value',
+  category: 'sizing',
+});
+// { prefix: 'w', valuePattern: /^\d+(\.\d+)?$/, reasonTemplate: 'Numeric width "{CLASS}" — ...', isSpacingRule: true, category: 'sizing' }
+```
+
+`prohibited`/`prohibitedAdd` config entries accept the same shape as an object — see [Structured prohibited entries](#structured-prohibited-entries) below.
 
 ## Extracting Classes
 
@@ -225,16 +282,64 @@ const DEFAULT_CLASS_FUNCTIONS: string[];
 
 ```ts
 interface LintConfig {
-  prohibited: string[];
-  allowed: string[];
+  prohibited?: ProhibitedConfigEntry[];
+  allowed?: string[];
   ignore: string[];
   patterns?: string[];
   suggestionSuffix?: string;
   semanticPrefixes?: string[];
   classAttributes?: string[];
   classFunctions?: string[];
+  extends?: string | string[];
+  prohibitedAdd?: ProhibitedConfigEntry[];
+  allowedAdd?: string[];
 }
 ```
+
+See [Configuration](../../guide/configuration/index.mdx) for what each field does, and [Structured prohibited entries](#structured-prohibited-entries) above for the `ProhibitedConfigEntry` shape.
+
+### `ConfigPreset`
+
+A named, registered preset usable via the `extends` field — see `CONFIG_PRESETS` below.
+
+```ts
+interface ConfigPreset {
+  prohibited: ProhibitedConfigEntry[];
+  allowed?: string[];
+}
+```
+
+### `ProhibitedEntry` / `ProhibitedConfigEntry`
+
+```ts
+interface ProhibitedEntry {
+  pattern: string;
+  reason?: string;
+  category?: string;
+}
+
+type ProhibitedConfigEntry = string | ProhibitedEntry;
+```
+
+### `CompilePatternOptions`
+
+```ts
+interface CompilePatternOptions {
+  suggestionSuffix?: string;
+  reason?: string;
+  category?: string;
+}
+```
+
+### `CONFIG_PRESETS` / `DEFAULT_PRESET_NAME`
+
+```ts
+const DEFAULT_PRESET_NAME: string; // "default"
+const CONFIG_PRESETS: Record<string, ConfigPreset>;
+// { default: { prohibited: [...], allowed: [...] }, "z-index": { prohibited: [...], allowed: ["z-0"] } }
+```
+
+`CONFIG_PRESETS` is the registry consulted by `extends`. The built-in `"z-index"` preset (opt-in, not part of `DEFAULT_CONFIG`) flags `z-{n}` classes with a z-index-specific reason — use `extends: ["default", "z-index"]` to layer it on top of the defaults.
 
 ### `ExtractorOptions`
 
@@ -266,8 +371,11 @@ interface LintResult {
 interface Violation {
   className: string;
   reason: string;
+  category?: string;
 }
 ```
+
+`category` is optional and additive — only present when the matched rule's `prohibited` entry was a structured object setting `category` (e.g. the default sizing rules use `category: "sizing"`, the `"z-index"` preset uses `category: "z-index"`).
 
 ## Example: Custom Linter Script
 

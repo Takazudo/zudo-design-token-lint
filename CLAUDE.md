@@ -75,7 +75,7 @@ Or run the same scripts directly from `doc/`: `pnpm dev`, `pnpm build`, `pnpm pr
 
 - `LintResult` is **flat**: `{ filePath, line, className, reason }` — NOT `{ filePath, violations: [...] }`
 - `lintFile()` and `lintContent()` return `LintResult[]` (array, not single object)
-- `Violation` has only `{ className, reason }` — no `line` or `column`
+- `Violation` is `{ className, reason, category? }` — `category` is OPTIONAL (present only when the matched rule came from a structured `prohibited` entry) — no `line` or `column`
 - `checkClass()` returns `Violation | null` — not `undefined`
 - `ExtractedClass` has `{ className, line }` — no `column`
 
