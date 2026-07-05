@@ -691,4 +691,136 @@ describe('extractClasses', () => {
       ]);
     });
   });
+
+  describe('comment-aware extraction (does not lint commented-out code)', () => {
+    it('does not extract from a JSX-commented-out className', () => {
+      const content = '{/* <div className="p-4"> */}';
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('does not extract from a // commented-out className', () => {
+      const content = '// <div className="p-4">';
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('still extracts a real className on a line with no comment', () => {
+      const content = '<div className="p-4">';
+      const result = extractClasses(content);
+      expect(result).toEqual([{ className: 'p-4', line: 1 }]);
+    });
+
+    it('still extracts className text embedded inside a string value (regression)', () => {
+      // The className value itself may contain a CSS comment — that's a
+      // different, already-handled concern (addClasses strips it). Comment
+      // detection must not be fooled by comment-like text inside a string.
+      const content = '<div className="p-4 /* should this be extracted? */">';
+      const result = extractClasses(content);
+      expect(result).toEqual([{ className: 'p-4', line: 1 }]);
+    });
+  });
+
+  describe('comment awareness inside scanBalancedDelimited', () => {
+    it('does not let an unpaired quote inside a /* */ comment corrupt the balanced scan', () => {
+      const content = "cn(a /* don't */, 'p-4')";
+      const result = extractClasses(content);
+      expect(result).toEqual([{ className: 'p-4', line: 1 }]);
+    });
+  });
+
+  describe('ignore comment with reason text', () => {
+    it('respects /* design-token-lint-ignore <reason> */ block comment', () => {
+      const content = `/* design-token-lint-ignore - vendor requires literal p-4 */
+<div className="p-4">`;
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('respects {/* design-token-lint-ignore <reason> */} JSX comment', () => {
+      const content = `{/* design-token-lint-ignore — vendor requires literal p-4 */}
+<div className="p-4">`;
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('respects // design-token-lint-ignore <reason> line comment', () => {
+      const content = `// design-token-lint-ignore - vendor requires literal p-4
+<div className="p-4">`;
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('still respects /* design-token-lint-ignore */ without reason text (regression)', () => {
+      const content = `/* design-token-lint-ignore */
+<div className="p-4">`;
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('still respects {/* design-token-lint-ignore */} without reason text (regression)', () => {
+      const content = `{/* design-token-lint-ignore */}
+<div className="p-4">`;
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('does not treat design-token-lint-ignore-file as a reason-text line ignore', () => {
+      const content = `/* design-token-lint-ignore-file */
+<div className="p-4">`;
+      const result = extractClasses(content);
+      // File-level ignore still takes precedence and empties the whole file.
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('same-line and continuation-line ignores', () => {
+    it('suppresses its own line when a trailing JSX ignore comment follows real content', () => {
+      const content = '<div className="p-4"> {/* design-token-lint-ignore */}';
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('suppresses its own line when a trailing block ignore comment follows real content', () => {
+      const content = '<div class="p-4"> /* design-token-lint-ignore */';
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('a trailing same-line ignore suppresses both its own line and the next (pre-existing next-line semantics)', () => {
+      const content = `<div className="p-4"> {/* design-token-lint-ignore */}
+<div className="m-8">
+<div className="gap-2">`;
+      const result = extractClasses(content);
+      expect(result).toEqual([{ className: 'gap-2', line: 3 }]);
+    });
+
+    it('an ignore comment alone on its own line still only suppresses the next line (regression)', () => {
+      const content = `{/* design-token-lint-ignore */}
+<div className="p-4">
+<div className="m-8">`;
+      const result = extractClasses(content);
+      expect(result).toEqual([{ className: 'm-8', line: 3 }]);
+    });
+
+    it('honors an ignore comment before a continuation line of a multiline attribute', () => {
+      const content = `<div
+  className="p-4
+  // design-token-lint-ignore
+  m-8"
+/>`;
+      const result = extractClasses(content);
+      expect(result).toEqual([{ className: 'p-4', line: 2 }]);
+    });
+
+    it('honors a JSX ignore comment before a continuation line of a multiline attribute', () => {
+      const content = `<div
+  className="p-4
+  {/* design-token-lint-ignore */}
+  m-8"
+/>`;
+      const result = extractClasses(content);
+      expect(result).toEqual([{ className: 'p-4', line: 2 }]);
+    });
+  });
 });

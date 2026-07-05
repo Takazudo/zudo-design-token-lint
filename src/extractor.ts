@@ -25,11 +25,14 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Lines containing line-level ignore comment
+// Lines containing line-level ignore comment. The block/JSX forms tolerate
+// trailing reason text (e.g. `{/* design-token-lint-ignore — reason */}`) via
+// a capturing group — the reason text itself isn't consumed yet, but a future
+// change may surface it in lint output.
 const IGNORE_PATTERNS = [
-  /\/\*\s*design-token-lint-ignore\s*\*\//,
-  /\{\/\*\s*design-token-lint-ignore\s*\*\/\}/,
-  /\/\/\s*design-token-lint-ignore(?!\S)/,
+  /\/\*\s*design-token-lint-ignore\b([^*]*)\*\//,
+  /\{\/\*\s*design-token-lint-ignore\b([^*]*)\*\/\}/,
+  /\/\/\s*design-token-lint-ignore(?!\S)(.*)$/,
 ];
 
 // Lines containing file-level ignore comment (anchored to comment-only lines)
@@ -40,10 +43,95 @@ const IGNORE_FILE_PATTERNS = [
 ];
 
 /**
+ * Find the first design-token-lint-ignore comment match on a line, or null.
+ */
+function findIgnoreMatch(line: string): RegExpMatchArray | null {
+  for (const pattern of IGNORE_PATTERNS) {
+    const match = line.match(pattern);
+    if (match) return match;
+  }
+  return null;
+}
+
+/**
  * Check if a line contains a design-token-lint-ignore comment.
  */
 function isIgnoreLine(line: string): boolean {
-  return IGNORE_PATTERNS.some((p) => p.test(line));
+  return findIgnoreMatch(line) !== null;
+}
+
+/**
+ * Check whether an ignore-comment match is the only non-whitespace content on
+ * its line (as opposed to trailing other real content, e.g.
+ * `<div className="p-4"> {/* design-token-lint-ignore *\/}`).
+ */
+function isIgnoreMatchAloneOnLine(line: string, match: RegExpMatchArray): boolean {
+  const index = match.index ?? 0;
+  const before = line.slice(0, index);
+  const after = line.slice(index + match[0].length);
+  return before.trim() === '' && after.trim() === '';
+}
+
+interface CommentSpan {
+  /** 0-based start offset (inclusive) of the comment on the line. */
+  start: number;
+  /** 0-based end offset (exclusive) of the comment on the line. */
+  end: number;
+}
+
+/**
+ * Compute `//` and `/* *\/` comment spans on a single line, so matches that
+ * fall inside commented-out source (e.g. `{/* <div className="p-4"> *\/}` or
+ * `// <div className="p-4">`) can be skipped. Quote-aware — a comment marker
+ * inside a string literal (e.g. a URL) is not mistaken for a real comment.
+ * This is a lightweight per-line pass only: a `/* *\/` block comment that
+ * doesn't close on the same line is treated as running to the end of the
+ * line — multi-line block comments aren't tracked (project stays
+ * regex/line-based, not AST).
+ */
+function getCommentSpans(line: string): CommentSpan[] {
+  const spans: CommentSpan[] = [];
+  let quote: string | null = null;
+  let i = 0;
+  while (i < line.length) {
+    const ch = line[i];
+
+    if (quote) {
+      if (ch === '\\' && i + 1 < line.length) {
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      i++;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      i++;
+      continue;
+    }
+
+    if (ch === '/' && line[i + 1] === '/') {
+      spans.push({ start: i, end: line.length });
+      break;
+    }
+
+    if (ch === '/' && line[i + 1] === '*') {
+      const closeIdx = line.indexOf('*/', i + 2);
+      const end = closeIdx === -1 ? line.length : closeIdx + 2;
+      spans.push({ start: i, end });
+      i = end;
+      continue;
+    }
+
+    i++;
+  }
+  return spans;
+}
+
+function isInCommentSpan(spans: CommentSpan[], index: number): boolean {
+  return spans.some((s) => index >= s.start && index < s.end);
 }
 
 /**
@@ -63,8 +151,15 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
 
   // First pass: find ignore comments, mark next line
   for (let i = 0; i < lines.length; i++) {
-    if (isIgnoreLine(lines[i])) {
+    const match = findIgnoreMatch(lines[i]);
+    if (match) {
       ignoredLines.add(i + 1); // ignore next line (0-indexed)
+      if (!isIgnoreMatchAloneOnLine(lines[i], match)) {
+        // Trailing same-line ignore (e.g.
+        // `<div className="p-4"> {/* design-token-lint-ignore */}`) also
+        // suppresses its own line, not just the next one.
+        ignoredLines.add(i);
+      }
     }
   }
 
@@ -119,10 +214,14 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
 
     const line = lines[i];
     const lineNum = i + 1; // 1-based
+    // Comment spans on this line — matches falling inside are commented-out
+    // source, not real code, and must be skipped (see getCommentSpans).
+    const commentSpans = getCommentSpans(line);
 
     // Extract from double-quote class/className attributes
     if (doubleQuoteAttr) {
       for (const match of line.matchAll(doubleQuoteAttr)) {
+        if (isInCommentSpan(commentSpans, match.index ?? 0)) continue;
         addClasses(results, match[1], lineNum);
       }
     }
@@ -130,6 +229,7 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
     // Extract from single-quote class/className attributes (HTML/Astro)
     if (singleQuoteAttr) {
       for (const match of line.matchAll(singleQuoteAttr)) {
+        if (isInCommentSpan(commentSpans, match.index ?? 0)) continue;
         addClasses(results, match[1], lineNum);
       }
     }
@@ -137,6 +237,7 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
     // Extract from single-quote brace attributes
     if (singleQuoteBrace) {
       for (const match of line.matchAll(singleQuoteBrace)) {
+        if (isInCommentSpan(commentSpans, match.index ?? 0)) continue;
         addClasses(results, match[1], lineNum);
       }
     }
@@ -144,6 +245,7 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
     // Extract from double-quote brace attributes
     if (doubleQuoteBrace) {
       for (const match of line.matchAll(doubleQuoteBrace)) {
+        if (isInCommentSpan(commentSpans, match.index ?? 0)) continue;
         addClasses(results, match[1], lineNum);
       }
     }
@@ -151,6 +253,7 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
     // Extract from template literals (simple — no interpolation)
     if (templateLiteral) {
       for (const match of line.matchAll(templateLiteral)) {
+        if (isInCommentSpan(commentSpans, match.index ?? 0)) continue;
         addClasses(results, match[1], lineNum);
       }
     }
@@ -160,6 +263,7 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
     classListStart.lastIndex = 0;
     let clMatch: RegExpExecArray | null;
     while ((clMatch = classListStart.exec(line)) !== null) {
+      if (isInCommentSpan(commentSpans, clMatch.index)) continue;
       const startCol = classListStart.lastIndex; // just past the opening '['
       const arr = scanBalancedDelimited(lines, i, startCol, '[', ']');
       extractFromClassListArray(results, arr.content, i, ignoredLines);
@@ -183,6 +287,7 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
       utilFnStart.lastIndex = 0;
       let fnMatch: RegExpExecArray | null;
       while ((fnMatch = utilFnStart.exec(line)) !== null) {
+        if (isInCommentSpan(commentSpans, fnMatch.index)) continue;
         const startCol = utilFnStart.lastIndex; // just past the opening '('
         const call = scanBalancedDelimited(lines, i, startCol, '(', ')');
         extractFromCallArgs(results, call.content, i, ignoredLines);
@@ -206,7 +311,7 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
       !multilineDoubleMatch && multilineSingleStart ? multilineSingleStart.exec(line) : null;
     const multilineMatch = multilineDoubleMatch ?? multilineSingleMatch;
 
-    if (multilineMatch) {
+    if (multilineMatch && !isInCommentSpan(commentSpans, multilineMatch.index ?? 0)) {
       const quoteChar = multilineDoubleMatch ? '"' : "'";
       let accumulated = multilineMatch[1]; // content after opening quote on opening line
       const openLineNum = lineNum;
@@ -219,13 +324,20 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
         i++;
         linesConsumed++;
         const nextLine = lines[i];
+        // A design-token-lint-ignore comment on this continuation line
+        // suppresses it — either because it was marked via ignoredLines
+        // (own-line/next-line semantics from the first pass) or because the
+        // line itself IS the ignore comment (its raw text must never be
+        // treated as literal class content, mirroring how the cn()/
+        // class:list inner-line paths only ever see quoted content).
+        const skipLine = ignoredLines.has(i) || isIgnoreLine(nextLine);
         const closeIdx = nextLine.indexOf(quoteChar);
         if (closeIdx !== -1) {
           // Take everything before the closing quote
-          accumulated += ' ' + nextLine.substring(0, closeIdx);
+          if (!skipLine) accumulated += ' ' + nextLine.substring(0, closeIdx);
           break;
         } else {
-          accumulated += ' ' + nextLine;
+          if (!skipLine) accumulated += ' ' + nextLine;
         }
       }
 
@@ -249,9 +361,14 @@ interface BalancedScan {
  * Scan forward from just after an opening delimiter (`(` for utility function
  * calls, `[` for `class:list` arrays), tracking delimiter depth while skipping
  * over string/template-literal contents — so a closing delimiter or a nested
- * opening one inside a string literal never affects balance. Crosses line
- * boundaries up to a 50-line safety cap (mirrors the multiline class-attribute
- * accumulator), returning whatever was accumulated if the cap is hit.
+ * opening one inside a string literal never affects balance. Also skips over
+ * `//` and `/* *\/` comment spans (blanking them out of `content`) so an
+ * unpaired quote inside a comment — e.g. `cn(a /* don't *\/, 'p-4')` — can't
+ * be mistaken for a string opener, and so the comment text can't resurface as
+ * a spurious quoted match when the caller re-scans `content` for class
+ * tokens. Crosses line boundaries up to a 50-line safety cap (mirrors the
+ * multiline class-attribute accumulator), returning whatever was accumulated
+ * if the cap is hit.
  */
 function scanBalancedDelimited(
   lines: string[],
@@ -264,6 +381,7 @@ function scanBalancedDelimited(
   let depth = 1;
   let content = '';
   let quote: string | null = null;
+  let inBlockComment = false;
   let line = startLine;
   let col = startCol;
   let linesConsumed = 0;
@@ -272,6 +390,18 @@ function scanBalancedDelimited(
     const text = lines[line];
     while (col < text.length) {
       const ch = text[col];
+
+      if (inBlockComment) {
+        if (ch === '*' && text[col + 1] === '/') {
+          content += '  ';
+          col += 2;
+          inBlockComment = false;
+          continue;
+        }
+        content += ' ';
+        col++;
+        continue;
+      }
 
       if (quote) {
         if (ch === '\\' && col + 1 < text.length) {
@@ -282,6 +412,20 @@ function scanBalancedDelimited(
         if (ch === quote) quote = null;
         content += ch;
         col++;
+        continue;
+      }
+
+      if (ch === '/' && text[col + 1] === '/') {
+        // Line comment: blank out the rest of the line.
+        content += ' '.repeat(text.length - col);
+        col = text.length;
+        continue;
+      }
+
+      if (ch === '/' && text[col + 1] === '*') {
+        content += '  ';
+        col += 2;
+        inBlockComment = true;
         continue;
       }
 
