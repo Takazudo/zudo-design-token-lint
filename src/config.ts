@@ -82,6 +82,15 @@ export interface LintConfig {
   prohibitedAdd?: ProhibitedConfigEntry[];
   /** Same as `prohibitedAdd`, but appended after `allowed` is resolved. */
   allowedAdd?: string[];
+  /**
+   * Project-level mapping from a banned class's normalized base form (e.g.
+   * "p-4", "bg-gray-100" — the same normalized shape `allowed` entries use)
+   * to that project's semantic replacement token (e.g. "p-hsp-xs",
+   * "bg-surface"). When a violation's normalized base class has an entry
+   * here, the mapped value is appended to the violation reason as
+   * `— did you mean "<value>"?`. Message-only: this does not drive `--fix`.
+   */
+  suggestions?: Record<string, string>;
 }
 
 /**
@@ -497,6 +506,8 @@ export interface CompiledConfig {
   classAttributes: string[];
   /** Utility function names to scan for class name arguments */
   classFunctions: string[];
+  /** Normalized base class -> semantic replacement token, consulted at match time (see `LintConfig.suggestions`) */
+  suggestions: Map<string, string>;
 }
 
 /**
@@ -568,6 +579,7 @@ export function compileConfig(config: LintConfig): CompiledConfig {
     ),
     classAttributes: config.classAttributes ?? DEFAULT_CONFIG.classAttributes,
     classFunctions: config.classFunctions ?? DEFAULT_CONFIG.classFunctions,
+    suggestions: new Map(Object.entries(config.suggestions ?? {})),
   };
 }
 
@@ -613,6 +625,13 @@ function isProhibitedArray(value: unknown): value is ProhibitedConfigEntry[] {
   return Array.isArray(value) && value.every((v) => typeof v === 'string' || isProhibitedEntry(v));
 }
 
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  return Object.values(value).every((v) => typeof v === 'string');
+}
+
 /**
  * Validate the shape of a parsed config object. Throws ConfigError naming
  * the offending file and field on the first mismatch found.
@@ -644,6 +663,11 @@ function validateConfigFields(parsed: Record<string, unknown>, filename: string)
   }
   if (parsed.suggestionSuffix !== undefined && typeof parsed.suggestionSuffix !== 'string') {
     throw new ConfigError(`Invalid config ${filename}: "suggestionSuffix" must be a string`);
+  }
+  if (parsed.suggestions !== undefined && !isStringRecord(parsed.suggestions)) {
+    throw new ConfigError(
+      `Invalid config ${filename}: "suggestions" must be an object mapping class names to string suggestions`,
+    );
   }
 }
 
@@ -700,6 +724,7 @@ export async function loadConfig(cwd: string): Promise<LintConfig> {
       extends: p.extends,
       prohibitedAdd: p.prohibitedAdd,
       allowedAdd: p.allowedAdd,
+      suggestions: p.suggestions,
     };
   }
 

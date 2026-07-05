@@ -521,4 +521,36 @@ describe('checkClass', () => {
       expect(checkClass(cls)).toBeNull();
     });
   });
+
+  describe('suggestions map — did-you-mean hints (issue #130)', () => {
+    it('resolves a no-placeholder exact-match entry to its suggestion via the normalized (variant-stripped) path', () => {
+      const custom: LintConfig = {
+        prohibited: ['hidden'],
+        allowed: [],
+        ignore: [],
+        suggestions: { hidden: 'sr-only' },
+      };
+      const compiled = compileConfig(custom);
+      const result = checkClassWithConfig('sm:hidden', compiled);
+      expect(result).not.toBeNull();
+      expect(result!.reason).toContain('did you mean "sr-only"?');
+    });
+
+    it('looks up the suggestion via the normalized form even when the rule itself only matches verbatim (variant-qualified pattern)', () => {
+      // "hover:p-2" is an exact-match prohibited entry that only fires via the
+      // verbatim comparison (originalClassName === rule.prefix) — see
+      // matchRule's "exact-match rule" branch. The suggestion map is still
+      // keyed by the normalized base class ("p-2"), same as `allowed`.
+      const custom: LintConfig = {
+        prohibited: ['hover:p-2'],
+        allowed: [],
+        ignore: [],
+        suggestions: { 'p-2': 'p-hsp-sm' },
+      };
+      const compiled = compileConfig(custom);
+      const result = checkClassWithConfig('hover:p-2', compiled);
+      expect(result).not.toBeNull();
+      expect(result!.reason).toContain('did you mean "p-hsp-sm"?');
+    });
+  });
 });

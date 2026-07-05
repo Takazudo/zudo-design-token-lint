@@ -41,6 +41,7 @@ Create a `.design-token-lint.json` or `design-token-lint.config.json` file at yo
 | `ignore` | `string[]` | File glob patterns to skip entirely |
 | `patterns` | `string[]` | File glob patterns to scan (used when no CLI args are given) |
 | `suggestionSuffix` | `string` | Custom suffix for violation messages (replaces the default suggestion text) |
+| `suggestions` | `Record<string, string>` | Map from a banned class's normalized base form to your project's semantic replacement token, appended to the violation message as a "did you mean" hint |
 | `semanticPrefixes` | `string[]` | Value prefixes that bypass spacing rules (default: `["hgap-", "vgap-"]`) |
 | `classAttributes` | `string[]` | HTML/JSX attribute names the extractor scans for class names |
 | `classFunctions` | `string[]` | Utility function names the extractor scans for class name arguments |
@@ -201,6 +202,52 @@ A string appended to violation messages after the `—` separator, replacing the
 
 - Spacing: `Numeric spacing "p-4" — use hgap-*/vgap-* or zd-* tokens`
 - Color: `Default Tailwind color "bg-gray-500" — use hgap-*/vgap-* or zd-* tokens`
+
+### `suggestions`
+
+A project-level mapping from a banned class to that project's semantic replacement token. When a violation's normalized base class (the same variant/negative/important/opacity-stripped form `allowed` entries use) has an entry here, the mapped value is appended to the violation message as `— did you mean "<value>"?`.
+
+```json
+{
+  "suggestions": {
+    "p-4": "p-hsp-xs",
+    "bg-gray-100": "bg-surface"
+  }
+}
+```
+
+With this config, `p-4` produces:
+
+```text
+Numeric spacing "p-4" — use a semantic spacing token or arbitrary value — did you mean "p-hsp-xs"?
+```
+
+A class with no entry in `suggestions` is flagged with its usual message, unchanged.
+
+<Note>
+
+Keys are matched on the **normalized base class**, so a single `"p-4"` entry also resolves for every variant/negative/important form built from it — `hover:p-4`, `-p-4`, `p-4!`, `sm:-p-4!`, etc. — the same normalization `allowed` uses (see [`allowed`](#allowed) above).
+
+</Note>
+
+This composes with [`suggestionSuffix`](#suggestionsuffix): the suffix still customizes the base reason template, and the suggestion is appended after it.
+
+```json
+{
+  "suggestionSuffix": "use hsp-*/vsp-* tokens",
+  "suggestions": { "p-4": "p-hsp-xs" }
+}
+```
+
+```text
+Numeric spacing "p-4" — use hsp-*/vsp-* tokens — did you mean "p-hsp-xs"?
+```
+
+<Note>
+
+This is message-only guidance — it does not drive an autofix, and it is not consulted for column/position tracking. A non-string value in `suggestions` (e.g. a number or array) is a config error; the CLI exits with a clear message naming the field.
+
+</Note>
 
 ### `semanticPrefixes`
 

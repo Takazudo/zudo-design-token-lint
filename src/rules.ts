@@ -91,7 +91,13 @@ export function checkClassWithConfig(className: string, config: CompiledConfig):
     // Color rules receive the opacity-stripped form so bg-gray-500/50 is still
     // matched as bg-gray-500 and flagged.
     const candidate = rule.isSpacingRule ? withoutNeg : withoutOpacity;
-    const violation = matchRule(className, candidate, rule, config.semanticPrefixes);
+    const violation = matchRule(
+      className,
+      candidate,
+      rule,
+      config.semanticPrefixes,
+      config.suggestions,
+    );
     if (violation) {
       return violation;
     }
@@ -100,11 +106,27 @@ export function checkClassWithConfig(className: string, config: CompiledConfig):
   return null;
 }
 
-/** Build the Violation for a matched rule, carrying an optional category through. */
-function buildViolation(originalClassName: string, rule: CompiledRule): Violation {
+/**
+ * Build the Violation for a matched rule, carrying an optional category
+ * through and appending a `— did you mean "..."?` hint when the normalized
+ * base class (post variant/important/negative/opacity stripping — the same
+ * shape `allowed` entries use) has a `suggestions` mapping.
+ */
+function buildViolation(
+  originalClassName: string,
+  rule: CompiledRule,
+  normalizedClassName: string,
+  suggestions: Map<string, string>,
+): Violation {
+  let reason = rule.reasonTemplate.replace('{CLASS}', originalClassName);
+  const suggestion = suggestions.get(normalizedClassName);
+  if (suggestion !== undefined) {
+    reason += ` — did you mean "${suggestion}"?`;
+  }
+
   const violation: Violation = {
     className: originalClassName,
-    reason: rule.reasonTemplate.replace('{CLASS}', originalClassName),
+    reason,
   };
   if (rule.category !== undefined) {
     violation.category = rule.category;
@@ -117,6 +139,7 @@ function matchRule(
   withoutNeg: string,
   rule: CompiledRule,
   semanticPrefixes: string[],
+  suggestions: Map<string, string>,
 ): Violation | null {
   // Exact-match rule (no placeholders, valuePattern is /^$/). Fires when
   // EITHER the normalized candidate (post variant/important/negative/opacity
@@ -128,7 +151,7 @@ function matchRule(
   // above (see the "Check allowed list first" comment).
   if (rule.valuePattern.source === '^$') {
     if (withoutNeg === rule.prefix || originalClassName === rule.prefix) {
-      return buildViolation(originalClassName, rule);
+      return buildViolation(originalClassName, rule, withoutNeg, suggestions);
     }
     return null;
   }
@@ -162,7 +185,7 @@ function matchRule(
   }
 
   if (rule.valuePattern.test(value)) {
-    return buildViolation(originalClassName, rule);
+    return buildViolation(originalClassName, rule, withoutNeg, suggestions);
   }
 
   return null;

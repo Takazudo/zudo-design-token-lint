@@ -881,3 +881,132 @@ describe('"z-index" preset (decision D3, issue #128)', () => {
     expect(checkClassWithConfig('bg-gray-500', compiled)).toBeNull();
   });
 });
+
+describe('suggestions map — did-you-mean hints (issue #130)', () => {
+  it('compileConfig defaults to an empty suggestions map when the field is absent', () => {
+    const compiled = compileConfig({ prohibited: ['p-{n}'], allowed: [], ignore: [] });
+    expect(compiled.suggestions).toEqual(new Map());
+  });
+
+  it('compileConfig builds a Map from the config suggestions record', () => {
+    const compiled = compileConfig({
+      prohibited: ['p-{n}'],
+      allowed: [],
+      ignore: [],
+      suggestions: { 'p-4': 'p-hsp-xs', 'bg-gray-100': 'bg-surface' },
+    });
+    expect(compiled.suggestions.get('p-4')).toBe('p-hsp-xs');
+    expect(compiled.suggestions.get('bg-gray-100')).toBe('bg-surface');
+  });
+
+  it('appends the mapped suggestion to a violation reason; unmapped violations are unchanged', () => {
+    const compiled = compileConfig({
+      prohibited: ['p-{n}', 'm-{n}'],
+      allowed: [],
+      ignore: [],
+      suggestions: { 'p-4': 'p-hsp-xs' },
+    });
+
+    const mapped = checkClassWithConfig('p-4', compiled);
+    expect(mapped).not.toBeNull();
+    expect(mapped!.reason).toContain('did you mean "p-hsp-xs"?');
+
+    const unmapped = checkClassWithConfig('m-4', compiled);
+    expect(unmapped).not.toBeNull();
+    expect(unmapped!.reason).not.toContain('did you mean');
+  });
+
+  it.each(['hover:p-4', '-p-4', 'p-4!'])(
+    'resolves variant/negative/important form %s to the base class mapping',
+    (cls) => {
+      const compiled = compileConfig({
+        prohibited: ['p-{n}'],
+        allowed: [],
+        ignore: [],
+        suggestions: { 'p-4': 'p-hsp-xs' },
+      });
+      const result = checkClassWithConfig(cls, compiled);
+      expect(result).not.toBeNull();
+      expect(result!.reason).toContain('did you mean "p-hsp-xs"?');
+    },
+  );
+
+  it('composes with suggestionSuffix — suffix applies to the reason template, suggestion appends after', () => {
+    const compiled = compileConfig({
+      prohibited: ['p-{n}'],
+      allowed: [],
+      ignore: [],
+      suggestionSuffix: 'use hsp-* tokens',
+      suggestions: { 'p-4': 'p-hsp-xs' },
+    });
+    const result = checkClassWithConfig('p-4', compiled);
+    expect(result).not.toBeNull();
+    expect(result!.reason).toBe(
+      'Numeric spacing "p-4" — use hsp-* tokens — did you mean "p-hsp-xs"?',
+    );
+  });
+
+  it('composes with a structured prohibited entry (custom reason + category)', () => {
+    const compiled = compileConfig({
+      prohibited: [{ pattern: 'bg-{color}-{shade}', category: 'color' }],
+      allowed: [],
+      ignore: [],
+      suggestions: { 'bg-gray-100': 'bg-surface' },
+    });
+    const result = checkClassWithConfig('bg-gray-100', compiled);
+    expect(result).not.toBeNull();
+    expect(result!.reason).toContain('did you mean "bg-surface"?');
+    expect(result!.category).toBe('color');
+  });
+
+  it('loadConfig passes suggestions through, and compileConfig resolves the mapping', async () => {
+    const dir = join(tmpdir(), `dtl-test-suggestions-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const configPath = join(dir, '.design-token-lint.json');
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        prohibited: ['p-{n}'],
+        allowed: [],
+        ignore: [],
+        suggestions: { 'p-4': 'p-hsp-xs' },
+      }),
+    );
+    try {
+      const config = await loadConfig(dir);
+      expect(config.suggestions).toEqual({ 'p-4': 'p-hsp-xs' });
+      const compiled = compileConfig(config);
+      const result = checkClassWithConfig('p-4', compiled);
+      expect(result!.reason).toContain('did you mean "p-hsp-xs"?');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('loadConfig rejects a non-string value in "suggestions" with a clear ConfigError', async () => {
+    const dir = join(tmpdir(), `dtl-test-suggestions-bad-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const configPath = join(dir, '.design-token-lint.json');
+    await writeFile(configPath, JSON.stringify({ suggestions: { 'p-4': 123 }, ignore: [] }));
+    try {
+      await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
+      await expect(loadConfig(dir)).rejects.toThrow(
+        /"suggestions" must be an object mapping class names to string suggestions/,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('loadConfig rejects "suggestions" when it is an array rather than an object', async () => {
+    const dir = join(tmpdir(), `dtl-test-suggestions-array-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const configPath = join(dir, '.design-token-lint.json');
+    await writeFile(configPath, JSON.stringify({ suggestions: ['p-4'], ignore: [] }));
+    try {
+      await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
