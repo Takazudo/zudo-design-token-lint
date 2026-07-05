@@ -12,7 +12,10 @@ export {
   compileConfig,
   compilePattern,
   DEFAULT_CONFIG,
+  CONFIG_PRESETS,
+  DEFAULT_PRESET_NAME,
   type LintConfig,
   type CompiledConfig,
   type CompiledRule,
+  type ConfigPreset,
 } from './config.js';

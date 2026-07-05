@@ -30,8 +30,12 @@ export interface LintConfig {
    * stripped) OR the verbatim className — mirroring `allowed` below — so a
    * leading "-", a variant prefix, or a "!" important modifier in the entry
    * is intentional and matches only that literal form.
+   *
+   * REPLACE semantics: when present, this list wins outright over whatever
+   * `extends` would otherwise have produced. Omit it (and use `extends` /
+   * `prohibitedAdd` instead) to inherit and append rather than replace.
    */
-  prohibited: string[];
+  prohibited?: string[];
   /**
    * Exceptions that are always allowed, even if they match a prohibited pattern.
    * Each entry is matched two ways: the normalized form (variant prefix, `!`
@@ -40,8 +44,10 @@ export interface LintConfig {
    * "p-4!", etc.) AND the exact original string (so a specific variant like
    * "hover:p-2", copied verbatim from a violation message, can be allowed
    * without opening up the bare "p-2" form or its other variants).
+   *
+   * REPLACE semantics — see `prohibited` above.
    */
-  allowed: string[];
+  allowed?: string[];
   /** File path globs to skip entirely */
   ignore: string[];
   /** File glob patterns to scan (used by CLI when no args are given) */
@@ -54,6 +60,34 @@ export interface LintConfig {
   classAttributes?: string[];
   /** Utility function names to scan for class name arguments. Default: ["cn", "clsx", "classNames", "twMerge"] */
   classFunctions?: string[];
+  /**
+   * Named preset(s) to inherit `prohibited`/`allowed` patterns from. Layers
+   * merge in array order (e.g. `["default", "z-index"]`) — presets never
+   * auto-compose with "default", it must be listed explicitly. See
+   * `CONFIG_PRESETS` for the registry of known preset names. An unknown name
+   * throws `ConfigError`. Absent `extends` is fully backward compatible: the
+   * built-in DEFAULT_CONFIG fallback behaves exactly as before.
+   */
+  extends?: string | string[];
+  /**
+   * Patterns appended after `prohibited` is resolved (either the explicit
+   * `prohibited` list, the `extends`-merged list, or the DEFAULT_CONFIG
+   * fallback) — lets a config inherit defaults/presets and add just a few
+   * extra rules without duplicating the inherited list.
+   */
+  prohibitedAdd?: string[];
+  /** Same as `prohibitedAdd`, but appended after `allowed` is resolved. */
+  allowedAdd?: string[];
+}
+
+/**
+ * A named, registered preset usable via the `extends` config field. Contributes
+ * `prohibited` (required) and optionally `allowed` patterns that get
+ * concatenated with sibling extends layers in array order.
+ */
+export interface ConfigPreset {
+  prohibited: string[];
+  allowed?: string[];
 }
 
 // Standard Tailwind color names
@@ -84,6 +118,8 @@ const TAILWIND_COLORS = [
 
 /** Built-in defaults matching the original hardcoded rules */
 export const DEFAULT_CONFIG: LintConfig & {
+  prohibited: string[];
+  allowed: string[];
   classAttributes: string[];
   classFunctions: string[];
   semanticPrefixes: string[];
@@ -169,6 +205,21 @@ export const DEFAULT_CONFIG: LintConfig & {
   semanticPrefixes: ['hgap-', 'vgap-'],
   classAttributes: ['className', 'class'],
   classFunctions: ['cn', 'clsx', 'classNames', 'twMerge'],
+};
+
+/** Name of the built-in preset wrapping DEFAULT_CONFIG's prohibited/allowed lists. */
+export const DEFAULT_PRESET_NAME = 'default';
+
+/**
+ * Registry of named presets usable via the `extends` config field. To add a
+ * new preset (e.g. a future "z-index" preset), add an entry here — extends
+ * resolution and merging pick it up automatically with no other code changes.
+ */
+export const CONFIG_PRESETS: Record<string, ConfigPreset> = {
+  [DEFAULT_PRESET_NAME]: {
+    prohibited: DEFAULT_CONFIG.prohibited,
+    allowed: DEFAULT_CONFIG.allowed,
+  },
 };
 
 /**
@@ -338,10 +389,58 @@ export interface CompiledConfig {
   classFunctions: string[];
 }
 
-export function compileConfig(config: LintConfig): CompiledConfig {
+/**
+ * Normalize the `extends` field into an ordered list of preset names.
+ * A bare string is treated as a single-element list.
+ */
+function normalizeExtendsList(extendsField: string | string[] | undefined): string[] {
+  if (extendsField === undefined) {
+    return [];
+  }
+  return Array.isArray(extendsField) ? extendsField : [extendsField];
+}
+
+/** Look up a preset by name, throwing ConfigError for an unregistered name. */
+function resolvePreset(name: string): ConfigPreset {
+  const preset = CONFIG_PRESETS[name];
+  if (!preset) {
+    const known = Object.keys(CONFIG_PRESETS).join(', ');
+    throw new ConfigError(`Unknown preset "${name}" in "extends" (known presets: ${known})`);
+  }
+  return preset;
+}
+
+/**
+ * Resolve the effective `prohibited`/`allowed` lists for a config, applying
+ * (in order): an explicit list (replace), else the `extends` layers merged
+ * in array order, else the DEFAULT_CONFIG fallback — followed by
+ * `prohibitedAdd`/`allowedAdd` appended on top of whichever base won.
+ */
+function resolvePatternLists(config: LintConfig): { prohibited: string[]; allowed: string[] } {
+  const presetNames = normalizeExtendsList(config.extends);
+  const presets = presetNames.map(resolvePreset);
+  const hasExtends = presets.length > 0;
+
+  const baseProhibited =
+    config.prohibited ??
+    (hasExtends ? presets.flatMap((preset) => preset.prohibited) : DEFAULT_CONFIG.prohibited);
+  const baseAllowed =
+    config.allowed ??
+    (hasExtends ? presets.flatMap((preset) => preset.allowed ?? []) : DEFAULT_CONFIG.allowed);
+
   return {
-    rules: config.prohibited.map((p) => compilePattern(p, config.suggestionSuffix)),
-    allowed: new Set(config.allowed),
+    prohibited: config.prohibitedAdd
+      ? [...baseProhibited, ...config.prohibitedAdd]
+      : baseProhibited,
+    allowed: config.allowedAdd ? [...baseAllowed, ...config.allowedAdd] : baseAllowed,
+  };
+}
+
+export function compileConfig(config: LintConfig): CompiledConfig {
+  const { prohibited, allowed } = resolvePatternLists(config);
+  return {
+    rules: prohibited.map((p) => compilePattern(p, config.suggestionSuffix)),
+    allowed: new Set(allowed),
     ignore: config.ignore,
     semanticPrefixes: (config.semanticPrefixes ?? DEFAULT_CONFIG.semanticPrefixes).filter(
       (p) => p.length > 0,
@@ -362,6 +461,8 @@ const STRING_ARRAY_FIELDS = [
   'semanticPrefixes',
   'classAttributes',
   'classFunctions',
+  'prohibitedAdd',
+  'allowedAdd',
 ] as const;
 
 function isStringArray(value: unknown): value is string[] {
@@ -378,6 +479,15 @@ function validateConfigFields(parsed: Record<string, unknown>, filename: string)
     if (value !== undefined && !isStringArray(value)) {
       throw new ConfigError(`Invalid config ${filename}: "${field}" must be an array of strings`);
     }
+  }
+  if (
+    parsed.extends !== undefined &&
+    typeof parsed.extends !== 'string' &&
+    !isStringArray(parsed.extends)
+  ) {
+    throw new ConfigError(
+      `Invalid config ${filename}: "extends" must be a string or an array of strings`,
+    );
   }
   if (parsed.suggestionSuffix !== undefined && typeof parsed.suggestionSuffix !== 'string') {
     throw new ConfigError(`Invalid config ${filename}: "suggestionSuffix" must be a string`);
@@ -420,15 +530,23 @@ export async function loadConfig(cwd: string): Promise<LintConfig> {
     validateConfigFields(parsed, filename);
     const p = parsed as Partial<LintConfig>;
 
+    // `prohibited`/`allowed` are passed through as-is (possibly undefined) —
+    // resolving them against `extends`/`prohibitedAdd`/`allowedAdd` or the
+    // DEFAULT_CONFIG fallback is compileConfig's job (see resolvePatternLists),
+    // so the same resolution applies whether the config came from a file or
+    // was constructed programmatically and passed straight to compileConfig.
     return {
-      prohibited: p.prohibited ?? DEFAULT_CONFIG.prohibited,
-      allowed: p.allowed ?? DEFAULT_CONFIG.allowed,
+      prohibited: p.prohibited,
+      allowed: p.allowed,
       ignore: p.ignore ?? DEFAULT_CONFIG.ignore,
       patterns: p.patterns,
       suggestionSuffix: p.suggestionSuffix,
       semanticPrefixes: p.semanticPrefixes,
       classAttributes: p.classAttributes,
       classFunctions: p.classFunctions,
+      extends: p.extends,
+      prohibitedAdd: p.prohibitedAdd,
+      allowedAdd: p.allowedAdd,
     };
   }
 

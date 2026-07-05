@@ -5,6 +5,8 @@ import {
   loadConfig,
   ConfigError,
   DEFAULT_CONFIG,
+  CONFIG_PRESETS,
+  DEFAULT_PRESET_NAME,
   type LintConfig,
   type CompiledConfig,
 } from './config.js';
@@ -479,5 +481,193 @@ describe('loadConfig — config file discovery', () => {
       // The dotfile's content wins — the second filename is never even read.
       expect(config.prohibited).toEqual(['p-{n}']);
     });
+  });
+});
+
+describe('extends / presets', () => {
+  it('registers "default" in CONFIG_PRESETS wrapping DEFAULT_CONFIG prohibited/allowed', () => {
+    expect(DEFAULT_PRESET_NAME).toBe('default');
+    expect(CONFIG_PRESETS[DEFAULT_PRESET_NAME]).toEqual({
+      prohibited: DEFAULT_CONFIG.prohibited,
+      allowed: DEFAULT_CONFIG.allowed,
+    });
+  });
+
+  it('extends: ["default"] compiles identically to a fully-duplicated legacy config', () => {
+    // Mirrors the pre-#127 dogfood config, which duplicated every
+    // DEFAULT_CONFIG prohibited/allowed entry verbatim just to set `patterns`.
+    const legacy: LintConfig = {
+      prohibited: DEFAULT_CONFIG.prohibited,
+      allowed: DEFAULT_CONFIG.allowed,
+      ignore: DEFAULT_CONFIG.ignore,
+      patterns: ['src/**/*.{tsx,jsx,astro}'],
+    };
+    const extended: LintConfig = {
+      ignore: DEFAULT_CONFIG.ignore,
+      extends: ['default'],
+      patterns: ['src/**/*.{tsx,jsx,astro}'],
+    };
+    expect(compileConfig(extended)).toEqual(compileConfig(legacy));
+  });
+
+  it('extends: ["default"] alone reproduces DEFAULT_CONFIG rules/allowed exactly', () => {
+    const compiled = compileConfig({ ignore: DEFAULT_CONFIG.ignore, extends: ['default'] });
+    expect(compiled).toEqual(compileConfig(DEFAULT_CONFIG));
+  });
+
+  it('accepts a bare string for extends, not just an array', () => {
+    const viaString = compileConfig({ ignore: [], extends: 'default' });
+    const viaArray = compileConfig({ ignore: [], extends: ['default'] });
+    expect(viaString).toEqual(viaArray);
+  });
+
+  it('prohibitedAdd appends to the extends-inherited prohibited list', () => {
+    const compiled = compileConfig({
+      ignore: [],
+      extends: ['default'],
+      prohibitedAdd: ['z-{n}'],
+    });
+    expect(compiled.rules).toHaveLength(DEFAULT_CONFIG.prohibited.length + 1);
+    expect(checkClassWithConfig('z-10', compiled)).not.toBeNull();
+    expect(checkClassWithConfig('p-4', compiled)).not.toBeNull();
+  });
+
+  it('allowedAdd appends to the extends-inherited allowed list', () => {
+    const compiled = compileConfig({
+      ignore: [],
+      extends: ['default'],
+      allowedAdd: ['p-7'],
+    });
+    expect(compiled.allowed).toEqual(new Set([...DEFAULT_CONFIG.allowed, 'p-7']));
+  });
+
+  it('prohibitedAdd appends to the DEFAULT_CONFIG fallback when extends is absent', () => {
+    const compiled = compileConfig({ ignore: [], prohibitedAdd: ['z-{n}'] });
+    expect(compiled.rules).toHaveLength(DEFAULT_CONFIG.prohibited.length + 1);
+    expect(checkClassWithConfig('z-10', compiled)).not.toBeNull();
+  });
+
+  it('an explicit prohibited list replaces extends entirely (replace semantics)', () => {
+    const compiled = compileConfig({
+      ignore: [],
+      extends: ['default'],
+      prohibited: ['hidden'],
+    });
+    expect(compiled.rules).toHaveLength(1);
+    expect(checkClassWithConfig('hidden', compiled)).not.toBeNull();
+    expect(checkClassWithConfig('p-4', compiled)).toBeNull();
+  });
+
+  it('prohibitedAdd still applies on top of an explicit replace list (no extends involved)', () => {
+    const compiled = compileConfig({
+      ignore: [],
+      prohibited: ['hidden'],
+      prohibitedAdd: ['block'],
+    });
+    expect(compiled.rules).toHaveLength(2);
+    expect(checkClassWithConfig('hidden', compiled)).not.toBeNull();
+    expect(checkClassWithConfig('block', compiled)).not.toBeNull();
+  });
+
+  it('multiple extends layers merge prohibited/allowed in array order', () => {
+    CONFIG_PRESETS['test-extra'] = { prohibited: ['z-{n}'], allowed: ['z-0'] };
+    try {
+      const compiled = compileConfig({ ignore: [], extends: ['default', 'test-extra'] });
+      expect(compiled.rules).toHaveLength(DEFAULT_CONFIG.prohibited.length + 1);
+      expect(compiled.allowed.has('z-0')).toBe(true);
+      expect(checkClassWithConfig('z-4', compiled)).not.toBeNull();
+      expect(checkClassWithConfig('p-4', compiled)).not.toBeNull();
+    } finally {
+      delete CONFIG_PRESETS['test-extra'];
+    }
+  });
+
+  it('presets never auto-compose with default — extending a non-default preset alone excludes default rules', () => {
+    CONFIG_PRESETS['test-solo'] = { prohibited: ['z-{n}'] };
+    try {
+      const compiled = compileConfig({ ignore: [], extends: ['test-solo'] });
+      expect(compiled.rules).toHaveLength(1);
+      expect(checkClassWithConfig('p-4', compiled)).toBeNull();
+      expect(checkClassWithConfig('z-4', compiled)).not.toBeNull();
+    } finally {
+      delete CONFIG_PRESETS['test-solo'];
+    }
+  });
+
+  it('an unknown preset name throws ConfigError with a clear message', () => {
+    expect(() => compileConfig({ ignore: [], extends: ['not-a-real-preset'] })).toThrow(
+      ConfigError,
+    );
+    expect(() => compileConfig({ ignore: [], extends: ['not-a-real-preset'] })).toThrow(
+      /Unknown preset "not-a-real-preset"/,
+    );
+  });
+
+  it('loadConfig passes extends/prohibitedAdd/allowedAdd through untouched; compileConfig resolves and surfaces the unknown-preset ConfigError', async () => {
+    const dir = join(tmpdir(), `dtl-test-extends-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const configPath = join(dir, '.design-token-lint.json');
+    await writeFile(configPath, JSON.stringify({ extends: ['nope'], ignore: [] }));
+    try {
+      const config = await loadConfig(dir);
+      expect(config.extends).toEqual(['nope']);
+      // loadConfig itself doesn't resolve presets — compileConfig does — so
+      // the ConfigError only surfaces once the config is compiled, exactly
+      // like the CLI's loadConfig+compileConfig pipeline (both wrapped in the
+      // same try/catch that maps to exit code 2).
+      expect(() => compileConfig(config)).toThrow(ConfigError);
+      expect(() => compileConfig(config)).toThrow(/Unknown preset "nope"/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a non-string, non-string-array "extends" value at load time', async () => {
+    const dir = join(tmpdir(), `dtl-test-extends-bad-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const configPath = join(dir, '.design-token-lint.json');
+    await writeFile(configPath, JSON.stringify({ extends: 42, ignore: [] }));
+    try {
+      await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
+      await expect(loadConfig(dir)).rejects.toThrow(
+        /"extends" must be a string or an array of strings/,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a non-string-array "prohibitedAdd"/"allowedAdd" value at load time', async () => {
+    const dir = join(tmpdir(), `dtl-test-add-bad-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const configPath = join(dir, '.design-token-lint.json');
+    await writeFile(configPath, JSON.stringify({ prohibitedAdd: 'p-{n}', ignore: [] }));
+    try {
+      await expect(loadConfig(dir)).rejects.toThrow(/"prohibitedAdd" must be an array of strings/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('regression: a config without extends behaves exactly as before', () => {
+    const custom: LintConfig = { prohibited: ['p-{n}'], allowed: ['p-2'], ignore: [] };
+    const compiled = compileConfig(custom);
+    expect(checkClassWithConfig('p-2', compiled)).toBeNull();
+    expect(checkClassWithConfig('p-4', compiled)).not.toBeNull();
+    expect(checkClassWithConfig('bg-gray-500', compiled)).toBeNull();
+  });
+
+  it('regression: loadConfig + compileConfig on a config with neither extends nor prohibited/allowed still yields DEFAULT_CONFIG rules', async () => {
+    const dir = join(tmpdir(), `dtl-test-noext-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const configPath = join(dir, '.design-token-lint.json');
+    await writeFile(configPath, JSON.stringify({ patterns: ['src/**/*.tsx'] }));
+    try {
+      const config = await loadConfig(dir);
+      const compiled = compileConfig(config);
+      expect(compiled).toEqual(compileConfig(DEFAULT_CONFIG));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
