@@ -81,6 +81,26 @@ describe('compilePattern', () => {
   });
 });
 
+describe('compilePattern — exact patterns with variant/negative/important shapes', () => {
+  it('does not throw for an exact pattern with a leading "-"', () => {
+    const rule = compilePattern('-mt-px');
+    expect(rule.prefix).toBe('-mt-px');
+    expect(rule.valuePattern.source).toBe('^$');
+  });
+
+  it('does not throw for an exact pattern containing a variant prefix ":"', () => {
+    const rule = compilePattern('hover:p-2');
+    expect(rule.prefix).toBe('hover:p-2');
+    expect(rule.valuePattern.source).toBe('^$');
+  });
+
+  it('does not throw for an exact pattern with a trailing "!" important modifier', () => {
+    const rule = compilePattern('p-4!');
+    expect(rule.prefix).toBe('p-4!');
+    expect(rule.valuePattern.source).toBe('^$');
+  });
+});
+
 describe('compilePattern — malformed patterns', () => {
   it('throws a clear error when a placeholder has no preceding "-"', () => {
     expect(() => compilePattern('{n}')).toThrow(/placeholder/i);
