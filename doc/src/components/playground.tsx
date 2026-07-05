@@ -61,11 +61,17 @@ function parseLintConfig(configStr: string): LintConfig {
     throw new Error('"allowed" must be an array');
   if (parsed.ignore && !Array.isArray(parsed.ignore))
     throw new Error('"ignore" must be an array');
+  if (
+    parsed.suggestions &&
+    (typeof parsed.suggestions !== "object" || Array.isArray(parsed.suggestions))
+  )
+    throw new Error('"suggestions" must be an object');
   return {
     prohibited: parsed.prohibited ?? [],
     allowed: parsed.allowed ?? [],
     ignore: parsed.ignore ?? [],
     suggestionSuffix: parsed.suggestionSuffix,
+    suggestions: parsed.suggestions,
   };
 }
 
