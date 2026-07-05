@@ -15,13 +15,7 @@ import chalk from 'chalk';
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, isAbsolute, resolve } from 'node:path';
-import {
-  loadConfig,
-  compileConfig,
-  ConfigError,
-  type LintConfig,
-  type CompiledConfig,
-} from './config.js';
+import { loadConfig, compileConfig, type LintConfig, type CompiledConfig } from './config.js';
 import { setConfig } from './rules.js';
 import { lintFile, type LintResult } from './linter.js';
 
@@ -32,7 +26,7 @@ const DEFAULT_PATTERNS = [
   'app/**/*.{tsx,jsx}',
 ];
 
-const DEFAULT_IGNORE_PATTERNS = ['**/node_modules/**', '**/dist/**', '**/__inbox/**'];
+const DEFAULT_IGNORE_PATTERNS = ['**/node_modules/**', '**/dist/**'];
 
 /**
  * Output format for reported violations.
@@ -63,17 +57,28 @@ const KNOWN_FLAGS = new Set(['-h', '--help', '-V', '--version', '--json', '--for
  * present, --help wins (it appears earlier in conventional CLIs).
  *
  * --json is a standalone boolean flag. --format takes a required value
- * (human|github) consumed from the following arg; a missing or invalid
- * value is reported as an error rather than silently falling through to
- * being treated as a glob pattern. `format` is left `undefined` when the
- * flag isn't passed so the caller can distinguish "not specified" (and fall
- * back to env-based auto-detection) from an explicit choice.
+ * (human|github) either as the following arg or via the "--format=value"
+ * equals form; a missing or invalid value is reported as an error rather
+ * than silently falling through to being treated as a glob pattern.
+ * `format` is left `undefined` when the flag isn't passed so the caller can
+ * distinguish "not specified" (and fall back to env-based auto-detection)
+ * from an explicit choice.
+ *
+ * A bare "--" is the conventional end-of-flags terminator: everything after
+ * the first "--" is treated as a literal glob pattern, even if it looks like
+ * a flag (e.g. `design-token-lint -- --weird-dirname/**`). The "--" itself
+ * is consumed, not pushed as a pattern. Only the first "--" acts as the
+ * terminator; a "--" appearing again after it is just a literal pattern.
  */
 export function parseArgs(args: string[]): ParsedArgs {
-  if (args.includes('-h') || args.includes('--help')) {
+  const terminatorIndex = args.indexOf('--');
+  const flagArgs = terminatorIndex === -1 ? args : args.slice(0, terminatorIndex);
+  const literalArgs = terminatorIndex === -1 ? [] : args.slice(terminatorIndex + 1);
+
+  if (flagArgs.includes('-h') || flagArgs.includes('--help')) {
     return { kind: 'help' };
   }
-  if (args.includes('-V') || args.includes('--version')) {
+  if (flagArgs.includes('-V') || flagArgs.includes('--version')) {
     return { kind: 'version' };
   }
 
@@ -81,14 +86,14 @@ export function parseArgs(args: string[]): ParsedArgs {
   let format: OutputFormat | undefined;
   const patterns: string[] = [];
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+  for (let i = 0; i < flagArgs.length; i++) {
+    const arg = flagArgs[i];
     if (arg === '--json') {
       json = true;
       continue;
     }
-    if (arg === '--format') {
-      const value = args[i + 1];
+    if (arg === '--format' || arg.startsWith('--format=')) {
+      const value = arg === '--format' ? flagArgs[i + 1] : arg.slice('--format='.length);
       if (value === undefined || !VALID_OUTPUT_FORMATS.includes(value as OutputFormat)) {
         return {
           kind: 'error',
@@ -96,7 +101,7 @@ export function parseArgs(args: string[]): ParsedArgs {
         };
       }
       format = value as OutputFormat;
-      i++; // consume the value so it isn't also treated as a glob pattern
+      if (arg === '--format') i++; // consume the value so it isn't also treated as a glob pattern
       continue;
     }
     if (arg.startsWith('-') && !KNOWN_FLAGS.has(arg)) {
@@ -104,6 +109,8 @@ export function parseArgs(args: string[]): ParsedArgs {
     }
     patterns.push(arg);
   }
+
+  patterns.push(...literalArgs);
 
   return { kind: 'run', patterns, json, format };
 }
@@ -273,7 +280,7 @@ export async function runMain(opts: MainOptions): Promise<number> {
     config = await loadConfig(cwd);
     compiled = compileConfig(config);
   } catch (err) {
-    if (err instanceof ConfigError || err instanceof Error) {
+    if (err instanceof Error) {
       stderr(chalk.red(err.message));
       return 2;
     }
@@ -281,17 +288,38 @@ export async function runMain(opts: MainOptions): Promise<number> {
   }
   setConfig(compiled);
 
-  // Resolve patterns: CLI args > config file > defaults
+  // Resolve patterns: CLI args > config file > defaults. An explicit
+  // `"patterns": []` in the config is a distinct case from an *absent*
+  // `patterns` field: `?? DEFAULT_PATTERNS` only falls back on
+  // null/undefined, so `[]` would otherwise silently mean "match nothing"
+  // and surface as the generic "No files matched" error further down. Catch
+  // it here with a message that names the actual cause.
+  if (
+    parsed.patterns.length === 0 &&
+    config.patterns !== undefined &&
+    config.patterns.length === 0
+  ) {
+    stderr(
+      chalk.red(
+        'Config field "patterns" is an empty array, so there is nothing to scan. ' +
+          'Remove "patterns" from the config to use the defaults, or list at least one glob pattern.',
+      ),
+    );
+    return 2;
+  }
   const patterns =
     parsed.patterns.length > 0 ? parsed.patterns : (config.patterns ?? DEFAULT_PATTERNS);
 
   // Merge ignore patterns: CLI defaults + config ignore patterns
   const ignorePatterns = [...DEFAULT_IGNORE_PATTERNS, ...compiled.ignore];
 
-  // Resolve files
+  // Resolve files. `nodir: true` is required: without it, a pattern like
+  // `src/**` (or a directory that happens to be named e.g. `foo.tsx`) also
+  // yields directory paths, which later crash `lintFile`'s `readFile` call
+  // with EISDIR.
   const files = new Set<string>();
   for (const pattern of patterns) {
-    const matched = await glob(pattern, { ignore: ignorePatterns, cwd });
+    const matched = await glob(pattern, { ignore: ignorePatterns, cwd, nodir: true });
     for (const f of matched) {
       files.add(f);
     }
@@ -317,7 +345,22 @@ export async function runMain(opts: MainOptions): Promise<number> {
     // glob returns paths relative to `cwd`; resolve against `cwd` so reads
     // work even when `cwd` differs from process.cwd() (e.g. in tests).
     const readPath = isAbsolute(filePath) ? filePath : resolve(cwd, filePath);
-    const results = await lintFile(readPath);
+    // A file can still fail to read even after nodir-filtered globbing (e.g.
+    // permissions, or it was deleted/replaced between glob and read — a
+    // race that is more likely than it sounds on a large watched tree).
+    // Report cleanly and stop instead of letting the raw error escape to
+    // the top-level catch as a stack dump.
+    let results: LintResult[];
+    try {
+      results = await lintFile(readPath);
+    } catch (err) {
+      stderr(
+        chalk.red(
+          `Failed to read ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
+      return 2;
+    }
     // Keep the displayed path relative for normal CLI output.
     for (const r of results) {
       allResults.push({ ...r, filePath });
