@@ -22,7 +22,15 @@ export class ConfigError extends Error {
 }
 
 export interface LintConfig {
-  /** Patterns to flag as violations. Placeholders: {n} = number, {color} = Tailwind color, {shade} = shade (50-950) */
+  /**
+   * Patterns to flag as violations. Placeholders: {n} = number, {color} =
+   * Tailwind color, {shade} = shade (50-950). An entry with no placeholder
+   * (e.g. "hidden", "-mt-px", "hover:p-2", "p-4!") is an exact-match rule:
+   * it fires on the normalized candidate (variant/important/negative/opacity
+   * stripped) OR the verbatim className — mirroring `allowed` below — so a
+   * leading "-", a variant prefix, or a "!" important modifier in the entry
+   * is intentional and matches only that literal form.
+   */
   prohibited: string[];
   /**
    * Exceptions that are always allowed, even if they match a prohibited pattern.
@@ -258,7 +266,15 @@ export function compilePattern(pattern: string, suggestionSuffix?: string): Comp
   // Find the first placeholder
   const placeholderIndex = pattern.indexOf('{');
   if (placeholderIndex === -1) {
-    // Exact match pattern (no placeholders)
+    // Exact match pattern (no placeholders). Matched by checkClassWithConfig
+    // against BOTH the normalized className and the verbatim className (see
+    // the exact-match branch in rules.ts's matchRule). This is deliberate:
+    // a pattern containing ":" (e.g. "hover:p-2"), a leading "-" (e.g.
+    // "-mt-px"), or a "!" important modifier (e.g. "p-4!", "!p-4") is a
+    // valid, intentional exact rule — it only matches that literal verbatim
+    // class, never the bare/unmodified token. No validation error is thrown
+    // for these shapes; they are a supported (if less common) authoring
+    // style, same as prohibited's own README/type-level documentation.
     return {
       prefix: pattern,
       valuePattern: /^$/,

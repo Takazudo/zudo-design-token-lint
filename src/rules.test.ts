@@ -345,6 +345,92 @@ describe('checkClass', () => {
     });
   });
 
+  describe('exact prohibited patterns — verbatim + normalized matching', () => {
+    it('a leading-dash exact entry matches its literal verbatim form', () => {
+      const custom: LintConfig = {
+        prohibited: ['-mt-px'],
+        allowed: [],
+        ignore: [],
+      };
+      const compiled = compileConfig(custom);
+      const result = checkClassWithConfig('-mt-px', compiled);
+      expect(result).not.toBeNull();
+      expect(result!.className).toBe('-mt-px');
+    });
+
+    it('a variant-prefixed exact entry matches only its literal verbatim form, not the bare normalized token', () => {
+      const custom: LintConfig = {
+        prohibited: ['hover:p-2'],
+        allowed: [],
+        ignore: [],
+      };
+      const compiled = compileConfig(custom);
+      expect(checkClassWithConfig('hover:p-2', compiled)).not.toBeNull();
+      // The normalized form of "hover:p-2" is "p-2", a different string from
+      // the entry "hover:p-2" — a bare "p-2" must NOT be flagged by this rule.
+      expect(checkClassWithConfig('p-2', compiled)).toBeNull();
+    });
+
+    it('a trailing-important exact entry matches its literal verbatim form', () => {
+      const custom: LintConfig = {
+        prohibited: ['p-4!'],
+        allowed: [],
+        ignore: [],
+      };
+      const compiled = compileConfig(custom);
+      expect(checkClassWithConfig('p-4!', compiled)).not.toBeNull();
+    });
+
+    it('a plain exact entry still fires via the normalized path on variant/negative/important forms (regression)', () => {
+      const custom: LintConfig = {
+        prohibited: ['p-2'],
+        allowed: [],
+        ignore: [],
+      };
+      const compiled = compileConfig(custom);
+      expect(checkClassWithConfig('p-2', compiled)).not.toBeNull();
+      expect(checkClassWithConfig('hover:p-2', compiled)).not.toBeNull();
+      expect(checkClassWithConfig('-p-2', compiled)).not.toBeNull();
+      expect(checkClassWithConfig('p-2!', compiled)).not.toBeNull();
+    });
+  });
+
+  describe('semanticPrefixes bypass — priority over the numeric check (characterization)', () => {
+    it('a digit-leading semanticPrefixes entry bypasses the numeric spacing rule even when the value would also match the numeric pattern', () => {
+      const custom: LintConfig = {
+        prohibited: ['p-{n}'],
+        allowed: [],
+        ignore: [],
+        semanticPrefixes: ['1'],
+      };
+      const compiled = compileConfig(custom);
+      // "12" is a purely-numeric value that would normally be flagged, but it
+      // also starts with the (unusual, digit-leading) semantic prefix "1", so
+      // the semanticPrefixes bypass — which runs before the numeric
+      // valuePattern test — takes priority and allows it.
+      expect(checkClassWithConfig('p-12', compiled)).toBeNull();
+    });
+  });
+
+  describe('spacing "1px" values — allowed via the allowed list, not a dedicated bypass (characterization)', () => {
+    it('p-1px is allowed by the default allowed list', () => {
+      expect(checkClass('p-1px')).toBeNull();
+    });
+
+    it('a value of exactly "1px" fails the numeric valuePattern on its own, so a prefix not in the allowed list is still flagged as null-safe without any dedicated "1px" bypass', () => {
+      const custom: LintConfig = {
+        prohibited: ['mt-{n}'],
+        allowed: [], // "mt-1px" is deliberately absent from allowed
+        ignore: [],
+      };
+      const compiled = compileConfig(custom);
+      // "1px" contains non-digit characters, so it can never satisfy the
+      // ^\d+(\.\d+)?$ numeric spacing pattern regardless of any special-cased
+      // "value === '1px'" check — this is why that check was dead code.
+      expect(checkClassWithConfig('mt-1px', compiled)).toBeNull();
+    });
+  });
+
   describe('design system color tokens — allowed', () => {
     it.each([
       'bg-bg',

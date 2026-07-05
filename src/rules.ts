@@ -104,9 +104,16 @@ function matchRule(
   rule: CompiledRule,
   semanticPrefixes: string[],
 ): Violation | null {
-  // Exact-match rule (no placeholders, valuePattern is /^$/)
+  // Exact-match rule (no placeholders, valuePattern is /^$/). Fires when
+  // EITHER the normalized candidate (post variant/important/negative/opacity
+  // stripping) equals the entry — so a bare entry like "hidden" also covers
+  // "sm:hidden" — OR the raw className equals the entry verbatim. The
+  // verbatim side is what lets an entry carry a leading "-" (e.g. "-mt-px"),
+  // a variant prefix (e.g. "hover:p-2"), or "!" (e.g. "p-4!") and have that
+  // literal form actually match — mirrors the allowed-list dual matching
+  // above (see the "Check allowed list first" comment).
   if (rule.valuePattern.source === '^$') {
-    if (withoutNeg === rule.prefix) {
+    if (withoutNeg === rule.prefix || originalClassName === rule.prefix) {
       return {
         className: originalClassName,
         reason: rule.reasonTemplate.replace('{CLASS}', originalClassName),
@@ -122,13 +129,24 @@ function matchRule(
 
   const value = withoutNeg.slice(rule.prefix.length + 1);
 
-  // Allow semantic tokens — only for spacing rules, not color rules
+  // Allow semantic tokens — only for spacing rules, not color rules. This
+  // check runs before the numeric valuePattern test below, so a
+  // semanticPrefixes entry always takes priority — including, deliberately,
+  // for a digit-leading prefix that would otherwise also satisfy the numeric
+  // spacing pattern (pinned in rules.test.ts under "semanticPrefixes bypass
+  // — priority over the numeric check").
   if (rule.isSpacingRule && semanticPrefixes.some((prefix) => value.startsWith(prefix))) {
     return null;
   }
 
-  // Allow "0" and "1px" for spacing rules
-  if (rule.isSpacingRule && (value === '0' || value === '1px')) {
+  // Allow "0" for spacing rules. (There is no equivalent "1px" bypass here:
+  // isSpacingRule is only ever set for the literal "{n}" placeholder shape
+  // (see compilePattern in config.ts), whose valuePattern is always
+  // ^\d+(\.\d+)?$ — a value like "1px" contains non-digit characters and can
+  // never satisfy that pattern, so a dedicated "value === '1px'" bypass here
+  // would be dead code. "p-1px" is instead allowed via the config's
+  // `allowed` list — see DEFAULT_CONFIG.allowed.)
+  if (rule.isSpacingRule && value === '0') {
     return null;
   }
 
