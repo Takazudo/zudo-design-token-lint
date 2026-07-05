@@ -23,19 +23,23 @@ export class ConfigError extends Error {
 
 export interface LintConfig {
   /**
-   * Patterns to flag as violations. Placeholders: {n} = number, {color} =
-   * Tailwind color, {shade} = shade (50-950). An entry with no placeholder
-   * (e.g. "hidden", "-mt-px", "hover:p-2", "p-4!") is an exact-match rule:
-   * it fires on the normalized candidate (variant/important/negative/opacity
-   * stripped) OR the verbatim className — mirroring `allowed` below — so a
-   * leading "-", a variant prefix, or a "!" important modifier in the entry
-   * is intentional and matches only that literal form.
+   * Patterns to flag as violations. Each entry is either a plain string
+   * (legacy shape, unchanged) or a structured object `{pattern, reason?,
+   * category?}` that overrides the pattern-shape-inferred violation message
+   * and tags the rule with a category (surfaced on `Violation.category`).
+   * Placeholders inside `pattern`: {n} = number, {color} = Tailwind color,
+   * {shade} = shade (50-950). An entry with no placeholder (e.g. "hidden",
+   * "-mt-px", "hover:p-2", "p-4!") is an exact-match rule: it fires on the
+   * normalized candidate (variant/important/negative/opacity stripped) OR
+   * the verbatim className — mirroring `allowed` below — so a leading "-",
+   * a variant prefix, or a "!" important modifier in the entry is
+   * intentional and matches only that literal form.
    *
    * REPLACE semantics: when present, this list wins outright over whatever
    * `extends` would otherwise have produced. Omit it (and use `extends` /
    * `prohibitedAdd` instead) to inherit and append rather than replace.
    */
-  prohibited?: string[];
+  prohibited?: ProhibitedConfigEntry[];
   /**
    * Exceptions that are always allowed, even if they match a prohibited pattern.
    * Each entry is matched two ways: the normalized form (variant prefix, `!`
@@ -75,10 +79,26 @@ export interface LintConfig {
    * fallback) — lets a config inherit defaults/presets and add just a few
    * extra rules without duplicating the inherited list.
    */
-  prohibitedAdd?: string[];
+  prohibitedAdd?: ProhibitedConfigEntry[];
   /** Same as `prohibitedAdd`, but appended after `allowed` is resolved. */
   allowedAdd?: string[];
 }
+
+/**
+ * Structured form of a `prohibited` entry: `pattern` is the same
+ * placeholder-bearing string a plain string entry would be, `reason`
+ * overrides the pattern-shape-inferred violation message (still supports
+ * the "{CLASS}" placeholder), and `category` tags the rule so a caller can
+ * distinguish rule families (e.g. "sizing", "z-index") on `Violation`.
+ */
+export interface ProhibitedEntry {
+  pattern: string;
+  reason?: string;
+  category?: string;
+}
+
+/** A `prohibited`/`prohibitedAdd` entry: a plain pattern string, or a structured object. */
+export type ProhibitedConfigEntry = string | ProhibitedEntry;
 
 /**
  * A named, registered preset usable via the `extends` config field. Contributes
@@ -86,7 +106,7 @@ export interface LintConfig {
  * concatenated with sibling extends layers in array order.
  */
 export interface ConfigPreset {
-  prohibited: string[];
+  prohibited: ProhibitedConfigEntry[];
   allowed?: string[];
 }
 
@@ -118,7 +138,7 @@ const TAILWIND_COLORS = [
 
 /** Built-in defaults matching the original hardcoded rules */
 export const DEFAULT_CONFIG: LintConfig & {
-  prohibited: string[];
+  prohibited: ProhibitedConfigEntry[];
   allowed: string[];
   classAttributes: string[];
   classFunctions: string[];
@@ -199,6 +219,51 @@ export const DEFAULT_CONFIG: LintConfig & {
     'shadow-{color}-{shade}',
     'inset-shadow-{color}-{shade}',
     'text-shadow-{color}-{shade}',
+    // Numeric sizing scale (decision D1 — see zudo-css-wisdom's
+    // design-token-lint methodology doc for the allow/ban rationale): the
+    // freedom-scale numeric values here are never semantic tokens, so this
+    // ban has no legitimate false positives beyond the arbitrary-value and
+    // zero escape hatches already handled by the shared {n} rule machinery.
+    {
+      pattern: 'w-{n}',
+      reason: 'Numeric width "{CLASS}" — use a semantic sizing token or arbitrary value',
+      category: 'sizing',
+    },
+    {
+      pattern: 'h-{n}',
+      reason: 'Numeric height "{CLASS}" — use a semantic sizing token or arbitrary value',
+      category: 'sizing',
+    },
+    {
+      pattern: 'size-{n}',
+      reason: 'Numeric size "{CLASS}" — use a semantic sizing token or arbitrary value',
+      category: 'sizing',
+    },
+    {
+      pattern: 'min-w-{n}',
+      reason: 'Numeric min-width "{CLASS}" — use a semantic sizing token or arbitrary value',
+      category: 'sizing',
+    },
+    {
+      pattern: 'max-w-{n}',
+      reason: 'Numeric max-width "{CLASS}" — use a semantic sizing token or arbitrary value',
+      category: 'sizing',
+    },
+    {
+      pattern: 'min-h-{n}',
+      reason: 'Numeric min-height "{CLASS}" — use a semantic sizing token or arbitrary value',
+      category: 'sizing',
+    },
+    {
+      pattern: 'max-h-{n}',
+      reason: 'Numeric max-height "{CLASS}" — use a semantic sizing token or arbitrary value',
+      category: 'sizing',
+    },
+    {
+      pattern: 'basis-{n}',
+      reason: 'Numeric flex-basis "{CLASS}" — use a semantic sizing token or arbitrary value',
+      category: 'sizing',
+    },
   ],
   allowed: ['p-0', 'm-0', 'gap-0', 'p-1px'],
   ignore: ['**/*.test.*', '**/*.stories.*'],
@@ -212,13 +277,26 @@ export const DEFAULT_PRESET_NAME = 'default';
 
 /**
  * Registry of named presets usable via the `extends` config field. To add a
- * new preset (e.g. a future "z-index" preset), add an entry here — extends
- * resolution and merging pick it up automatically with no other code changes.
+ * new preset, add an entry here — extends resolution and merging pick it up
+ * automatically with no other code changes.
+ *
+ * "z-index" (decision D3) is opt-in only — NOT part of DEFAULT_CONFIG — so
+ * it must be listed explicitly: `extends: ["default", "z-index"]`.
  */
 export const CONFIG_PRESETS: Record<string, ConfigPreset> = {
   [DEFAULT_PRESET_NAME]: {
     prohibited: DEFAULT_CONFIG.prohibited,
     allowed: DEFAULT_CONFIG.allowed,
+  },
+  'z-index': {
+    prohibited: [
+      {
+        pattern: 'z-{n}',
+        reason: 'Numeric z-index "{CLASS}" — use a semantic z tier token',
+        category: 'z-index',
+      },
+    ],
+    allowed: ['z-0'],
   },
 };
 
@@ -236,6 +314,22 @@ export interface CompiledRule {
   reasonTemplate: string;
   /** True for numeric spacing rules — enables semantic token (hgap-/vgap-) allowance */
   isSpacingRule: boolean;
+  /** Optional rule-family tag from a structured `prohibited` entry (e.g. "sizing", "z-index") */
+  category?: string;
+}
+
+/**
+ * Options bag accepted by `compilePattern`. A bare string second argument is
+ * still accepted for backward compatibility and is equivalent to passing
+ * `{ suggestionSuffix: thatString }`.
+ */
+export interface CompilePatternOptions {
+  /** Appended after the "—" in the default shape-inferred reason (spacing/color patterns only) */
+  suggestionSuffix?: string;
+  /** Full reason override (supports the "{CLASS}" placeholder) — wins over the shape-inferred default */
+  reason?: string;
+  /** Rule-family tag carried onto the compiled rule and, on a match, onto `Violation.category` */
+  category?: string;
 }
 
 // Matches the placeholders compilePattern understands inside a value part.
@@ -309,11 +403,25 @@ function expandValuePart(valuePart: string): string {
 /**
  * Compile a single pattern string into a rule.
  *
+ * `optionsOrSuffix` accepts either the legacy bare `suggestionSuffix` string
+ * or a `CompilePatternOptions` bag. When `options.reason` is given, it wins
+ * outright over the shape-inferred default reasonTemplate (and over
+ * `suggestionSuffix`, which only tweaks the shape-inferred default).
+ *
  * Throws a plain Error when the pattern is malformed (e.g. a placeholder
  * not preceded by "-", an unclosed "{", or an unrecognized placeholder
  * like "{number}").
  */
-export function compilePattern(pattern: string, suggestionSuffix?: string): CompiledRule {
+export function compilePattern(
+  pattern: string,
+  optionsOrSuffix?: string | CompilePatternOptions,
+): CompiledRule {
+  const options: CompilePatternOptions =
+    typeof optionsOrSuffix === 'string'
+      ? { suggestionSuffix: optionsOrSuffix }
+      : (optionsOrSuffix ?? {});
+  const { suggestionSuffix, reason, category } = options;
+
   // Find the first placeholder
   const placeholderIndex = pattern.indexOf('{');
   if (placeholderIndex === -1) {
@@ -329,8 +437,9 @@ export function compilePattern(pattern: string, suggestionSuffix?: string): Comp
     return {
       prefix: pattern,
       valuePattern: /^$/,
-      reasonTemplate: `Prohibited class "{CLASS}"`,
+      reasonTemplate: reason ?? `Prohibited class "{CLASS}"`,
       isSpacingRule: false,
+      ...(category !== undefined ? { category } : {}),
     };
   }
 
@@ -369,8 +478,9 @@ export function compilePattern(pattern: string, suggestionSuffix?: string): Comp
   return {
     prefix,
     valuePattern: new RegExp(regexStr),
-    reasonTemplate,
+    reasonTemplate: reason ?? reasonTemplate,
     isSpacingRule,
+    ...(category !== undefined ? { category } : {}),
   };
 }
 
@@ -416,7 +526,10 @@ function resolvePreset(name: string): ConfigPreset {
  * in array order, else the DEFAULT_CONFIG fallback — followed by
  * `prohibitedAdd`/`allowedAdd` appended on top of whichever base won.
  */
-function resolvePatternLists(config: LintConfig): { prohibited: string[]; allowed: string[] } {
+function resolvePatternLists(config: LintConfig): {
+  prohibited: ProhibitedConfigEntry[];
+  allowed: string[];
+} {
   const presetNames = normalizeExtendsList(config.extends);
   const presets = presetNames.map(resolvePreset);
   const hasExtends = presets.length > 0;
@@ -439,7 +552,15 @@ function resolvePatternLists(config: LintConfig): { prohibited: string[]; allowe
 export function compileConfig(config: LintConfig): CompiledConfig {
   const { prohibited, allowed } = resolvePatternLists(config);
   return {
-    rules: prohibited.map((p) => compilePattern(p, config.suggestionSuffix)),
+    rules: prohibited.map((p) =>
+      typeof p === 'string'
+        ? compilePattern(p, config.suggestionSuffix)
+        : compilePattern(p.pattern, {
+            suggestionSuffix: config.suggestionSuffix,
+            reason: p.reason,
+            category: p.category,
+          }),
+    ),
     allowed: new Set(allowed),
     ignore: config.ignore,
     semanticPrefixes: (config.semanticPrefixes ?? DEFAULT_CONFIG.semanticPrefixes).filter(
@@ -454,19 +575,42 @@ const CONFIG_FILENAMES = ['.design-token-lint.json', 'design-token-lint.config.j
 
 // Config fields whose value, when present, must be a string array.
 const STRING_ARRAY_FIELDS = [
-  'prohibited',
   'allowed',
   'ignore',
   'patterns',
   'semanticPrefixes',
   'classAttributes',
   'classFunctions',
-  'prohibitedAdd',
   'allowedAdd',
 ] as const;
 
+// Config fields whose value, when present, must be an array of strings and/or
+// structured `{pattern, reason?, category?}` objects.
+const PROHIBITED_ARRAY_FIELDS = ['prohibited', 'prohibitedAdd'] as const;
+
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((v) => typeof v === 'string');
+}
+
+function isProhibitedEntry(value: unknown): value is ProhibitedEntry {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.pattern !== 'string') {
+    return false;
+  }
+  if (obj.reason !== undefined && typeof obj.reason !== 'string') {
+    return false;
+  }
+  if (obj.category !== undefined && typeof obj.category !== 'string') {
+    return false;
+  }
+  return true;
+}
+
+function isProhibitedArray(value: unknown): value is ProhibitedConfigEntry[] {
+  return Array.isArray(value) && value.every((v) => typeof v === 'string' || isProhibitedEntry(v));
 }
 
 /**
@@ -478,6 +622,15 @@ function validateConfigFields(parsed: Record<string, unknown>, filename: string)
     const value = parsed[field];
     if (value !== undefined && !isStringArray(value)) {
       throw new ConfigError(`Invalid config ${filename}: "${field}" must be an array of strings`);
+    }
+  }
+  for (const field of PROHIBITED_ARRAY_FIELDS) {
+    const value = parsed[field];
+    if (value !== undefined && !isProhibitedArray(value)) {
+      throw new ConfigError(
+        `Invalid config ${filename}: "${field}" must be an array of strings or ` +
+          '{pattern, reason?, category?} objects',
+      );
     }
   }
   if (

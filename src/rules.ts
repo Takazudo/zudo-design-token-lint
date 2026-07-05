@@ -10,6 +10,8 @@ import { DEFAULT_CONFIG, compileConfig, type CompiledConfig, type CompiledRule }
 export interface Violation {
   className: string;
   reason: string;
+  /** Rule-family tag from the matched rule's structured `prohibited` entry (e.g. "sizing", "z-index") */
+  category?: string;
 }
 
 // Default compiled config (used when no external config is loaded)
@@ -98,6 +100,18 @@ export function checkClassWithConfig(className: string, config: CompiledConfig):
   return null;
 }
 
+/** Build the Violation for a matched rule, carrying an optional category through. */
+function buildViolation(originalClassName: string, rule: CompiledRule): Violation {
+  const violation: Violation = {
+    className: originalClassName,
+    reason: rule.reasonTemplate.replace('{CLASS}', originalClassName),
+  };
+  if (rule.category !== undefined) {
+    violation.category = rule.category;
+  }
+  return violation;
+}
+
 function matchRule(
   originalClassName: string,
   withoutNeg: string,
@@ -114,10 +128,7 @@ function matchRule(
   // above (see the "Check allowed list first" comment).
   if (rule.valuePattern.source === '^$') {
     if (withoutNeg === rule.prefix || originalClassName === rule.prefix) {
-      return {
-        className: originalClassName,
-        reason: rule.reasonTemplate.replace('{CLASS}', originalClassName),
-      };
+      return buildViolation(originalClassName, rule);
     }
     return null;
   }
@@ -151,10 +162,7 @@ function matchRule(
   }
 
   if (rule.valuePattern.test(value)) {
-    return {
-      className: originalClassName,
-      reason: rule.reasonTemplate.replace('{CLASS}', originalClassName),
-    };
+    return buildViolation(originalClassName, rule);
   }
 
   return null;

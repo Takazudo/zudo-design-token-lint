@@ -19,3 +19,11 @@ export {
   type CompiledRule,
   type ConfigPreset,
 } from './config.js';
+
+// --- issue #128: structured prohibited entries (reason/category) ---
+export {
+  type ProhibitedEntry,
+  type ProhibitedConfigEntry,
+  type CompilePatternOptions,
+} from './config.js';
+// --- end issue #128 additions ---
