@@ -841,21 +841,72 @@ const b = cn(
 
   describe('backslash-escaped quotes inside call arguments (scanBalancedDelimited)', () => {
     it('a backslash-escaped quote does not end the call early, so a later sibling argument is still reached', () => {
-      // scanBalancedDelimited's backslash handling (extractor.ts:277-282)
-      // keeps the whole first argument inside one quoted span despite the
-      // embedded escaped quotes, so the call's true closing paren is found
-      // correctly and "m-8" is reached at all. extractFromCallArgs' own
-      // token regex has no escape awareness, though, so the escaped-quote
-      // argument itself is mangled into fragments rather than one clean
-      // string — that quirk is pinned exactly here rather than hidden behind
-      // a looser assertion.
+      // scanBalancedDelimited's backslash handling keeps the whole first
+      // argument inside one quoted span despite the embedded escaped quotes,
+      // so the call's true closing paren is found correctly and "m-8" is
+      // reached at all. Originally (#133) extractFromCallArgs' own
+      // token regex had no escape awareness, so the escaped-quote argument
+      // was mangled into fragments (`say`, `\`, `p-4`) rather than one clean
+      // string — that quirk was deliberately pinned as out of scope for that
+      // task. #139 made scanQuotedLiterals (the token scanner shared by
+      // extractFromCallArgs/extractFromClassListArray) backslash-escape
+      // aware too, so the whole first argument is now recognized as ONE
+      // literal token (escape sequences left raw/unresolved, matching
+      // scanBalancedDelimited's own style) — this re-pins the corrected
+      // output. The key invariant #133 actually cared about — that "p-4" and
+      // "m-8" are never lost — still holds, and holds more cleanly now.
       const content = `const cls = cn("say \\"hi\\" p-4", "m-8");`;
       const result = extractClasses(content);
       expect(result).toEqual([
         { className: 'say', line: 1 },
-        { className: '\\', line: 1 },
+        { className: '\\"hi\\"', line: 1 },
         { className: 'p-4', line: 1 },
         { className: 'm-8', line: 1 },
+      ]);
+    });
+  });
+
+  describe('backslash-escaped quotes no longer drop a sibling violation (#139)', () => {
+    it('a sibling violation after an escaped single-quoted argument is still extracted', () => {
+      // Before #139, the naive per-token regex closed the first string on the
+      // escaped quote itself, desyncing the remaining scan so the trailing
+      // unpaired quote around "p-4" never found a partner and the violation
+      // was silently dropped entirely (not just mangled). This is the exact
+      // repro from the issue.
+      const content = `const cls = cn('it\\'s', 'p-4');`;
+      const result = extractClasses(content);
+      expect(result.some((r) => r.className === 'p-4')).toBe(true);
+    });
+
+    it('a sibling violation after an escaped double-quoted argument is still extracted', () => {
+      const content = `const cls = cn("a\\"b", "p-4");`;
+      const result = extractClasses(content);
+      expect(result.some((r) => r.className === 'p-4')).toBe(true);
+    });
+
+    it('handles escaped quotes in both single- and double-quoted call args, keeping every sibling violation', () => {
+      const content = `const cls = cn('a\\'b', "c\\"d", 'p-4', "m-8");`;
+      const result = extractClasses(content);
+      expect(result.some((r) => r.className === 'p-4')).toBe(true);
+      expect(result.some((r) => r.className === 'm-8')).toBe(true);
+    });
+
+    it('a class:list array argument with an escaped quote does not drop a sibling violation', () => {
+      const content = `<div class:list={["it\\'s", 'p-4']}>`;
+      const result = extractClasses(content);
+      expect(result.some((r) => r.className === 'p-4')).toBe(true);
+    });
+
+    it('a class token containing an escaped quote is extracted verbatim, not silently dropped', () => {
+      // Pins the corrected behavior: the escaped-quote token itself is
+      // extracted as one raw (still-escaped) whitespace-delimited chunk
+      // rather than vanishing — the key contract is "nothing is silently
+      // dropped", not any particular unescaping of the token's own text.
+      const content = `const cls = cn('it\\'s', 'p-4');`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: "it\\'s", line: 1 },
+        { className: 'p-4', line: 1 },
       ]);
     });
   });
