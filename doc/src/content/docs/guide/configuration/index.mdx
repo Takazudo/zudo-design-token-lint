@@ -36,14 +36,21 @@ Create a `.design-token-lint.json` or `design-token-lint.config.json` file at yo
 
 | Field | Type | Description |
 |---|---|---|
-| `prohibited` | `string[]` | Patterns to flag as violations |
+| `prohibited` | `(string \| ProhibitedEntry)[]` | Patterns to flag as violations — a plain string, or a structured `{pattern, reason?, category?}` object |
 | `allowed` | `string[]` | Exceptions that always pass, even if they match a prohibited pattern |
 | `ignore` | `string[]` | File glob patterns to skip entirely |
 | `patterns` | `string[]` | File glob patterns to scan (used when no CLI args are given) |
 | `suggestionSuffix` | `string` | Custom suffix for violation messages (replaces the default suggestion text) |
+| `suggestions` | `Record<string, string>` | Map from a banned class's normalized base form to your project's semantic replacement token, appended to the violation message as a "did you mean" hint |
 | `semanticPrefixes` | `string[]` | Value prefixes that bypass spacing rules (default: `["hgap-", "vgap-"]`) |
 | `classAttributes` | `string[]` | HTML/JSX attribute names the extractor scans for class names |
 | `classFunctions` | `string[]` | Utility function names the extractor scans for class name arguments |
+| `extends` | `string \| string[]` | Named preset(s) to inherit `prohibited`/`allowed` patterns from |
+| `prohibitedAdd` | `(string \| ProhibitedEntry)[]` | Patterns appended to the resolved `prohibited` list (inherited or default) — accepts the same plain-string/structured-object shape as `prohibited` |
+| `allowedAdd` | `string[]` | Patterns appended to the resolved `allowed` list (inherited or default) |
+| `css` | `object` | Opt-in CSS/SCSS declaration scanning: `{ zIndex?, colorLiterals?, patterns? }` (all default-OFF) |
+| `requireIgnoreReason` | `boolean` | Report a bare (reason-less) `design-token-lint-ignore` that shields a real violation, instead of suppressing it silently (default `false`) |
+| `reportUnusedIgnores` | `boolean` | Report a `design-token-lint-ignore` comment that suppressed nothing (default `false`) |
 
 All fields are optional and fall back to built-in defaults.
 
@@ -61,14 +68,107 @@ Examples:
 - `bg-{color}-{shade}` matches `bg-red-500`, `bg-blue-300`
 - `gap-x-{n}` matches `gap-x-2`, `gap-x-6`
 
+#### Structured entries
+
+Instead of a plain string, an entry can be an object to override the default violation message and tag the rule with a category:
+
+```json
+{
+  "prohibited": [
+    "p-{n}",
+    {
+      "pattern": "w-{n}",
+      "reason": "Numeric width \"{CLASS}\" — use a semantic sizing token or arbitrary value",
+      "category": "sizing"
+    }
+  ]
+}
+```
+
+- **`pattern`** (required) — same placeholder syntax as a plain string entry.
+- **`reason`** (optional) — full replacement for the violation message. Supports the `{CLASS}` placeholder (replaced with the actual class name). When omitted, the pattern-shape-inferred default message is used, same as a plain string entry.
+- **`category`** (optional) — a free-form tag (e.g. `"sizing"`, `"z-index"`) copied onto the resulting `Violation.category` when this rule matches, so tooling can group or filter violations by rule family. Plain string entries never produce a `category`.
+
+A plain string entry is always equivalent to `{ pattern: theString }` with no `reason`/`category` override — mixing string and object entries in the same `prohibited` array is fine.
+
 ### `allowed`
 
 An allowlist checked before prohibited patterns are matched. Each entry can take either form:
 
-- **Bare/normalized form** (e.g. `p-4`) — also allows every variant, negative, important-modifier, and opacity form built from it: `hover:p-4`, `-p-4`, `p-4!`, `sm:-p-4!`, `bg-red-500/50`, etc. Matching strips the variant prefix (up to the last `:`), the `!` important modifier, the leading `-` negative sign, and the `/N` opacity suffix before comparing.
+- **Bare/normalized form** — also allows every variant, negative, and important-modifier form built from it. Matching strips the variant prefix (up to the last `:`), the `!` important modifier, the leading `-` negative sign, and the `/N` opacity suffix before comparing:
+  - A bare `p-4` also covers `hover:p-4`, `-p-4`, `p-4!`, `sm:-p-4!`.
+  - A bare `bg-red-500` also covers its opacity forms, e.g. `bg-red-500/50`, `hover:bg-red-500/50`.
 - **Exact/verbatim form** (e.g. `hover:p-2`, `-mt-4`, `bg-red-500/50`) — allows only that specific string. Useful for copy-pasting a class straight out of a violation message to allow just that one variant without opening up the bare form or every other variant of it.
 
-Escape hatches like `p-0`, `m-0`, or `p-1px` are common entries.
+Escape hatches like `p-0`, `m-0` are common entries — though zero already passes automatically for *any* spacing/sizing rule regardless of `allowed` (see [What Passes Automatically](#what-passes-automatically)), so these are defensive/explicit rather than strictly required.
+
+### `extends`
+
+Inherit `prohibited`/`allowed` patterns from one or more built-in presets instead of duplicating the full default list. Takes a preset name or an array of names:
+
+```json
+{
+  "extends": ["default"]
+}
+```
+
+Currently there are two registered presets:
+
+- **`default`** — the built-in `prohibited`/`allowed` lists described in [Built-in Defaults](#built-in-defaults) below.
+- **`z-index`** — opt-in numeric z-index ban: flags `z-{n}` (e.g. `z-10`, `z-50`) with a z-index-specific message, allows `z-0`. NOT part of `default` — list it explicitly to enable it:
+
+  ```json
+  {
+    "extends": ["default", "z-index"]
+  }
+  ```
+
+When `extends` is an array, layers merge in the order given. Presets never auto-compose with `default` on your behalf — if you want the defaults plus another preset, list both explicitly: `"extends": ["default", "some-other-preset"]`. `"extends": ["z-index"]` alone enables only the z-index rule, with no default rules at all.
+
+An unknown preset name is a config error (the CLI exits with a clear message).
+
+<Note>
+
+`extends` only replaces the boilerplate of copying `prohibited`/`allowed` — it does not touch `ignore`, `patterns`, `semanticPrefixes`, `classAttributes`, or `classFunctions`. Those fields keep their own independent defaults regardless of `extends`.
+
+</Note>
+
+#### `prohibitedAdd` / `allowedAdd`
+
+Append extra entries on top of whatever `prohibited`/`allowed` resolved to — the inherited preset list (via `extends`), or the built-in default when neither `extends` nor a plain `prohibited`/`allowed` is set. Use these instead of a full `prohibited`/`allowed` override when you only need to add a handful of project-specific rules or exceptions:
+
+```json
+{
+  "extends": ["default"],
+  "prohibitedAdd": ["z-{n}"],
+  "allowedAdd": ["z-0"]
+}
+```
+
+This keeps every default rule and adds a `z-{n}` spacing-style rule plus a `z-0` exception, without re-listing the ~70 built-in `prohibited` patterns.
+
+<Note>
+
+This particular `z-{n}`/`z-0` combination now ships as the built-in [`z-index` preset](#fields-extends) — `"extends": ["default", "z-index"]` does the same thing with a z-index-specific violation message. `prohibitedAdd`/`allowedAdd` remain the right tool for project-specific rules that aren't covered by a registered preset.
+
+</Note>
+
+Plain `prohibited`/`allowed` (when present) keep **replace** semantics — they win outright over `extends`, and `prohibitedAdd`/`allowedAdd` still append on top of that explicit list:
+
+```json
+{
+  "prohibited": ["hidden"],
+  "prohibitedAdd": ["block"]
+}
+```
+
+This example ignores every default/preset pattern and prohibits exactly `hidden` and `block`.
+
+<Note>
+
+Before this field existed, adopting the defaults plus one extra rule meant copying every `prohibited` entry verbatim into your config — a list that silently drifts out of sync as new defaults are added upstream. `extends` + `prohibitedAdd`/`allowedAdd` avoids that duplication entirely; see this package's own [dogfooding config](https://github.com/Takazudo/zudo-design-token-lint/blob/main/.design-token-lint.json) for a real-world before/after.
+
+</Note>
 
 ### `ignore`
 
@@ -83,6 +183,14 @@ File glob patterns to skip entirely. Common patterns:
   ]
 }
 ```
+
+**Default**: `["**/*.test.*", "**/*.stories.*"]`.
+
+<Note>
+
+The CLI additionally always excludes `**/node_modules/**` and `**/dist/**`, on top of whatever `ignore` resolves to — see [Built-in Ignore Globs](../cli/index.mdx#file-pattern-resolution-built-in-ignore-globs) for details, including the removal of the old `**/__inbox/**` default. This top-up only applies to the CLI's own glob resolution, not to direct `lintFile()`/`lintContent()` calls.
+
+</Note>
 
 ### `patterns`
 
@@ -107,6 +215,52 @@ A string appended to violation messages after the `—` separator, replacing the
 
 - Spacing: `Numeric spacing "p-4" — use hgap-*/vgap-* or zd-* tokens`
 - Color: `Default Tailwind color "bg-gray-500" — use hgap-*/vgap-* or zd-* tokens`
+
+### `suggestions`
+
+A project-level mapping from a banned class to that project's semantic replacement token. When a violation's normalized base class (the same variant/negative/important/opacity-stripped form `allowed` entries use) has an entry here, the mapped value is appended to the violation message as `— did you mean "<value>"?`.
+
+```json
+{
+  "suggestions": {
+    "p-4": "p-hsp-xs",
+    "bg-gray-100": "bg-surface"
+  }
+}
+```
+
+With this config, `p-4` produces:
+
+```text
+Numeric spacing "p-4" — use a semantic spacing token or arbitrary value — did you mean "p-hsp-xs"?
+```
+
+A class with no entry in `suggestions` is flagged with its usual message, unchanged.
+
+<Note>
+
+Keys are matched on the **normalized base class**, so a single `"p-4"` entry also resolves for every variant/negative/important form built from it — `hover:p-4`, `-p-4`, `p-4!`, `sm:-p-4!`, etc. — the same normalization `allowed` uses (see [`allowed`](#fields-allowed) above).
+
+</Note>
+
+This composes with [`suggestionSuffix`](#fields-suggestionsuffix): the suffix still customizes the base reason template, and the suggestion is appended after it.
+
+```json
+{
+  "suggestionSuffix": "use hsp-*/vsp-* tokens",
+  "suggestions": { "p-4": "p-hsp-xs" }
+}
+```
+
+```text
+Numeric spacing "p-4" — use hsp-*/vsp-* tokens — did you mean "p-hsp-xs"?
+```
+
+<Note>
+
+This is message-only guidance — it does not drive an autofix, and it is not consulted for column/position tracking. A non-string value in `suggestions` (e.g. a number or array) is a config error; the CLI exits with a clear message naming the field.
+
+</Note>
 
 ### `semanticPrefixes`
 
@@ -164,14 +318,152 @@ Use this to add support for additional class-merging utilities in your project:
 
 This is useful when using libraries like `class-variance-authority` (`cva`), `tailwind-variants` (`tv`), or additional utilities from `tailwind-merge` such as `twJoin`.
 
+### css
+
+Opt-in scanning of plain **CSS/SCSS declaration values** — an extension beyond Tailwind class attributes. This whole section is **absent by default**, and every rule inside it is itself **default-OFF**, so nothing changes until you both add the `css` section and turn a rule on.
+
+```json
+{
+  "css": {
+    "zIndex": true,
+    "colorLiterals": true,
+    "patterns": ["src/**/*.css", "src/**/*.scss"]
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `zIndex` | `boolean` | Flag bare integer `z-index` values (default `false`) |
+| `colorLiterals` | `boolean` | Flag raw color literals in any declaration value (default `false`) |
+| `patterns` | `string[]` | File globs the CLI scans for `.css`/`.scss` files, **in addition to** the Tailwind `patterns` |
+
+`css.patterns` is scanned alongside the normal `patterns` when the CLI is run without explicit file arguments. To scan **only** CSS, set the top-level `"patterns": []` and list your CSS globs under `css.patterns`.
+
+Violations are reported in the same flat shape as Tailwind violations, with the offending declaration in the `className` field in a stable `property: value` form (e.g. `z-index: 9999`).
+
+#### `zIndex`
+
+Forbids raw integer `z-index` values, enforcing the [semantic z-index tier system](https://zudo-css-wisdom.takazudomodular.com/). Mirrors the allow/forbid table from the z-index strategy:
+
+| Allowed | Forbidden |
+|---|---|
+| `z-index: var(--z-modal);` | `z-index: 100;` |
+| `z-index: calc(var(--z-modal) + 1);` | `z-index: 9999;` |
+| `z-index: auto;` / `inherit;` / `initial;` / `unset;` / `revert;` / `revert-layer;` | `z-index: -1;` |
+| Raw integer with a `/* design-token-lint-ignore */` escape hatch | Bare raw integer with no escape comment |
+
+A `calc()` counts as allowed only when it contains a `var()` reference; `calc(100 + 1)` (raw arithmetic) is still flagged. A trailing `!important` does not exempt a raw integer.
+
+#### `colorLiterals`
+
+Forbids raw color literals embedded in declaration values:
+
+| Allowed | Forbidden |
+|---|---|
+| `color: var(--fg);` | `background: #ffe4e4;` |
+| `color: transparent;` / `currentColor;` | `color: rgb(1, 2, 3);` |
+| Keyword-only values (`red`, `inherit`, `none`) | `color: hsl(0 95% 92%);` |
+| — | `color: oklch(45% 0.18 27);` / `oklab(...)` |
+
+The flagged forms are `#hex` (3/4/6/8-digit), `rgb()`/`rgba()`, `hsl()`/`hsla()`, and `oklch()`/`oklab()`. Named colors and other keyword-only values are allowed — this rule targets literal values, not every color.
+
+#### Escape hatch
+
+Use the same `design-token-lint-ignore` comment as the Tailwind class rules. In CSS it suppresses the **next line** (or, as a trailing comment, its own line):
+
+```css
+/* Legacy third-party widget — remove once migrated, tracked at #123. */
+/* design-token-lint-ignore */
+.legacy-widget {
+  z-index: 9999;
+}
+```
+
+Note that the comment suppresses the **declaration on the immediately following line**, so place it directly above the `z-index:` / color declaration, not above the selector. A trailing reason (`/* design-token-lint-ignore - why */`) is tolerated. `design-token-lint-ignore-file` suppresses the whole file.
+
+#### Scope and known limitations (v1)
+
+CSS scanning v1 is strictly **declaration-based** and line/regex-driven (no PostCSS, no AST — consistent with the Tailwind extractor). It correctly handles `/* */` comments (including multi-line spans), string literals, `url(...)` values, and SCSS `//` line comments. The following are **known false negatives** — values that embed a literal but are **not** flagged in v1, by design:
+
+- **Custom-property definitions** holding a literal (`--brand: #f00;`). Distinguishing a palette-definition zone (`:root`, `@theme`) from a semantic token that should reference the palette needs zone awareness, which is a deferred later pass.
+- **SCSS variable declarations** (`$brand: #f00;`) — same reason as custom properties.
+- **SCSS maps** and other nested/interpolated SCSS constructs.
+- **Values split across complex multi-line syntax** beyond a single declaration.
+
+Zone-aware scanning (allowing literals only in palette-definition zones) is out of scope for this version.
+
+### `requireIgnoreReason` / `reportUnusedIgnores`
+
+Two opt-in flags, both **default `false`**, that keep [ignore comments](../ignore-syntax/index.mdx) from becoming a silent, undocumented escape hatch:
+
+```json
+{
+  "requireIgnoreReason": true,
+  "reportUnusedIgnores": true
+}
+```
+
+Both flags read the same `design-token-lint-ignore` / `design-token-lint-ignore-file` comments described in the [Ignore Syntax](../ignore-syntax/index.mdx) guide — there is no new comment form to learn. They apply everywhere an ignore comment is honored: Tailwind class attributes/utility calls **and** the [`css`](#fields-css) declaration-scanning path.
+
+#### `requireIgnoreReason`
+
+Normally, a `design-token-lint-ignore` comment suppresses the class/declaration it covers whether or not it carries a reason. With `requireIgnoreReason: true`, a **bare** ignore (no trailing reason text) that shields a **real violation** is reported instead of silently disappearing:
+
+```tsx
+// design-token-lint-ignore
+<div className="p-4">
+```
+
+```text
+L2: p-4 — suppressed without documented reason
+```
+
+Add a reason after a `-`, `–`, `—`, or `:` separator and the same ignore suppresses silently again, exactly as before:
+
+```tsx
+// design-token-lint-ignore - vendor requires literal p-4
+<div className="p-4">
+```
+
+An ignore that doesn't shield an actual violation is unaffected by this flag (see `reportUnusedIgnores` below), and `design-token-lint-ignore-file` is not covered by this flag in this version — a bare file-level ignore never triggers this finding.
+
+<Note>
+
+The reported reason string — `suppressed without documented reason` — is stable and greppable by design; it does not change based on the underlying violation.
+
+</Note>
+
+#### `reportUnusedIgnores`
+
+The analog of ESLint's `reportUnusedDisableDirectives`. With `reportUnusedIgnores: true`, a `design-token-lint-ignore` comment that suppressed **nothing** — every class/declaration it covers already passed — is itself reported, anchored at the comment's own line:
+
+```tsx
+// design-token-lint-ignore
+<div className="flex">
+```
+
+```text
+L1: design-token-lint-ignore — Unused design-token-lint-ignore comment — suppressed no violation
+```
+
+The finding's `className` is the literal string `"design-token-lint-ignore"` (there is no offending class to name — the comment itself is the problem), so `--json` and `--format github` output stay in the same flat `LintResult` shape as every other finding. An ignore comment that suppresses at least one real violation is never reported as unused, even if it also covers other, already-clean lines — and a reason-carrying ignore is just as reportable as a bare one here, since the flag is about whether the comment did anything, not whether it's documented.
+
 ## Built-in Defaults
 
-If no config file exists, the linter uses these defaults:
+If no config file exists, the linter uses these defaults. This same `prohibited`/`allowed` pair is also registered as the `default` preset for use with [`extends`](#fields-extends):
 
 - **Prohibited**: all standard spacing utilities (`p-*`, `m-*`, `gap-*`, `inset-*`, `scroll-*`) with numeric values, plus all color utilities (`bg-*`, `text-*`, `border-*`, `ring-*`, etc.) with default Tailwind color-shade combinations
 - **Logical and v4 color utilities**: `border-s-*`, `border-e-*`, `ring-offset-*`, `inset-ring-*`, `inset-shadow-*`, `text-shadow-*` with default Tailwind color-shade combinations
-- **Allowed**: `p-0`, `m-0`, `gap-0`, `p-1px`
+- **Numeric sizing scale**: `w-{n}`, `h-{n}`, `size-{n}`, `min-w-{n}`, `max-w-{n}`, `min-h-{n}`, `max-h-{n}`, `basis-{n}` — each flagged with a sizing-specific message and `category: "sizing"` on the resulting `Violation` (see [Structured entries](#fields-prohibited-structured-entries)). Fraction utilities (`w-1/2`), arbitrary values (`w-[32px]`), and zero (`w-0`) still pass — see [What Passes Automatically](#what-passes-automatically) below.
+- **Allowed**: `p-0`, `m-0`, `gap-0`, `p-1px` — `p-1px` is actually inert here (see [What Passes Automatically](#what-passes-automatically) below for why); it stays in the list mostly as documentation of the "zero-ish" escape hatch.
 - **Ignore**: `**/*.test.*`, `**/*.stories.*`
+
+<Note>
+
+**Behavior change (`next` channel)**: the numeric sizing scale ban is new — projects that relied on the previous defaults and used raw numeric `w-*`/`h-*`/`size-*`/etc. classes will see new violations after upgrading. Opt out per-class via `allowed` (e.g. `"allowed": ["w-4"]`), or drop just these rules by supplying your own `prohibited`/`extends` combination that omits them.
+
+</Note>
 
 See the [package README](https://github.com/Takazudo/zudo-design-token-lint/blob/main/README.md) for the full default list.
 
@@ -183,3 +475,5 @@ These classes always pass without being in `allowed`:
 - **Non-default colors**: `bg-surface`, `text-fg`, `bg-zd-black` (any color name that isn't one of the standard Tailwind palette names)
 - **Arbitrary values**: `w-[28px]`, `bg-[#123]`, `p-[10px]`
 - **Non-spacing and non-color utilities**: `flex`, `grid`, `hidden`, `w-full`, `font-bold`, etc.
+- **Zero, for *any* numeric spacing/sizing rule**: `p-0`, `mt-0`, `px-0`, `inset-0`, `w-0`, `gap-0`, `top-0`, etc. all pass — not just the handful of `0`-suffixed classes that happen to be listed in `allowed`. The linter has a dedicated runtime check ("does this rule's numeric value equal `0`?") that fires for every `{n}`-shaped spacing/sizing pattern, regardless of what `allowed` contains.
+- **Non-numeric spacing-shaped values**: `p-1px`, `mt-1px`, `inset-1px`, etc. also pass — but for a different, simpler reason than the zero case above. The `{n}` placeholder only matches purely numeric values (`^\d+(\.\d+)?$`); a value containing letters like `1px` never satisfies that pattern in the first place, so it was never going to be flagged. `p-1px` in the default `allowed` list is therefore inert — it would pass with or without that entry.

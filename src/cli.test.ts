@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync, mkdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -13,26 +12,7 @@ import {
 } from './cli.js';
 import { setConfig } from './rules.js';
 import { compileConfig, DEFAULT_CONFIG } from './config.js';
-
-interface CapturedIO {
-  stdout: string[];
-  stderr: string[];
-}
-
-function makeIO(): CapturedIO & {
-  write: { stdout: (m: string) => void; stderr: (m: string) => void };
-} {
-  const stdout: string[] = [];
-  const stderr: string[] = [];
-  return {
-    stdout,
-    stderr,
-    write: {
-      stdout: (m: string) => stdout.push(m),
-      stderr: (m: string) => stderr.push(m),
-    },
-  };
-}
+import { makeIO, useTempDir } from './test-utils.js';
 
 afterEach(() => {
   setConfig(compileConfig(DEFAULT_CONFIG));
@@ -168,6 +148,62 @@ describe('parseArgs', () => {
       message: '--format requires a value: human or github',
     });
   });
+
+  it('accepts the --format=github equals form', () => {
+    expect(parseArgs(['--format=github', 'src/**/*.tsx'])).toEqual({
+      kind: 'run',
+      patterns: ['src/**/*.tsx'],
+      json: false,
+      format: 'github',
+    });
+  });
+
+  it('accepts the --format=human equals form', () => {
+    expect(parseArgs(['--format=human'])).toEqual({
+      kind: 'run',
+      patterns: [],
+      json: false,
+      format: 'human',
+    });
+  });
+
+  it('rejects --format= with an invalid equals-form value', () => {
+    expect(parseArgs(['--format=xml'])).toEqual({
+      kind: 'error',
+      message: '--format requires a value: human or github',
+    });
+  });
+
+  it('rejects --format= with no value after the equals sign', () => {
+    expect(parseArgs(['--format='])).toEqual({
+      kind: 'error',
+      message: '--format requires a value: human or github',
+    });
+  });
+
+  it('treats everything after a "--" terminator as literal patterns', () => {
+    expect(parseArgs(['--', '--weird-flag-like-dir/**'])).toEqual({
+      kind: 'run',
+      patterns: ['--weird-flag-like-dir/**'],
+      json: false,
+    });
+  });
+
+  it('does not treat -h after "--" as the help flag', () => {
+    expect(parseArgs(['--', '-h'])).toEqual({
+      kind: 'run',
+      patterns: ['-h'],
+      json: false,
+    });
+  });
+
+  it('parses flags before "--" and literal patterns after it together', () => {
+    expect(parseArgs(['--json', '--', '-x', 'src/**/*.tsx'])).toEqual({
+      kind: 'run',
+      patterns: ['-x', 'src/**/*.tsx'],
+      json: true,
+    });
+  });
 });
 
 describe('readPackageVersion', () => {
@@ -200,13 +236,8 @@ describe('helpText', () => {
 
 describe('isMainModule', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-ismain-'));
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  useTempDir('design-token-lint-ismain-', (dir) => {
+    tmpDir = dir;
   });
 
   it('returns true when argv1 is a symlink pointing to the real module file', () => {
@@ -336,13 +367,8 @@ describe('runMain — unknown option handling', () => {
 
 describe('runMain — config error handling', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-config-err-'));
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  useTempDir('design-token-lint-config-err-', (dir) => {
+    tmpDir = dir;
   });
 
   it('exits 2 and names the file when the config JSON is malformed', async () => {
@@ -395,15 +421,13 @@ describe('runMain — config error handling', () => {
 
 describe('runMain — empty match handling', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-test-'));
-    // Create an empty src/ directory so the pattern is valid but matches nothing.
-    mkdirSync(join(tmpDir, 'src'));
+  useTempDir('design-token-lint-test-', (dir) => {
+    tmpDir = dir;
   });
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  beforeEach(() => {
+    // Create an empty src/ directory so the pattern is valid but matches nothing.
+    mkdirSync(join(tmpDir, 'src'));
   });
 
   it('exits 2 when no files match (default)', async () => {
@@ -482,9 +506,11 @@ describe('runMain — empty match handling', () => {
 
 describe('runMain — pattern precedence (args > config.patterns > defaults)', () => {
   let tmpDir: string;
+  useTempDir('design-token-lint-precedence-', (dir) => {
+    tmpDir = dir;
+  });
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-precedence-'));
     // A violation reachable only via DEFAULT_PATTERNS (src/**/*.{tsx,jsx,astro}).
     mkdirSync(join(tmpDir, 'src'), { recursive: true });
     writeFileSync(join(tmpDir, 'src', 'from-default.tsx'), `<div className="p-4">`);
@@ -494,10 +520,6 @@ describe('runMain — pattern precedence (args > config.patterns > defaults)', (
     // A violation reachable only via CLI args.
     mkdirSync(join(tmpDir, 'from-args'), { recursive: true });
     writeFileSync(join(tmpDir, 'from-args', 'only.tsx'), `<div className="gap-6">`);
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('CLI args win over config.patterns', async () => {
@@ -558,14 +580,12 @@ describe('runMain — pattern precedence (args > config.patterns > defaults)', (
 
 describe('runMain — happy path still works', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-test-'));
-    mkdirSync(join(tmpDir, 'src'));
+  useTempDir('design-token-lint-test-', (dir) => {
+    tmpDir = dir;
   });
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'));
   });
 
   it('returns 0 when files match and have no violations', async () => {
@@ -597,14 +617,12 @@ describe('runMain — happy path still works', () => {
 
 describe('runMain — --json output', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-json-'));
-    mkdirSync(join(tmpDir, 'src'));
+  useTempDir('design-token-lint-json-', (dir) => {
+    tmpDir = dir;
   });
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'));
   });
 
   it('prints a JSON array of flat LintResult objects on stdout and keeps exit code 1', async () => {
@@ -651,14 +669,12 @@ describe('runMain — --json output', () => {
 
 describe('runMain — --format github output', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-github-'));
-    mkdirSync(join(tmpDir, 'src'));
+  useTempDir('design-token-lint-github-', (dir) => {
+    tmpDir = dir;
   });
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'));
   });
 
   it('prints one ::error workflow command per violation on stdout', async () => {
@@ -756,14 +772,12 @@ describe('formatGithubAnnotation — workflow command escaping', () => {
 
 describe('runMain — human mode is unchanged by the new flags', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-human-'));
-    mkdirSync(join(tmpDir, 'src'));
+  useTempDir('design-token-lint-human-', (dir) => {
+    tmpDir = dir;
   });
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'));
   });
 
   it('produces identical stderr output and empty stdout without --json/--format', async () => {
@@ -782,5 +796,349 @@ describe('runMain — human mode is unchanged by the new flags', () => {
     expect(err).toContain('dirty.tsx');
     expect(err).toContain('p-4');
     expect(err).toContain('Found 1 violation(s) in 1 file(s).');
+  });
+});
+
+describe('runMain — directory matches do not crash (nodir glob)', () => {
+  let tmpDir: string;
+  useTempDir('design-token-lint-nodir-', (dir) => {
+    tmpDir = dir;
+  });
+
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'), { recursive: true });
+  });
+
+  it('lints files only when a directory literally named "*.tsx" is also matched', async () => {
+    // A directory whose name ends in .tsx is matched by the default pattern
+    // src/**/*.{tsx,jsx,astro} just like a real file would be. Pre-fix, glob
+    // returned it too and readFile blew up with EISDIR.
+    mkdirSync(join(tmpDir, 'src', 'dirname.tsx'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'real.tsx'), `<div className="flex">`);
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(0);
+    expect(io.stderr.join('\n')).toContain('No design token violations found');
+  });
+
+  it('lints files only for a broad "src/**" pattern that also matches directories', async () => {
+    mkdirSync(join(tmpDir, 'src', 'subdir'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'subdir', 'dirty.tsx'), `<div className="p-4">`);
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    expect(io.stderr.join('\n')).toContain('Found 1 violation(s)');
+  });
+});
+
+describe('runMain — unreadable file reports cleanly instead of crashing', () => {
+  let tmpDir: string;
+  useTempDir('design-token-lint-unreadable-', (dir) => {
+    tmpDir = dir;
+  });
+
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'), { recursive: true });
+  });
+
+  it('exits 2 with a one-line message naming the file, not a raw stack dump', async () => {
+    // A broken symlink is matched by glob (nodir only excludes directories)
+    // but fails to read with ENOENT — this models both "unreadable file"
+    // and the "deleted/replaced between glob and read" race the fix guards
+    // against, without depending on root/non-root permission semantics.
+    symlinkSync(
+      join(tmpDir, 'src', 'does-not-exist-target.tsx'),
+      join(tmpDir, 'src', 'broken.tsx'),
+    );
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(2);
+    const err = io.stderr.join('\n');
+    expect(err).toContain('Failed to read');
+    expect(err).toContain('broken.tsx');
+    // Clean single-line report, not a raw Node stack trace.
+    expect(err).not.toContain('    at ');
+    expect(io.stdout).toEqual([]);
+  });
+});
+
+describe('runMain — patterns: [] in config', () => {
+  let tmpDir: string;
+  useTempDir('design-token-lint-empty-patterns-', (dir) => {
+    tmpDir = dir;
+  });
+
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'dirty.tsx'), `<div className="p-4">`);
+  });
+
+  it('exits 2 naming the empty "patterns" config field instead of the generic no-match message', async () => {
+    writeFileSync(join(tmpDir, '.design-token-lint.json'), JSON.stringify({ patterns: [] }));
+    const io = makeIO();
+    const code = await runMain({
+      args: [],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(2);
+    const err = io.stderr.join('\n');
+    expect(err).toContain('"patterns"');
+    expect(err).not.toContain('No files matched any of the configured patterns');
+  });
+
+  it('CLI args still win over an empty config.patterns (no error)', async () => {
+    writeFileSync(join(tmpDir, '.design-token-lint.json'), JSON.stringify({ patterns: [] }));
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    expect(io.stderr.join('\n')).toContain('Found 1 violation(s)');
+  });
+});
+
+describe('runMain — __inbox/ is no longer ignored by default', () => {
+  let tmpDir: string;
+  useTempDir('design-token-lint-inbox-', (dir) => {
+    tmpDir = dir;
+  });
+
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src', '__inbox'), { recursive: true });
+  });
+
+  it('lints a violating file under a directory named __inbox/ (old default-ignore is gone)', async () => {
+    writeFileSync(join(tmpDir, 'src', '__inbox', 'scratch.tsx'), `<div className="p-4">`);
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    const err = io.stderr.join('\n');
+    expect(err).toContain('__inbox');
+    expect(err).toContain('Found 1 violation(s)');
+  });
+});
+
+describe('runMain — CSS scanning wiring (issue #131)', () => {
+  let tmpDir: string;
+  useTempDir('design-token-lint-css-', (dir) => {
+    tmpDir = dir;
+  });
+
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'), { recursive: true });
+    // A Tailwind violation reachable via DEFAULT_PATTERNS.
+    writeFileSync(join(tmpDir, 'src', 'comp.tsx'), `<div className="p-4">`);
+    // A CSS violation reachable only via css.patterns.
+    writeFileSync(
+      join(tmpDir, 'src', 'styles.css'),
+      `.modal {\n  z-index: 9999;\n  background: #ffe4e4;\n}`,
+    );
+  });
+
+  it('scans css.patterns alongside the Tailwind patterns', async () => {
+    writeFileSync(
+      join(tmpDir, '.design-token-lint.json'),
+      JSON.stringify({ css: { zIndex: true, colorLiterals: true, patterns: ['src/**/*.css'] } }),
+    );
+    const io = makeIO();
+    const code = await runMain({
+      args: ['--json'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    const results = JSON.parse(io.stdout[0]) as { className: string; filePath: string }[];
+    const classNames = results.map((r) => r.className).sort();
+    // Tailwind p-4 (from the default .tsx pattern) plus the two CSS violations.
+    expect(classNames).toEqual(['background: #ffe4e4', 'p-4', 'z-index: 9999']);
+  });
+
+  it('does not scan the .css file when the css section is absent (regression pin)', async () => {
+    // No config at all — the .css file is not covered by DEFAULT_PATTERNS and
+    // no css section exists, so only the Tailwind violation is reported.
+    const io = makeIO();
+    const code = await runMain({
+      args: ['--json'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    const results = JSON.parse(io.stdout[0]) as { className: string }[];
+    expect(results.map((r) => r.className)).toEqual(['p-4']);
+  });
+
+  it('lets css.patterns be the only thing scanned when patterns is []', async () => {
+    writeFileSync(
+      join(tmpDir, '.design-token-lint.json'),
+      JSON.stringify({ patterns: [], css: { zIndex: true, patterns: ['src/**/*.css'] } }),
+    );
+    const io = makeIO();
+    const code = await runMain({
+      args: ['--json'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    const results = JSON.parse(io.stdout[0]) as { className: string }[];
+    // Only the css z-index violation (colorLiterals off, tailwind patterns empty).
+    expect(results.map((r) => r.className)).toEqual(['z-index: 9999']);
+  });
+});
+
+describe('runMain — ignore-glob coverage (issue #133)', () => {
+  let tmpDir: string;
+  useTempDir('design-token-lint-ignore-glob-', (dir) => {
+    tmpDir = dir;
+  });
+
+  it('a config "ignore" glob excludes a violating file under the matched directory', async () => {
+    mkdirSync(join(tmpDir, 'src', 'skip'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'skip', 'dirty.tsx'), `<div className="p-4">`);
+    // A non-ignored, clean control file so the run scans something and
+    // reports "no violations" rather than "no files matched" (exit 2).
+    writeFileSync(join(tmpDir, 'src', 'clean.tsx'), `<div className="flex">`);
+    writeFileSync(
+      join(tmpDir, '.design-token-lint.json'),
+      JSON.stringify({ ignore: ['**/skip/**'] }),
+    );
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(0);
+    expect(io.stderr.join('\n')).toContain('No design token violations found');
+  });
+
+  it('DEFAULT_CONFIG.ignore skips a *.test.tsx file even though it matches the scan pattern', async () => {
+    mkdirSync(join(tmpDir, 'src'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'comp.test.tsx'), `<div className="p-4">`);
+    writeFileSync(join(tmpDir, 'src', 'clean.tsx'), `<div className="flex">`);
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(0);
+    expect(io.stderr.join('\n')).toContain('No design token violations found');
+  });
+
+  it('DEFAULT_IGNORE_PATTERNS skips a violating file under a nested node_modules/ directory', async () => {
+    mkdirSync(join(tmpDir, 'src', 'node_modules', 'pkg'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'node_modules', 'pkg', 'dirty.tsx'), `<div className="p-4">`);
+    writeFileSync(join(tmpDir, 'src', 'clean.tsx'), `<div className="flex">`);
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(0);
+    expect(io.stderr.join('\n')).toContain('No design token violations found');
+  });
+
+  it('DEFAULT_IGNORE_PATTERNS skips a violating file under a nested dist/ directory', async () => {
+    mkdirSync(join(tmpDir, 'src', 'dist'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'dist', 'dirty.tsx'), `<div className="p-4">`);
+    writeFileSync(join(tmpDir, 'src', 'clean.tsx'), `<div className="flex">`);
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(0);
+    expect(io.stderr.join('\n')).toContain('No design token violations found');
+  });
+});
+
+describe('runMain — --json and --format combos (issue #133)', () => {
+  let tmpDir: string;
+  useTempDir('design-token-lint-json-format-', (dir) => {
+    tmpDir = dir;
+  });
+
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'));
+  });
+
+  it('--json wins over --format github on stdout when both are passed', async () => {
+    writeFileSync(join(tmpDir, 'src', 'dirty.tsx'), `<div className="p-4">`);
+    const io = makeIO();
+    const code = await runMain({
+      args: ['--json', '--format', 'github', 'src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    expect(io.stdout).toHaveLength(1);
+    const parsed = JSON.parse(io.stdout[0]);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed.length).toBeGreaterThan(0);
+    // The output is the JSON array, not a github ::error annotation line.
+    expect(io.stdout[0]).not.toMatch(/^::error/);
+  });
+
+  it('--format github with zero violations exits 0 with empty stdout', async () => {
+    writeFileSync(join(tmpDir, 'src', 'clean.tsx'), `<div className="flex">`);
+    const io = makeIO();
+    const code = await runMain({
+      args: ['--format', 'github', 'src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(0);
+    expect(io.stdout).toEqual([]);
   });
 });

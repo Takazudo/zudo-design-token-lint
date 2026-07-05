@@ -12,13 +12,13 @@ category: guide
 Tailwind のデフォルトの spacing スケールには30以上の数値ステップがあります（`p-1`、`p-2`、`p-3`、`p-4` … `p-96`）。あらゆる値が有効な状態では、開発者はそれぞれ微妙に異なる値を選んでしまいます：
 
 ```tsx
-// 開発者 A のコンポーネント — p-4 を使用
+// Developer A's component — uses p-4
 <div className="p-4 bg-gray-200">
 
-// 開発者 B のコンポーネント — 「中くらいのパディング」のつもりで p-5 を使用
+// Developer B's component — uses p-5 for "medium padding"
 <div className="p-5 bg-gray-100">
 
-// 開発者 C のコンポーネント — p-6 を使用
+// Developer C's component — uses p-6
 <div className="p-6 bg-gray-300">
 ```
 
@@ -92,7 +92,7 @@ Tailwind のデフォルトの spacing スケールには30以上の数値ステ
     "text-{color}-{shade}",
     "border-{color}-{shade}"
   ],
-  "allowed": ["p-0", "m-0", "gap-0", "p-px"],
+  "allowed": ["p-0", "m-0", "gap-0"],
   "patterns": ["src/**/*.{tsx,jsx,astro}"],
   "ignore": ["**/*.test.*", "**/*.stories.*"],
   "suggestionSuffix": "use semantic token (hsp-*/vsp-*) or arbitrary value"
@@ -116,7 +116,7 @@ Tailwind のデフォルトの spacing スケールには30以上の数値ステ
 ### 修正前 — 生の数値ユーティリティ
 
 ```tsx
-// ArticleCard.tsx — design-token-lint に検出される
+// ArticleCard.tsx — flagged by design-token-lint
 export function ArticleCard({ title, excerpt, tag }: Props) {
   return (
     <div className="p-4 bg-gray-100 rounded-lg">
@@ -137,7 +137,7 @@ export function ArticleCard({ title, excerpt, tag }: Props) {
 ### 修正後 — セマンティックトークン
 
 ```tsx
-// ArticleCard.tsx — クリーン
+// ArticleCard.tsx — clean
 export function ArticleCard({ title, excerpt, tag }: Props) {
   return (
     <div className="p-hsp-lg bg-surface rounded-lg">
@@ -181,7 +181,7 @@ Tailwind のデフォルトをセマンティックトークンで完全に置�
     "border-{color}-{shade}",
     "ring-{color}-{shade}"
   ],
-  "allowed": ["p-0", "m-0", "gap-0", "p-px"],
+  "allowed": ["p-0", "m-0", "gap-0"],
   "ignore": [
     "**/*.test.*",
     "**/*.stories.*",
@@ -349,7 +349,7 @@ process.exit(totalViolations > 0 ? 1 : 0);
 生の Tailwind を要求するサードパーティコンポーネントを統合する場合：
 
 ```tsx
-{/* design-token-lint-ignore — ベンダーコンポーネントがリテラル p-4 を要求 */}
+{/* design-token-lint-ignore — vendor component requires literal p-4 */}
 <VendorCalendar className="p-4 bg-gray-50" />
 ```
 

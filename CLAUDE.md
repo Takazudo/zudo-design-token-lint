@@ -75,7 +75,7 @@ Or run the same scripts directly from `doc/`: `pnpm dev`, `pnpm build`, `pnpm pr
 
 - `LintResult` is **flat**: `{ filePath, line, className, reason }` — NOT `{ filePath, violations: [...] }`
 - `lintFile()` and `lintContent()` return `LintResult[]` (array, not single object)
-- `Violation` has only `{ className, reason }` — no `line` or `column`
+- `Violation` is `{ className, reason, category? }` — `category` is OPTIONAL (present only when the matched rule came from a structured `prohibited` entry) — no `line` or `column`
 - `checkClass()` returns `Violation | null` — not `undefined`
 - `ExtractedClass` has `{ className, line }` — no `column`
 
@@ -104,7 +104,7 @@ Workflows in `.github/workflows/`:
 
 ## Dogfooding
 
-`.design-token-lint.json` at root configures the linter on its own source code. Run `pnpm dlx @takazudo/zudo-design-token-lint` (after publish) or `node dist/cli.js` to lint.
+`.design-token-lint.json` at root configures the linter's own `patterns`. The lint package's own `src/` is pure TypeScript with no JSX/Tailwind classes, so the config's `patterns` point at `doc/src/**` and `doc/pages/**` instead — the only Tailwind-classed UI code in this repo. Run `pnpm dlx @takazudo/zudo-design-token-lint` (after publish) or `node dist/cli.js` to lint.
 
 ## Commit Messages
 

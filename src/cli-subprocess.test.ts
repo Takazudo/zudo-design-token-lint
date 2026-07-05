@@ -38,6 +38,10 @@ interface CliResult {
  * Run `node dist/cli.js <args>` and normalize the { code, stdout, stderr }
  * shape regardless of whether the process exits cleanly (execFile resolves)
  * or via a nonzero exit code (execFile rejects with stdout/stderr attached).
+ *
+ * `timeout` (issue #133 subprocess timeout hygiene) makes a hung child fail
+ * its own test with a clear timeout error instead of hanging until the
+ * `subprocess` project's own testTimeout eventually kills the whole test.
  */
 async function runCli(args: string[], cwd: string, env?: NodeJS.ProcessEnv): Promise<CliResult> {
   // GITHUB_ACTIONS flips the CLI's output format to github annotations
@@ -47,6 +51,7 @@ async function runCli(args: string[], cwd: string, env?: NodeJS.ProcessEnv): Pro
     const { stdout, stderr } = await execFileAsync(process.execPath, [distCli, ...args], {
       cwd,
       env: env ?? cleanEnv,
+      timeout: 15_000,
     });
     return { code: 0, stdout, stderr };
   } catch (err) {
@@ -123,6 +128,35 @@ describe('CLI subprocess — node dist/cli.js', () => {
       const result = await runCli([], badConfigDir);
       expect(result.code).toBe(2);
       expect(result.stderr).toContain('Failed to parse .design-token-lint.json');
+    });
+
+    it('accepts --format=github and prints an ::error annotation on stdout', async () => {
+      const projectDir = join(tmpDir, 'format-equals');
+      await mkdir(join(projectDir, 'src'), { recursive: true });
+      await writeFile(join(projectDir, 'src', 'dirty.tsx'), '<div className="p-4" />');
+      const result = await runCli(['--format=github'], projectDir);
+      expect(result.code).toBe(1);
+      expect(result.stdout).toMatch(/^::error file=.*dirty\.tsx,line=\d+::/m);
+    });
+
+    it('does not crash when a pattern also matches a directory (nodir glob)', async () => {
+      const projectDir = join(tmpDir, 'nodir');
+      // A directory literally named "*.tsx" is matched by the default glob
+      // pattern just like a real file — pre-fix this crashed with EISDIR.
+      await mkdir(join(projectDir, 'src', 'dirname.tsx'), { recursive: true });
+      await writeFile(join(projectDir, 'src', 'real.tsx'), '<div className="flex" />');
+      const result = await runCli([], projectDir);
+      expect(result.code).toBe(0);
+      expect(result.stderr).not.toContain('EISDIR');
+    });
+
+    it('lints files under __inbox/ (old default-ignore pattern was removed)', async () => {
+      const projectDir = join(tmpDir, 'inbox');
+      await mkdir(join(projectDir, 'src', '__inbox'), { recursive: true });
+      await writeFile(join(projectDir, 'src', '__inbox', 'scratch.tsx'), '<div className="p-4" />');
+      const result = await runCli([], projectDir);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain('__inbox');
     });
   });
 });

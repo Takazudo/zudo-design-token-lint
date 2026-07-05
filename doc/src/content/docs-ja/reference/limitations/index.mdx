@@ -7,7 +7,7 @@ category: reference
 
 `design-token-lint` は正規表現ベースの静的解析を使用して、ソースファイルからクラス名を抽出します。このアプローチは高速でビルドステップが不要ですが、実行時にコードを評価することはできません。そのため、一部の動的パターンは正しく解析されません。
 
-抽出対象の属性名(`className`、`class` など)や関数名(`cn`、`clsx` など)は、設定の `classAttributes` および `classFunctions` でカスタマイズできます。
+スキャンされる属性名とユーティリティ関数のセットは、設定ファイルの [`classAttributes` と `classFunctions`](../../guide/configuration/index.mdx) でカスタマイズできます。デフォルトでは、`className`、`class`、`cn`、`clsx`、`classNames`、`twMerge` がスキャンされます。
 
 これらはバグではなく、静的解析に固有の制限です。
 
@@ -127,6 +127,30 @@ const inactiveClass = "m-vgap-md";
 <div className={'p-4 m-8'}>
 ```
 
+## 制限事項: CSS/SCSS スキャン(v1、宣言ベースのみ)
+
+オプトインの [`css` 設定セクション](../../guide/configuration/index.mdx#フィールド-css)は、Tailwind エクストラクターと同じ行/正規表現ベースのアプローチ(PostCSS なし、AST なし)を使って、プレーンな CSS/SCSS の宣言値(`zIndex`、`colorLiterals`)をスキャンします。`/* */` コメント(複数行にまたがるものを含む)、文字列リテラル、`url(...)` 値、SCSS の `//` 行コメントを正しく扱います。以下は **v1 の既知の偽陰性** です — リテラルは存在するが、設計上フラグされないものです:
+
+```scss
+/* Not flagged — custom-property and SCSS-variable definitions are treated as
+   token-definition sites, not usage sites */
+:root {
+  --brand: #f00;
+}
+.a {
+  $brand: #f00;
+}
+
+/* Not flagged — SCSS maps and other nested/interpolated SCSS constructs */
+.a {
+  $colors: (primary: #f00, secondary: #0f0);
+}
+```
+
+パレット定義ゾーン(`:root`、`@theme`、SCSS 変数宣言)と、代わりにパレットを参照すべきセマンティックトークンの *使用* サイトとを区別するには、ゾーン認識スキャンが必要です — これは後回しにされた後続パスであり、v1 の一部ではありません。単一宣言を超える風変わりな複数行構文にまたがって分割された値も、確実に捕捉される保証はありません。
+
+これは宣言値のスキャンのみです — `<style>` ブロックや CSS-in-JS のテンプレートリテラル内の Tailwind ユーティリティクラスについては何も言いません。それらは `css` セクションのスコープの完全に外にとどまります(Tailwind クラスエクストラクターは `.css`/`.scss` ファイルをスキャンせず、CSS 宣言ルールは `.tsx`/`.jsx` ファイルをスキャンしません)。
+
 ## まとめ
 
 | パターン | サポート |
@@ -139,8 +163,11 @@ const inactiveClass = "m-vgap-md";
 | カスタム属性名(`classAttributes`) | あり — 設定可能 |
 | カスタム関数名(`classFunctions`) | あり — 設定可能 |
 | Vue/Svelte の静的な `class="..."` 属性 | あり |
+| CSS/SCSS 宣言スキャン(オプトイン、`css` セクション) | あり — 宣言ベースのみ、上記参照 |
 | 三項演算子 | なし — 静かにスキップ |
 | 補間付きテンプレートリテラル | なし — 動的部分はリントされない |
 | クラス文字列内のエスケープされた引用符 | なし — 誤抽出の可能性あり |
 | Vue の `:class`/`v-bind:class` バインディング | なし — ゴミトークンとして抽出される |
 | Svelte の `class:name` ディレクティブ | なし — まったく認識されない |
+| リテラルを保持する CSS カスタムプロパティ/SCSS 変数の定義 | なし — トークン定義ゾーンの認識は後回し |
+| SCSS マップおよびネスト/補間された構造 | なし — v1 のスコープ外 |

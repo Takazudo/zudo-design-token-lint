@@ -44,6 +44,31 @@ Ignore comments only affect the **next line**. They do not suppress violations f
 <div className="p-4">  {/* NOT suppressed */}
 ```
 
+## Same-Line Trailing Ignore
+
+An ignore comment doesn't have to sit alone on its own line. Placed as a **trailing** comment after real code, it also suppresses violations on that same line — in addition to still suppressing the line that follows:
+
+```tsx
+<div className="p-4"> {/* design-token-lint-ignore */}
+<div className="m-8">
+<div className="gap-6">
+```
+
+Here, `p-4` is suppressed because the ignore comment trails its own line, and `m-8` is suppressed because the comment also covers the next line as usual. Only `gap-6` is reported.
+
+<Note>
+
+A trailing same-line ignore always covers **both** its own line and the next one — there's no way to suppress only the current line. If that's surprising, prefer a plain next-line ignore on its own line instead, so the suppression scope stays obvious to reviewers.
+
+</Note>
+
+All three comment forms (JSX, block, line) support the trailing position:
+
+```tsx
+<div className="p-4"> /* design-token-lint-ignore */
+<div className="p-4"> // design-token-lint-ignore
+```
+
 ## When to Use
 
 ### Good reasons
@@ -100,9 +125,27 @@ Before reaching for an ignore comment, consider:
 
 ## Documenting Ignores
 
-Ignore comments are invisible in diffs when reviewers aren't paying attention. Add a `why` comment so future maintainers understand:
+Ignore comments are invisible in diffs when reviewers aren't paying attention. Add a `why` comment so future maintainers understand — add a reason after a `-`, `–`, `—`, or `:` separator:
 
 ```tsx
 {/* design-token-lint-ignore — third-party Calendar widget requires raw p-4 */}
 <CalendarWidget className="p-4" />
 ```
+
+This still suppresses `p-4` exactly as before — the reason text is optional and, by default, purely a courtesy to reviewers.
+
+## Enforcing Documented Reasons
+
+Two opt-in config flags turn the "add a reason" convention above into something the linter actually checks, instead of relying on reviewer discipline:
+
+- **`requireIgnoreReason`** — a bare ignore (no reason text) that shields a real violation is reported instead of silently suppressing it.
+- **`reportUnusedIgnores`** — an ignore comment that suppressed nothing is itself reported (the ESLint `reportUnusedDisableDirectives` equivalent).
+
+```json
+{
+  "requireIgnoreReason": true,
+  "reportUnusedIgnores": true
+}
+```
+
+Both flags apply to every ignore comment form on this page — next-line, same-line, and (for `requireIgnoreReason`) everywhere except `design-token-lint-ignore-file` — and to the [`css` declaration-scanning](../configuration/index.mdx#fields-css) path too. See [`requireIgnoreReason` / `reportUnusedIgnores`](../configuration/index.mdx#fields-requireignorereason-reportunusedignores) in the Configuration guide for the full behavior and example output.

@@ -10,13 +10,13 @@ category: guide
 ## 基本的な使い方
 
 ```bash
-# デフォルトパターンをスキャン(config.patterns または組み込みデフォルト)
+# Scan default patterns (from config.patterns or built-in defaults)
 design-token-lint
 
-# 特定のファイルまたは glob をスキャン
+# Scan specific files or globs
 design-token-lint "src/**/*.tsx" "pages/**/*.tsx"
 
-# 単一ファイルをスキャン
+# Scan a single file
 design-token-lint src/App.tsx
 ```
 
@@ -107,7 +107,21 @@ GitHub はこれらを PR の差分表示と Checks タブ上のインライン�
 1. `config.patterns` が設定されていればそれを使用
 2. それ以外は組み込みデフォルトを使用: `src/**/*.{tsx,jsx,astro}`、`components/**/*.{tsx,jsx,astro}`、`lib/**/*.{tsx,jsx}`、`app/**/*.{tsx,jsx}`
 
+オプトインの [`css` 設定セクション](../configuration/index.mdx#フィールド-css)が `css.patterns` を設定している場合、それらの glob は上で解決された Tailwind パターンに *加えて* スキャンされます(CLI パターンが明示的に渡されなかった場合のみ)。
+
 引数ありで呼び出された場合、各引数はファイルパスまたは glob として扱われます。`ignore` の設定は引き続き適用されます。
+
+### 組み込み無視 glob
+
+2 つの glob パターンは、設定に関係なく、あらゆるスキャンから常に除外されます — `**/node_modules/**` と `**/dist/**` です。これらは、設定自身の [`ignore`](../configuration/index.mdx#フィールド-ignore) リスト(デフォルトは `**/*.test.*`、`**/*.stories.*`)より前にマージされるため、いずれのディレクトリにも誤ってスキャンが入り込む余地はありません。
+
+<Note>
+
+以前のバージョンは `**/__inbox/**`(個人的なプロジェクトの慣習)も常に除外していました。そのデフォルトは削除されました — `__inbox/` という名前のディレクトリ配下のファイルは、いまや他のファイルと同じようにリントされます。プロジェクトでまだその慣習を使っている場合は、`"ignore": ["**/__inbox/**"]` を設定に追加して古い挙動を復元してください。
+
+</Note>
+
+これらの組み込み glob は CLI 自身の glob 解決の性質です — [プログラマティック API](../../reference/api/index.mdx) を通じて直接行われる `lintFile()`/`lintContent()` 呼び出しには影響しません。これらの呼び出しは、ファイルツリーの走査を一切行わず、与えられた内容をそのままリントします。
 
 ## package.json との統合
 

@@ -51,7 +51,7 @@ const DEFAULT_CONFIG = JSON.stringify(
 );
 
 const TEXTAREA_CLASS =
-  "min-h-40 w-full resize-y rounded-lg border border-muted/30 bg-code-bg p-hsp-md font-mono text-caption leading-relaxed text-code-fg focus:border-accent focus:outline-none";
+  "min-h-[10rem] w-full resize-y rounded-lg border border-muted/30 bg-code-bg p-hsp-md font-mono text-caption leading-relaxed text-code-fg focus:border-accent focus:outline-none";
 
 function parseLintConfig(configStr: string): LintConfig {
   const parsed = JSON.parse(configStr);
@@ -61,11 +61,17 @@ function parseLintConfig(configStr: string): LintConfig {
     throw new Error('"allowed" must be an array');
   if (parsed.ignore && !Array.isArray(parsed.ignore))
     throw new Error('"ignore" must be an array');
+  if (
+    parsed.suggestions &&
+    (typeof parsed.suggestions !== "object" || Array.isArray(parsed.suggestions))
+  )
+    throw new Error('"suggestions" must be an object');
   return {
     prohibited: parsed.prohibited ?? [],
     allowed: parsed.allowed ?? [],
     ignore: parsed.ignore ?? [],
     suggestionSuffix: parsed.suggestionSuffix,
+    suggestions: parsed.suggestions,
   };
 }
 
@@ -189,7 +195,7 @@ export default function Playground() {
             </span>
           )}
         </span>
-        <div className="min-h-40 rounded-lg border border-muted/30 bg-surface/50 p-hsp-md overflow-y-auto" aria-live="polite">
+        <div className="min-h-[10rem] rounded-lg border border-muted/30 bg-surface/50 p-hsp-md overflow-y-auto" aria-live="polite">
           {configError ? (
             <p className="text-caption text-danger italic">
               Fix the configuration error to see results.

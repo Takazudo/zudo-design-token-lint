@@ -81,6 +81,20 @@ describe('checkClass', () => {
     });
   });
 
+  describe('fractional spacing and custom color edge cases', () => {
+    it('flags fractional spacing values', () => {
+      expect(checkClass('p-4.5')).not.toBeNull();
+    });
+
+    it('allows custom color names', () => {
+      expect(checkClass('bg-custom-color')).toBeNull();
+    });
+
+    it('allows shade with non-numeric suffix', () => {
+      expect(checkClass('bg-gray-500a')).toBeNull();
+    });
+  });
+
   describe('fraction utilities — allowed (not false-positived as numeric spacing)', () => {
     it.each([
       'w-1/2',
@@ -92,6 +106,62 @@ describe('checkClass', () => {
       'min-w-1/2',
       'inset-1/2',
       'inset-x-1/2',
+    ])('allows %s', (cls) => {
+      expect(checkClass(cls)).toBeNull();
+    });
+  });
+
+  describe('numeric sizing scale — prohibited by default (issue #128, decision D1)', () => {
+    it.each([
+      ['w-4', 'Numeric width'],
+      ['h-8', 'Numeric height'],
+      ['size-6', 'Numeric size'],
+      ['min-w-4', 'Numeric min-width'],
+      ['max-w-8', 'Numeric max-width'],
+      ['min-h-2', 'Numeric min-height'],
+      ['max-h-12', 'Numeric max-height'],
+      ['basis-4', 'Numeric flex-basis'],
+    ])('flags %s with a sizing-specific reason and category', (cls, reasonPrefix) => {
+      const result = checkClass(cls);
+      expect(result).not.toBeNull();
+      expect(result!.reason).toContain(reasonPrefix);
+      expect(result!.reason).toContain(cls);
+      expect(result!.category).toBe('sizing');
+    });
+
+    it.each(['sm:w-4', 'hover:h-8', '-min-w-4', 'w-4!'])(
+      'flags %s (variant/negative/important forms)',
+      (cls) => {
+        const result = checkClass(cls);
+        expect(result).not.toBeNull();
+        expect(result!.category).toBe('sizing');
+      },
+    );
+  });
+
+  describe('numeric sizing scale — allowed exceptions (issue #128)', () => {
+    it.each([
+      'w-1/2',
+      'h-1/3',
+      'size-1/2',
+      'min-w-1/2',
+      'max-w-2/3',
+      'w-icon-md',
+      'h-icon-md',
+      'w-[32px]',
+      'h-[10rem]',
+      'size-[24px]',
+      'w-0',
+      'h-0',
+      'size-0',
+      'min-w-0',
+      'max-w-0',
+      'min-h-0',
+      'max-h-0',
+      'basis-0',
+      'w-full',
+      'h-full',
+      'w-auto',
     ])('allows %s', (cls) => {
       expect(checkClass(cls)).toBeNull();
     });
@@ -345,6 +415,92 @@ describe('checkClass', () => {
     });
   });
 
+  describe('exact prohibited patterns — verbatim + normalized matching', () => {
+    it('a leading-dash exact entry matches its literal verbatim form', () => {
+      const custom: LintConfig = {
+        prohibited: ['-mt-px'],
+        allowed: [],
+        ignore: [],
+      };
+      const compiled = compileConfig(custom);
+      const result = checkClassWithConfig('-mt-px', compiled);
+      expect(result).not.toBeNull();
+      expect(result!.className).toBe('-mt-px');
+    });
+
+    it('a variant-prefixed exact entry matches only its literal verbatim form, not the bare normalized token', () => {
+      const custom: LintConfig = {
+        prohibited: ['hover:p-2'],
+        allowed: [],
+        ignore: [],
+      };
+      const compiled = compileConfig(custom);
+      expect(checkClassWithConfig('hover:p-2', compiled)).not.toBeNull();
+      // The normalized form of "hover:p-2" is "p-2", a different string from
+      // the entry "hover:p-2" — a bare "p-2" must NOT be flagged by this rule.
+      expect(checkClassWithConfig('p-2', compiled)).toBeNull();
+    });
+
+    it('a trailing-important exact entry matches its literal verbatim form', () => {
+      const custom: LintConfig = {
+        prohibited: ['p-4!'],
+        allowed: [],
+        ignore: [],
+      };
+      const compiled = compileConfig(custom);
+      expect(checkClassWithConfig('p-4!', compiled)).not.toBeNull();
+    });
+
+    it('a plain exact entry still fires via the normalized path on variant/negative/important forms (regression)', () => {
+      const custom: LintConfig = {
+        prohibited: ['p-2'],
+        allowed: [],
+        ignore: [],
+      };
+      const compiled = compileConfig(custom);
+      expect(checkClassWithConfig('p-2', compiled)).not.toBeNull();
+      expect(checkClassWithConfig('hover:p-2', compiled)).not.toBeNull();
+      expect(checkClassWithConfig('-p-2', compiled)).not.toBeNull();
+      expect(checkClassWithConfig('p-2!', compiled)).not.toBeNull();
+    });
+  });
+
+  describe('semanticPrefixes bypass — priority over the numeric check (characterization)', () => {
+    it('a digit-leading semanticPrefixes entry bypasses the numeric spacing rule even when the value would also match the numeric pattern', () => {
+      const custom: LintConfig = {
+        prohibited: ['p-{n}'],
+        allowed: [],
+        ignore: [],
+        semanticPrefixes: ['1'],
+      };
+      const compiled = compileConfig(custom);
+      // "12" is a purely-numeric value that would normally be flagged, but it
+      // also starts with the (unusual, digit-leading) semantic prefix "1", so
+      // the semanticPrefixes bypass — which runs before the numeric
+      // valuePattern test — takes priority and allows it.
+      expect(checkClassWithConfig('p-12', compiled)).toBeNull();
+    });
+  });
+
+  describe('spacing "1px" values — allowed via the allowed list, not a dedicated bypass (characterization)', () => {
+    it('p-1px is allowed by the default allowed list', () => {
+      expect(checkClass('p-1px')).toBeNull();
+    });
+
+    it('a value of exactly "1px" fails the numeric valuePattern on its own, so a prefix not in the allowed list is still flagged as null-safe without any dedicated "1px" bypass', () => {
+      const custom: LintConfig = {
+        prohibited: ['mt-{n}'],
+        allowed: [], // "mt-1px" is deliberately absent from allowed
+        ignore: [],
+      };
+      const compiled = compileConfig(custom);
+      // "1px" contains non-digit characters, so it can never satisfy the
+      // ^\d+(\.\d+)?$ numeric spacing pattern regardless of any special-cased
+      // "value === '1px'" check — this is why that check was dead code.
+      expect(checkClassWithConfig('mt-1px', compiled)).toBeNull();
+    });
+  });
+
   describe('design system color tokens — allowed', () => {
     it.each([
       'bg-bg',
@@ -377,6 +533,38 @@ describe('checkClass', () => {
       'bg-debug',
     ])('allows %s', (cls) => {
       expect(checkClass(cls)).toBeNull();
+    });
+  });
+
+  describe('suggestions map — did-you-mean hints (issue #130)', () => {
+    it('resolves a no-placeholder exact-match entry to its suggestion via the normalized (variant-stripped) path', () => {
+      const custom: LintConfig = {
+        prohibited: ['hidden'],
+        allowed: [],
+        ignore: [],
+        suggestions: { hidden: 'sr-only' },
+      };
+      const compiled = compileConfig(custom);
+      const result = checkClassWithConfig('sm:hidden', compiled);
+      expect(result).not.toBeNull();
+      expect(result!.reason).toContain('did you mean "sr-only"?');
+    });
+
+    it('looks up the suggestion via the normalized form even when the rule itself only matches verbatim (variant-qualified pattern)', () => {
+      // "hover:p-2" is an exact-match prohibited entry that only fires via the
+      // verbatim comparison (originalClassName === rule.prefix) — see
+      // matchRule's "exact-match rule" branch. The suggestion map is still
+      // keyed by the normalized base class ("p-2"), same as `allowed`.
+      const custom: LintConfig = {
+        prohibited: ['hover:p-2'],
+        allowed: [],
+        ignore: [],
+        suggestions: { 'p-2': 'p-hsp-sm' },
+      };
+      const compiled = compileConfig(custom);
+      const result = checkClassWithConfig('hover:p-2', compiled);
+      expect(result).not.toBeNull();
+      expect(result!.reason).toContain('did you mean "p-hsp-sm"?');
     });
   });
 });
