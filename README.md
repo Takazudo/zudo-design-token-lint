@@ -83,23 +83,23 @@ Create a `.design-token-lint.json` (or `design-token-lint.config.json`) in your 
 
 ### Config Fields
 
-| Field                 | Type                            | Description                                                                                                                              |
-| --------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `prohibited`          | `(string \| ProhibitedEntry)[]`  | Patterns to flag. Placeholders: `{n}` (number), `{color}` (Tailwind color name), `{shade}` (50-950). An entry may be a plain string or a structured `{pattern, reason?, category?}` object — see [Structured `prohibited` Entries](#structured-prohibited-entries) |
-| `allowed`             | `string[]`                       | Exceptions that are always allowed, even if they match a prohibited pattern                                                              |
-| `ignore`              | `string[]`                       | File glob patterns to skip entirely (default: `["**/*.test.*", "**/*.stories.*"]`) — the CLI additionally always excludes `**/node_modules/**` and `**/dist/**`                                    |
-| `patterns`            | `string[]`                       | File glob patterns to scan (overrides CLI defaults when no args given)                                                                   |
-| `suggestionSuffix`    | `string`                         | Custom suffix for violation messages (replaces the default suggestion text)                                                              |
-| `suggestions`         | `Record<string, string>`         | Map from a banned class's normalized base form to your project's replacement token, appended as a "did you mean" hint — see [`suggestions`](#suggestions) |
-| `semanticPrefixes`    | `string[]`                       | Value prefixes that bypass spacing rules (default: `["hgap-", "vgap-"]`)                                                                 |
-| `classAttributes`     | `string[]`                       | HTML/JSX attribute names the extractor scans for class names (default: `["className", "class"]`)                                        |
-| `classFunctions`      | `string[]`                       | Utility function names the extractor scans for class name arguments (default: `["cn", "clsx", "classNames", "twMerge"]`)                 |
-| `extends`             | `string \| string[]`             | Named preset(s) to inherit `prohibited`/`allowed` patterns from — see [`extends`](#extends)                                              |
-| `prohibitedAdd`       | `(string \| ProhibitedEntry)[]`  | Patterns appended to the resolved `prohibited` list (inherited or default)                                                               |
-| `allowedAdd`          | `string[]`                       | Patterns appended to the resolved `allowed` list (inherited or default)                                                                  |
-| `css`                 | `object`                         | Opt-in CSS/SCSS declaration scanning: `{ zIndex?, colorLiterals?, patterns? }` (all default-OFF) — see [CSS/SCSS Scanning](#cssscss-scanning-opt-in) |
-| `requireIgnoreReason` | `boolean`                        | Report a bare (reason-less) `design-token-lint-ignore` that shields a real violation, instead of suppressing it silently (default `false`) |
-| `reportUnusedIgnores` | `boolean`                        | Report a `design-token-lint-ignore` comment that suppressed nothing (default `false`)                                                    |
+| Field                 | Type                            | Description                                                                                                                                                                                                                                                        |
+| --------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `prohibited`          | `(string \| ProhibitedEntry)[]` | Patterns to flag. Placeholders: `{n}` (number), `{color}` (Tailwind color name), `{shade}` (50-950). An entry may be a plain string or a structured `{pattern, reason?, category?}` object — see [Structured `prohibited` Entries](#structured-prohibited-entries) |
+| `allowed`             | `string[]`                      | Exceptions that are always allowed, even if they match a prohibited pattern                                                                                                                                                                                        |
+| `ignore`              | `string[]`                      | File glob patterns to skip entirely (default: `["**/*.test.*", "**/*.stories.*"]`) — the CLI additionally always excludes `**/node_modules/**` and `**/dist/**`                                                                                                    |
+| `patterns`            | `string[]`                      | File glob patterns to scan (overrides CLI defaults when no args given)                                                                                                                                                                                             |
+| `suggestionSuffix`    | `string`                        | Custom suffix for violation messages (replaces the default suggestion text)                                                                                                                                                                                        |
+| `suggestions`         | `Record<string, string>`        | Map from a banned class's normalized base form to your project's replacement token, appended as a "did you mean" hint — see [`suggestions`](#suggestions)                                                                                                          |
+| `semanticPrefixes`    | `string[]`                      | Value prefixes that bypass spacing rules (default: `["hgap-", "vgap-"]`)                                                                                                                                                                                           |
+| `classAttributes`     | `string[]`                      | HTML/JSX attribute names the extractor scans for class names (default: `["className", "class"]`)                                                                                                                                                                   |
+| `classFunctions`      | `string[]`                      | Utility function names the extractor scans for class name arguments (default: `["cn", "clsx", "classNames", "twMerge"]`)                                                                                                                                           |
+| `extends`             | `string \| string[]`            | Named preset(s) to inherit `prohibited`/`allowed` patterns from — see [`extends`](#extends)                                                                                                                                                                        |
+| `prohibitedAdd`       | `(string \| ProhibitedEntry)[]` | Patterns appended to the resolved `prohibited` list (inherited or default)                                                                                                                                                                                         |
+| `allowedAdd`          | `string[]`                      | Patterns appended to the resolved `allowed` list (inherited or default)                                                                                                                                                                                            |
+| `css`                 | `object`                        | Opt-in CSS/SCSS declaration scanning: `{ zIndex?, colorLiterals?, patterns? }` (all default-OFF) — see [CSS/SCSS Scanning](#cssscss-scanning-opt-in)                                                                                                               |
+| `requireIgnoreReason` | `boolean`                       | Report a bare (reason-less) `design-token-lint-ignore` that shields a real violation, instead of suppressing it silently (default `false`)                                                                                                                         |
+| `reportUnusedIgnores` | `boolean`                       | Report a `design-token-lint-ignore` comment that suppressed nothing (default `false`)                                                                                                                                                                              |
 
 All fields fall back to built-in defaults if omitted. See the [Configuration doc page](https://zudo-design-token-lint.takazudomodular.com/docs/guide/configuration/) for the full reference.
 
@@ -236,7 +236,9 @@ Both `p-4` and `m-8` above are suppressed.
 To skip an entire file, add a `design-token-lint-ignore-file` comment anywhere in it:
 
 ```tsx
-{/* design-token-lint-ignore-file */}
+{
+  /* design-token-lint-ignore-file */
+}
 ```
 
 Two opt-in config flags add hygiene checks on top of these comments: `requireIgnoreReason` reports a bare (reason-less) ignore that shields a real violation, and `reportUnusedIgnores` reports an ignore that suppressed nothing. See the [Ignore Syntax doc page](https://zudo-design-token-lint.takazudomodular.com/docs/guide/ignore-syntax/) for the full reference, including reason-text conventions.
