@@ -7,6 +7,8 @@ category: changelog
 
 Adds configurable class extraction — you can now specify which attribute names and utility functions the extractor scans.
 
+> This version predates the package's npm publication — the published registry history starts at `v1.0.0`. It's recorded here as the sub-package's pre-npm version history.
+
 - `classAttributes` config option: specify the attribute names (e.g. `inputClassName`, `wrapperClass`) the extractor should scan, replacing the defaults (`className` and `class` — include them in your list to keep them)
 - `classFunctions` config option: specify the utility function names (e.g. `cva`, `tv`, `twJoin`) the extractor should scan, replacing the defaults (`cn`, `clsx`, `classNames`, and `twMerge` — include them in your list to keep them)
 - `ExtractorOptions` type added to public API

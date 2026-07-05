@@ -46,7 +46,7 @@ Create a `.design-token-lint.json` or `design-token-lint.config.json` file at yo
 | `classAttributes` | `string[]` | HTML/JSX attribute names the extractor scans for class names |
 | `classFunctions` | `string[]` | Utility function names the extractor scans for class name arguments |
 | `extends` | `string \| string[]` | Named preset(s) to inherit `prohibited`/`allowed` patterns from |
-| `prohibitedAdd` | `string[]` | Patterns appended to the resolved `prohibited` list (inherited or default) |
+| `prohibitedAdd` | `(string \| ProhibitedEntry)[]` | Patterns appended to the resolved `prohibited` list (inherited or default) — accepts the same plain-string/structured-object shape as `prohibited` |
 | `allowedAdd` | `string[]` | Patterns appended to the resolved `allowed` list (inherited or default) |
 | `css` | `object` | Opt-in CSS/SCSS declaration scanning: `{ zIndex?, colorLiterals?, patterns? }` (all default-OFF) |
 | `requireIgnoreReason` | `boolean` | Report a bare (reason-less) `design-token-lint-ignore` that shields a real violation, instead of suppressing it silently (default `false`) |
@@ -95,10 +95,12 @@ A plain string entry is always equivalent to `{ pattern: theString }` with no `r
 
 An allowlist checked before prohibited patterns are matched. Each entry can take either form:
 
-- **Bare/normalized form** (e.g. `p-4`) — also allows every variant, negative, important-modifier, and opacity form built from it: `hover:p-4`, `-p-4`, `p-4!`, `sm:-p-4!`, `bg-red-500/50`, etc. Matching strips the variant prefix (up to the last `:`), the `!` important modifier, the leading `-` negative sign, and the `/N` opacity suffix before comparing.
+- **Bare/normalized form** — also allows every variant, negative, and important-modifier form built from it. Matching strips the variant prefix (up to the last `:`), the `!` important modifier, the leading `-` negative sign, and the `/N` opacity suffix before comparing:
+  - A bare `p-4` also covers `hover:p-4`, `-p-4`, `p-4!`, `sm:-p-4!`.
+  - A bare `bg-red-500` also covers its opacity forms, e.g. `bg-red-500/50`, `hover:bg-red-500/50`.
 - **Exact/verbatim form** (e.g. `hover:p-2`, `-mt-4`, `bg-red-500/50`) — allows only that specific string. Useful for copy-pasting a class straight out of a violation message to allow just that one variant without opening up the bare form or every other variant of it.
 
-Escape hatches like `p-0`, `m-0`, or `p-1px` are common entries.
+Escape hatches like `p-0`, `m-0` are common entries — though zero already passes automatically for *any* spacing/sizing rule regardless of `allowed` (see [What Passes Automatically](#what-passes-automatically)), so these are defensive/explicit rather than strictly required.
 
 ### `extends`
 
@@ -147,7 +149,7 @@ This keeps every default rule and adds a `z-{n}` spacing-style rule plus a `z-0`
 
 <Note>
 
-This particular `z-{n}`/`z-0` combination now ships as the built-in [`z-index` preset](#extends) — `"extends": ["default", "z-index"]` does the same thing with a z-index-specific violation message. `prohibitedAdd`/`allowedAdd` remain the right tool for project-specific rules that aren't covered by a registered preset.
+This particular `z-{n}`/`z-0` combination now ships as the built-in [`z-index` preset](#fields-extends) — `"extends": ["default", "z-index"]` does the same thing with a z-index-specific violation message. `prohibitedAdd`/`allowedAdd` remain the right tool for project-specific rules that aren't covered by a registered preset.
 
 </Note>
 
@@ -181,6 +183,14 @@ File glob patterns to skip entirely. Common patterns:
   ]
 }
 ```
+
+**Default**: `["**/*.test.*", "**/*.stories.*"]`.
+
+<Note>
+
+The CLI additionally always excludes `**/node_modules/**` and `**/dist/**`, on top of whatever `ignore` resolves to — see [Built-in Ignore Globs](../cli/index.mdx#file-pattern-resolution-built-in-ignore-globs) for details, including the removal of the old `**/__inbox/**` default. This top-up only applies to the CLI's own glob resolution, not to direct `lintFile()`/`lintContent()` calls.
+
+</Note>
 
 ### `patterns`
 
@@ -229,11 +239,11 @@ A class with no entry in `suggestions` is flagged with its usual message, unchan
 
 <Note>
 
-Keys are matched on the **normalized base class**, so a single `"p-4"` entry also resolves for every variant/negative/important form built from it — `hover:p-4`, `-p-4`, `p-4!`, `sm:-p-4!`, etc. — the same normalization `allowed` uses (see [`allowed`](#allowed) above).
+Keys are matched on the **normalized base class**, so a single `"p-4"` entry also resolves for every variant/negative/important form built from it — `hover:p-4`, `-p-4`, `p-4!`, `sm:-p-4!`, etc. — the same normalization `allowed` uses (see [`allowed`](#fields-allowed) above).
 
 </Note>
 
-This composes with [`suggestionSuffix`](#suggestionsuffix): the suffix still customizes the base reason template, and the suggestion is appended after it.
+This composes with [`suggestionSuffix`](#fields-suggestionsuffix): the suffix still customizes the base reason template, and the suggestion is appended after it.
 
 ```json
 {
@@ -340,7 +350,7 @@ Forbids raw integer `z-index` values, enforcing the [semantic z-index tier syste
 |---|---|
 | `z-index: var(--z-modal);` | `z-index: 100;` |
 | `z-index: calc(var(--z-modal) + 1);` | `z-index: 9999;` |
-| `z-index: auto;` / `inherit;` / `initial;` / `unset;` / `revert;` | `z-index: -1;` |
+| `z-index: auto;` / `inherit;` / `initial;` / `unset;` / `revert;` / `revert-layer;` | `z-index: -1;` |
 | Raw integer with a `/* design-token-lint-ignore */` escape hatch | Bare raw integer with no escape comment |
 
 A `calc()` counts as allowed only when it contains a `var()` reference; `calc(100 + 1)` (raw arithmetic) is still flagged. A trailing `!important` does not exempt a raw integer.
@@ -394,7 +404,7 @@ Two opt-in flags, both **default `false`**, that keep [ignore comments](../ignor
 }
 ```
 
-Both flags read the same `design-token-lint-ignore` / `design-token-lint-ignore-file` comments described in the [Ignore Syntax](../ignore-syntax/index.mdx) guide — there is no new comment form to learn. They apply everywhere an ignore comment is honored: Tailwind class attributes/utility calls **and** the [`css`](#css) declaration-scanning path.
+Both flags read the same `design-token-lint-ignore` / `design-token-lint-ignore-file` comments described in the [Ignore Syntax](../ignore-syntax/index.mdx) guide — there is no new comment form to learn. They apply everywhere an ignore comment is honored: Tailwind class attributes/utility calls **and** the [`css`](#fields-css) declaration-scanning path.
 
 #### `requireIgnoreReason`
 
@@ -441,12 +451,12 @@ The finding's `className` is the literal string `"design-token-lint-ignore"` (th
 
 ## Built-in Defaults
 
-If no config file exists, the linter uses these defaults. This same `prohibited`/`allowed` pair is also registered as the `default` preset for use with [`extends`](#extends):
+If no config file exists, the linter uses these defaults. This same `prohibited`/`allowed` pair is also registered as the `default` preset for use with [`extends`](#fields-extends):
 
 - **Prohibited**: all standard spacing utilities (`p-*`, `m-*`, `gap-*`, `inset-*`, `scroll-*`) with numeric values, plus all color utilities (`bg-*`, `text-*`, `border-*`, `ring-*`, etc.) with default Tailwind color-shade combinations
 - **Logical and v4 color utilities**: `border-s-*`, `border-e-*`, `ring-offset-*`, `inset-ring-*`, `inset-shadow-*`, `text-shadow-*` with default Tailwind color-shade combinations
-- **Numeric sizing scale**: `w-{n}`, `h-{n}`, `size-{n}`, `min-w-{n}`, `max-w-{n}`, `min-h-{n}`, `max-h-{n}`, `basis-{n}` — each flagged with a sizing-specific message and `category: "sizing"` on the resulting `Violation` (see [Structured entries](#structured-entries)). Fraction utilities (`w-1/2`), arbitrary values (`w-[32px]`), and zero (`w-0`) still pass — see [What Passes Automatically](#what-passes-automatically) below.
-- **Allowed**: `p-0`, `m-0`, `gap-0`, `p-1px`
+- **Numeric sizing scale**: `w-{n}`, `h-{n}`, `size-{n}`, `min-w-{n}`, `max-w-{n}`, `min-h-{n}`, `max-h-{n}`, `basis-{n}` — each flagged with a sizing-specific message and `category: "sizing"` on the resulting `Violation` (see [Structured entries](#fields-prohibited-structured-entries)). Fraction utilities (`w-1/2`), arbitrary values (`w-[32px]`), and zero (`w-0`) still pass — see [What Passes Automatically](#what-passes-automatically) below.
+- **Allowed**: `p-0`, `m-0`, `gap-0`, `p-1px` — `p-1px` is actually inert here (see [What Passes Automatically](#what-passes-automatically) below for why); it stays in the list mostly as documentation of the "zero-ish" escape hatch.
 - **Ignore**: `**/*.test.*`, `**/*.stories.*`
 
 <Note>
@@ -465,3 +475,5 @@ These classes always pass without being in `allowed`:
 - **Non-default colors**: `bg-surface`, `text-fg`, `bg-zd-black` (any color name that isn't one of the standard Tailwind palette names)
 - **Arbitrary values**: `w-[28px]`, `bg-[#123]`, `p-[10px]`
 - **Non-spacing and non-color utilities**: `flex`, `grid`, `hidden`, `w-full`, `font-bold`, etc.
+- **Zero, for *any* numeric spacing/sizing rule**: `p-0`, `mt-0`, `px-0`, `inset-0`, `w-0`, `gap-0`, `top-0`, etc. all pass — not just the handful of `0`-suffixed classes that happen to be listed in `allowed`. The linter has a dedicated runtime check ("does this rule's numeric value equal `0`?") that fires for every `{n}`-shaped spacing/sizing pattern, regardless of what `allowed` contains.
+- **Non-numeric spacing-shaped values**: `p-1px`, `mt-1px`, `inset-1px`, etc. also pass — but for a different, simpler reason than the zero case above. The `{n}` placeholder only matches purely numeric values (`^\d+(\.\d+)?$`); a value containing letters like `1px` never satisfies that pattern in the first place, so it was never going to be flagged. `p-1px` in the default `allowed` list is therefore inert — it would pass with or without that entry.
