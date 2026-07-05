@@ -1,9 +1,4 @@
 {
   "extends": ["default"],
-  "patterns": [
-    "src/**/*.{tsx,jsx,astro}",
-    "components/**/*.{tsx,jsx,astro}",
-    "lib/**/*.{tsx,jsx}",
-    "app/**/*.{tsx,jsx}"
-  ]
+  "patterns": ["doc/src/**/*.{tsx,jsx,astro}", "doc/pages/**/*.{tsx,jsx,astro}"]
 }
