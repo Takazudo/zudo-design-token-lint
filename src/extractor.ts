@@ -18,6 +18,35 @@ export interface ExtractorOptions {
   classFunctions?: string[];
 }
 
+/**
+ * How a single ignore comment relates to the code it suppresses:
+ * - `next-line`: suppresses the line following the comment (the common case).
+ * - `same-line`: a trailing comment (e.g. `<div className="p-4"> {/* design-token-lint-ignore *\/}`)
+ *   that also suppresses its own line, in addition to a `next-line` record for the line after it.
+ * - `file`: `design-token-lint-ignore-file`, suppresses the entire file.
+ */
+export type IgnoreKind = 'next-line' | 'same-line' | 'file';
+
+export interface IgnoreRecord {
+  /** 1-based line number the ignore comment itself appears on. */
+  line: number;
+  kind: IgnoreKind;
+  /** Trailing reason text after the directive, or null when absent. */
+  reasonText: string | null;
+  /**
+   * 1-based line number this record suppresses. `0` for `kind: 'file'`,
+   * since a file-level ignore has no single target line.
+   */
+  targetLine: number;
+  /** Candidate classes this specific ignore comment suppressed. */
+  suppressedClasses: ExtractedClass[];
+}
+
+export interface ExtractWithMetaResult {
+  classes: ExtractedClass[];
+  ignores: IgnoreRecord[];
+}
+
 export const DEFAULT_CLASS_ATTRIBUTES = ['className', 'class'];
 export const DEFAULT_CLASS_FUNCTIONS = ['cn', 'clsx', 'classNames', 'twMerge'];
 
@@ -47,6 +76,27 @@ const IGNORE_FILE_PATTERNS = [
  */
 function findIgnoreMatch(line: string): RegExpMatchArray | null {
   for (const pattern of IGNORE_PATTERNS) {
+    const match = line.match(pattern);
+    if (match) return match;
+  }
+  return null;
+}
+
+// Same patterns as IGNORE_PATTERNS, but with the brace-anchored JSX form
+// checked before the plain block form. IGNORE_PATTERNS[0] (`/\/\*.../`) is
+// unanchored, so against a `{/* design-token-lint-ignore */}` line it matches
+// the inner `/* ... */` substring first — excluding the braces — which makes
+// isIgnoreMatchAloneOnLine see leftover `{`/`}` and wrongly report "not
+// alone" even when the JSX comment is the line's only content. That's
+// invisible to extractClasses() (an ignore comment's own line never carries
+// real class content), but extractClassesWithMeta's `kind` (same-line vs
+// next-line) depends on getting "alone" right, so its match-finding uses
+// this reordered, metadata-only variant instead of touching the shared
+// findIgnoreMatch()/IGNORE_PATTERNS used by extractClasses().
+const IGNORE_PATTERNS_FOR_META = [IGNORE_PATTERNS[1], IGNORE_PATTERNS[0], IGNORE_PATTERNS[2]];
+
+function findIgnoreMatchForMeta(line: string): RegExpMatchArray | null {
+  for (const pattern of IGNORE_PATTERNS_FOR_META) {
     const match = line.match(pattern);
     if (match) return match;
   }
@@ -135,30 +185,46 @@ function isInCommentSpan(spans: CommentSpan[], index: number): boolean {
 }
 
 /**
- * Extract all class names from file content with their line numbers.
+ * Core extraction logic shared by `extractClasses()` and
+ * `extractClassesWithMeta()`. `suppressIgnore` gates every ignore-comment
+ * effect (file-level early return, first-pass ignoredLines population, and
+ * the continuation-line skip check) — when `true`, no ignore comment has any
+ * effect and every candidate class is returned, which `extractClassesWithMeta`
+ * uses as the "what would exist without suppression" pass to diff against the
+ * real (suppressed) output. When `false` (the only path `extractClasses()`
+ * exercises), every new conditional below collapses to the original
+ * unconditional behavior, so `extractClasses()` stays byte-identical.
  */
-export function extractClasses(content: string, options?: ExtractorOptions): ExtractedClass[] {
+function extractClassesCore(
+  content: string,
+  options: ExtractorOptions | undefined,
+  suppressIgnore: boolean,
+): ExtractedClass[] {
   const lines = content.split('\n');
   const results: ExtractedClass[] = [];
   const ignoredLines = new Set<number>();
 
   // Check for file-level ignore comment anywhere in the file
-  for (const line of lines) {
-    if (IGNORE_FILE_PATTERNS.some((p) => p.test(line))) {
-      return [];
+  if (!suppressIgnore) {
+    for (const line of lines) {
+      if (IGNORE_FILE_PATTERNS.some((p) => p.test(line))) {
+        return [];
+      }
     }
   }
 
   // First pass: find ignore comments, mark next line
-  for (let i = 0; i < lines.length; i++) {
-    const match = findIgnoreMatch(lines[i]);
-    if (match) {
-      ignoredLines.add(i + 1); // ignore next line (0-indexed)
-      if (!isIgnoreMatchAloneOnLine(lines[i], match)) {
-        // Trailing same-line ignore (e.g.
-        // `<div className="p-4"> {/* design-token-lint-ignore */}`) also
-        // suppresses its own line, not just the next one.
-        ignoredLines.add(i);
+  if (!suppressIgnore) {
+    for (let i = 0; i < lines.length; i++) {
+      const match = findIgnoreMatch(lines[i]);
+      if (match) {
+        ignoredLines.add(i + 1); // ignore next line (0-indexed)
+        if (!isIgnoreMatchAloneOnLine(lines[i], match)) {
+          // Trailing same-line ignore (e.g.
+          // `<div className="p-4"> {/* design-token-lint-ignore */}`) also
+          // suppresses its own line, not just the next one.
+          ignoredLines.add(i);
+        }
       }
     }
   }
@@ -337,7 +403,7 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
         // line itself IS the ignore comment (its raw text must never be
         // treated as literal class content, mirroring how the cn()/
         // class:list inner-line paths only ever see quoted content).
-        const skipLine = ignoredLines.has(i) || isIgnoreLine(nextLine);
+        const skipLine = !suppressIgnore && (ignoredLines.has(i) || isIgnoreLine(nextLine));
         const closeIdx = nextLine.indexOf(quoteChar);
         if (closeIdx !== -1) {
           // Take everything before the closing quote
@@ -363,6 +429,139 @@ export function extractClasses(content: string, options?: ExtractorOptions): Ext
   }
 
   return dedupeExtractedClasses(results);
+}
+
+/**
+ * Extract all class names from file content with their line numbers.
+ */
+export function extractClasses(content: string, options?: ExtractorOptions): ExtractedClass[] {
+  return extractClassesCore(content, options, false);
+}
+
+/**
+ * Strip a directive's trailing reason text out of an ignore-comment match's
+ * capture group. Trims whitespace and, when present, a single leading
+ * separator (`-`, en dash, em dash, or `:`) from the "ignore - reason" /
+ * "ignore — reason" convention used by callers of the ignore comments.
+ * Returns null when no reason text remains.
+ */
+function extractIgnoreReasonText(match: RegExpMatchArray): string | null {
+  const raw = (match[1] ?? '').trim();
+  if (raw === '') return null;
+  const stripped = raw.replace(/^[-–—:]\s*/, '').trim();
+  return stripped === '' ? null : stripped;
+}
+
+/**
+ * Group extracted classes by line number for O(1) per-line lookup.
+ */
+function groupClassesByLine(classes: ExtractedClass[]): Map<number, ExtractedClass[]> {
+  const byLine = new Map<number, ExtractedClass[]>();
+  for (const cls of classes) {
+    const list = byLine.get(cls.line);
+    if (list) {
+      list.push(cls);
+    } else {
+      byLine.set(cls.line, [cls]);
+    }
+  }
+  return byLine;
+}
+
+/**
+ * Extract classes plus structured metadata about every ignore comment in the
+ * file: its kind (`next-line` / `same-line` / `file`), any trailing reason
+ * text, and which candidate classes it actually suppressed — so a later pass
+ * (e.g. reporting unused ignore comments) can tell used from unused ignores
+ * without re-running the linter. Purely additive: `classes` is produced by
+ * the exact same code path as `extractClasses()`.
+ *
+ * Implementation note: suppressed-candidate attribution is computed by
+ * running the core extractor a second time with all ignore effects disabled
+ * (`suppressIgnore: true`) to get the full candidate set, then diffing by
+ * line against the real (suppressed) output. A record's suppressed range
+ * starts at its `targetLine` and extends forward while each subsequent line
+ * is (a) still suppressed and (b) not itself another record's `targetLine` —
+ * this correctly attributes a multiline construct swallowed by a single
+ * next-line ignore (the whole construct) while still keeping two adjacent
+ * but independent records (e.g. a trailing same-line ignore followed by its
+ * own next-line suppression) from bleeding into each other.
+ */
+export function extractClassesWithMeta(
+  content: string,
+  options?: ExtractorOptions,
+): ExtractWithMetaResult {
+  const lines = content.split('\n');
+  const classes = extractClassesCore(content, options, false);
+
+  const fileIgnoreLines: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (IGNORE_FILE_PATTERNS.some((p) => p.test(lines[i]))) {
+      fileIgnoreLines.push(i + 1); // 1-based
+    }
+  }
+
+  if (fileIgnoreLines.length > 0) {
+    // Mirrors extractClassesCore's own early return: a file-level ignore
+    // takes precedence and empties the whole file, so line-level ignore
+    // comments elsewhere are not evaluated.
+    const allCandidates = extractClassesCore(content, options, true);
+    const ignores: IgnoreRecord[] = fileIgnoreLines.map((line) => ({
+      line,
+      kind: 'file',
+      reasonText: null,
+      targetLine: 0,
+      suppressedClasses: allCandidates,
+    }));
+    return { classes, ignores };
+  }
+
+  const hasAnyLineIgnore = lines.some((line) => isIgnoreLine(line));
+  const allCandidates = hasAnyLineIgnore ? extractClassesCore(content, options, true) : classes;
+  const classesByLine = groupClassesByLine(classes);
+  const candidatesByLine = groupClassesByLine(allCandidates);
+
+  const isSuppressedLine = (line: number): boolean =>
+    candidatesByLine.has(line) && !classesByLine.has(line);
+
+  interface PendingRecord {
+    line: number;
+    kind: IgnoreKind;
+    reasonText: string | null;
+    targetLine: number;
+  }
+
+  const pending: PendingRecord[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const match = findIgnoreMatchForMeta(lines[i]);
+    if (!match) continue;
+    const commentLine = i + 1; // 1-based
+    const reasonText = extractIgnoreReasonText(match);
+
+    if (!isIgnoreMatchAloneOnLine(lines[i], match)) {
+      pending.push({ line: commentLine, kind: 'same-line', reasonText, targetLine: commentLine });
+    }
+    pending.push({
+      line: commentLine,
+      kind: 'next-line',
+      reasonText,
+      targetLine: commentLine + 1,
+    });
+  }
+
+  const allTargetLines = new Set(pending.map((r) => r.targetLine));
+
+  const ignores: IgnoreRecord[] = pending.map((record) => {
+    const suppressedClasses: ExtractedClass[] = [];
+    let line = record.targetLine;
+    while (isSuppressedLine(line) && (line === record.targetLine || !allTargetLines.has(line))) {
+      suppressedClasses.push(...(candidatesByLine.get(line) ?? []));
+      line++;
+    }
+    return { ...record, suppressedClasses };
+  });
+
+  return { classes, ignores };
 }
 
 /**
