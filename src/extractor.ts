@@ -730,6 +730,67 @@ function collectNewlineOffsets(text: string): number[] {
   return offsets;
 }
 
+interface QuotedLiteralToken {
+  /** Raw token text between the delimiters, escape sequences left intact. */
+  value: string;
+  /** 0-based offset of the opening quote character in the scanned text. */
+  index: number;
+}
+
+/**
+ * Scan `text` left-to-right for quote-delimited literal tokens, using any
+ * character in `quoteChars` as a delimiter, honoring backslash escapes so an
+ * escaped quote (`\'`, `\"`, `\\`) never prematurely closes the token —
+ * mirrors the escape handling `scanBalancedDelimited` already applies to keep
+ * the surrounding call/array balanced. Before this, `extractFromCallArgs` and
+ * `extractFromClassListArray` found tokens via a plain `'([^']*)'|"..."`
+ * regex with no escape awareness: an escaped quote inside one argument could
+ * desync the token boundaries for every argument after it, in some
+ * quote-parity cases silently dropping a sibling argument's real violation
+ * (#139). A token must open and close with the SAME quote character — a
+ * different quote char encountered inside is just content, matching the old
+ * per-character alternation's behavior (e.g. `["p-4']` never matched as a
+ * literal). An unterminated trailing quote — shouldn't normally happen, since
+ * `scanBalancedDelimited` already validated the surrounding call/array is
+ * balanced — yields no token, same as the old regex requiring both quotes to
+ * be present to match at all.
+ */
+function scanQuotedLiterals(text: string, quoteChars: string): QuotedLiteralToken[] {
+  const tokens: QuotedLiteralToken[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (!quoteChars.includes(ch)) {
+      i++;
+      continue;
+    }
+
+    const quote = ch;
+    const start = i;
+    i++;
+    let value = '';
+    let closed = false;
+    while (i < text.length) {
+      const c = text[i];
+      if (c === '\\' && i + 1 < text.length) {
+        value += c + text[i + 1];
+        i += 2;
+        continue;
+      }
+      if (c === quote) {
+        i++;
+        closed = true;
+        break;
+      }
+      value += c;
+      i++;
+    }
+
+    if (closed) tokens.push({ value, index: start });
+  }
+  return tokens;
+}
+
 /**
  * Extract string-literal and template-literal class tokens from a utility
  * function's joined argument text. Each match is attributed to its actual
@@ -749,15 +810,14 @@ function extractFromCallArgs(
 ): void {
   const newlineOffsets = collectNewlineOffsets(argsText);
   let cursor = 0;
-  for (const match of argsText.matchAll(/'([^']*)'|"([^"]*)"|`([^`]*)`/g)) {
-    const value = match[1] ?? match[2] ?? match[3] ?? '';
-    const matchIndex = match.index ?? 0;
+  for (const token of scanQuotedLiterals(argsText, `'"\``)) {
+    const matchIndex = token.index;
     while (cursor < newlineOffsets.length && newlineOffsets[cursor] < matchIndex) {
       cursor++;
     }
     const actualLine0 = startLine0 + cursor;
     if (ignoredLines.has(actualLine0)) continue;
-    addClasses(results, value, actualLine0 + 1);
+    addClasses(results, token.value, actualLine0 + 1);
   }
 }
 
@@ -776,19 +836,14 @@ function extractFromClassListArray(
 ): void {
   const newlineOffsets = collectNewlineOffsets(arrayContent);
   let cursor = 0;
-  // Paired-quote alternation (mirrors extractFromCallArgs) — a token opened
-  // with one quote character must close with the SAME character, so a
-  // mismatched pair like `["p-4']` (opens with ", closes with ') is never
-  // mistaken for a valid quoted literal.
-  for (const match of arrayContent.matchAll(/'([^']+)'|"([^"]+)"/g)) {
-    const value = match[1] ?? match[2] ?? '';
-    const matchIndex = match.index ?? 0;
+  for (const token of scanQuotedLiterals(arrayContent, `'"`)) {
+    const matchIndex = token.index;
     while (cursor < newlineOffsets.length && newlineOffsets[cursor] < matchIndex) {
       cursor++;
     }
     const actualLine0 = startLine0 + cursor;
     if (ignoredLines.has(actualLine0)) continue;
-    addClasses(results, value, actualLine0 + 1);
+    addClasses(results, token.value, actualLine0 + 1);
   }
 }
 
