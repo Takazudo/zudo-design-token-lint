@@ -46,9 +46,11 @@ const BARE_INTEGER = /^-?\d+$/;
 const IMPORTANT_SUFFIX = /\s*!important\s*$/i;
 
 // Raw color literal forms. `#hex` is restricted to the valid CSS lengths
-// (3/4/6/8) with a trailing boundary so an SVG id fragment like `url(#a)` or an
-// invalid `#12345` does not match. The functional notations match the color
-// function name immediately followed by `(`.
+// (3/4/6/8) with a trailing boundary so an over-long or invalid fragment like
+// `#12345` does not match. Hex-length `url(...)` fragment references (e.g.
+// `url(#fff)`, `url(#123456)`) DO match this shape, so `findColorLiteral`
+// blanks `url(...)` spans before applying it. The functional notations match
+// the color function name immediately followed by `(`.
 const HEX_LITERAL = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/;
 const FUNCTIONAL_COLOR = /\b(?:rgba?|hsla?|oklch|oklab)\s*\(/i;
 
@@ -74,9 +76,14 @@ function isRawZIndex(value: string): boolean {
  * zone-aware Pass 2 that is out of scope for v1 (documented false negative).
  */
 function findColorLiteral(value: string): string | null {
-  const hex = value.match(HEX_LITERAL);
+  // url(...) fragment references like `url(#fff)` or `url(#123456)` are element
+  // IDs, not color literals — blank the url(...) spans (preserving positions so
+  // later slices stay correct) before scanning so a hex-length id isn't
+  // misreported as a raw color.
+  const scan = value.replace(/\burl\s*\([^)]*\)/gi, (m) => ' '.repeat(m.length));
+  const hex = scan.match(HEX_LITERAL);
   if (hex) return hex[0];
-  const fn = value.match(FUNCTIONAL_COLOR);
+  const fn = scan.match(FUNCTIONAL_COLOR);
   if (fn) {
     // Report the full function call (up to its balanced close) for a readable
     // message, falling back to the whole value if unbalanced.

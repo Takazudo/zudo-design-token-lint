@@ -20,8 +20,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # engines is ">=18"; exercise the floor, an LTS midpoint, and current.
-        node-version: ['18.x', '20.x', '22.x']
+        # Vitest 4 requires Node ^20 || ^22 || >=24, so the test matrix runs on
+        # those. The published runtime (chalk + glob) still supports the
+        # engines ">=18" floor; the packed-artifact CLI is exercised by
+        # check-pack below on each of these versions.
+        node-version: ['20.x', '22.x', '24.x']
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 

@@ -112,6 +112,23 @@ describe('checkDeclaration — colorLiterals rule', () => {
     expect(checkDeclaration(decl('fill', 'url(#gradient)'), COLOR_ONLY)).toBeNull();
   });
 
+  it.each([
+    ['fill', 'url(#fff)'],
+    ['clip-path', 'url(#123456)'],
+    ['mask', 'url(#abcd)'],
+    ['fill', 'url( #fff )'],
+    ['background', 'url("#deadbe")'],
+  ])('does not flag a hex-length url() fragment reference: %s: %s', (prop, value) => {
+    expect(checkDeclaration(decl(prop, value), COLOR_ONLY)).toBeNull();
+  });
+
+  it('still flags a real hex color alongside a url() fragment reference', () => {
+    // The url(#fff) is a reference; the standalone #ff0000 is a raw color.
+    const v = checkDeclaration(decl('background', 'url(#fff) no-repeat, #ff0000'), COLOR_ONLY);
+    expect(v).not.toBeNull();
+    expect(v!.reason).toContain('#ff0000');
+  });
+
   it('does nothing when colorLiterals is disabled', () => {
     expect(checkDeclaration(decl('background', '#fff'), Z_ONLY)).toBeNull();
     expect(checkDeclaration(decl('background', '#fff'), OFF)).toBeNull();
