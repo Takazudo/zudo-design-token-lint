@@ -11,9 +11,9 @@ import {
   type CompiledConfig,
 } from './config.js';
 import { checkClassWithConfig } from './rules.js';
-import { writeFile, unlink, mkdir, rm } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { withTempDir } from './test-utils.js';
 
 describe('DEFAULT_CONFIG', () => {
   it('has semanticPrefixes defaulting to hgap- and vgap-', () => {
@@ -327,86 +327,70 @@ describe('structured prohibited entries — object {pattern, reason?, category?}
   });
 
   it('loadConfig accepts an object-shaped prohibited entry from a JSON config file', async () => {
-    const dir = join(tmpdir(), `dtl-test-prohibited-obj-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    const configPath = join(dir, '.design-token-lint.json');
-    await writeFile(
-      configPath,
-      JSON.stringify({
-        prohibited: [{ pattern: 'w-{n}', reason: 'Numeric width "{CLASS}"', category: 'sizing' }],
-        allowed: [],
-        ignore: [],
-      }),
-    );
-    try {
+    await withTempDir(async (dir) => {
+      const configPath = join(dir, '.design-token-lint.json');
+      await writeFile(
+        configPath,
+        JSON.stringify({
+          prohibited: [{ pattern: 'w-{n}', reason: 'Numeric width "{CLASS}"', category: 'sizing' }],
+          allowed: [],
+          ignore: [],
+        }),
+      );
       const config = await loadConfig(dir);
       const compiled = compileConfig(config);
       const result = checkClassWithConfig('w-8', compiled);
       expect(result).not.toBeNull();
       expect(result!.reason).toBe('Numeric width "w-8"');
       expect(result!.category).toBe('sizing');
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-prohibited-obj-');
   });
 
   it('loadConfig rejects a prohibited object entry missing "pattern"', async () => {
-    const dir = join(tmpdir(), `dtl-test-prohibited-bad-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    const configPath = join(dir, '.design-token-lint.json');
-    await writeFile(
-      configPath,
-      JSON.stringify({ prohibited: [{ reason: 'missing pattern' }], ignore: [] }),
-    );
-    try {
+    await withTempDir(async (dir) => {
+      const configPath = join(dir, '.design-token-lint.json');
+      await writeFile(
+        configPath,
+        JSON.stringify({ prohibited: [{ reason: 'missing pattern' }], ignore: [] }),
+      );
       await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
       await expect(loadConfig(dir)).rejects.toThrow(
         /"prohibited" must be an array of strings or \{pattern, reason\?, category\?\} objects/,
       );
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-prohibited-bad-');
   });
 
   it('loadConfig rejects a prohibited object entry with a non-string "reason"', async () => {
-    const dir = join(tmpdir(), `dtl-test-prohibited-bad-reason-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    const configPath = join(dir, '.design-token-lint.json');
-    await writeFile(
-      configPath,
-      JSON.stringify({ prohibited: [{ pattern: 'w-{n}', reason: 123 }], ignore: [] }),
-    );
-    try {
+    await withTempDir(async (dir) => {
+      const configPath = join(dir, '.design-token-lint.json');
+      await writeFile(
+        configPath,
+        JSON.stringify({ prohibited: [{ pattern: 'w-{n}', reason: 123 }], ignore: [] }),
+      );
       await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-prohibited-bad-reason-');
   });
 
   it('loadConfig accepts an object-shaped prohibitedAdd entry from a JSON config file', async () => {
-    const dir = join(tmpdir(), `dtl-test-prohibitedadd-obj-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    const configPath = join(dir, '.design-token-lint.json');
-    await writeFile(
-      configPath,
-      JSON.stringify({
-        extends: ['default'],
-        prohibitedAdd: [
-          { pattern: 'z-{n}', reason: 'Numeric z-index "{CLASS}"', category: 'z-index' },
-        ],
-        ignore: [],
-      }),
-    );
-    try {
+    await withTempDir(async (dir) => {
+      const configPath = join(dir, '.design-token-lint.json');
+      await writeFile(
+        configPath,
+        JSON.stringify({
+          extends: ['default'],
+          prohibitedAdd: [
+            { pattern: 'z-{n}', reason: 'Numeric z-index "{CLASS}"', category: 'z-index' },
+          ],
+          ignore: [],
+        }),
+      );
       const config = await loadConfig(dir);
       const compiled = compileConfig(config);
       const result = checkClassWithConfig('z-10', compiled);
       expect(result).not.toBeNull();
       expect(result!.reason).toBe('Numeric z-index "z-10"');
       expect(result!.category).toBe('z-index');
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-prohibitedadd-obj-');
   });
 });
 
@@ -478,61 +462,49 @@ describe('compileConfig — classAttributes and classFunctions', () => {
 
 describe('loadConfig — classAttributes and classFunctions', () => {
   it('loads classAttributes from config file', async () => {
-    const dir = join(tmpdir(), `dtl-test-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    const configPath = join(dir, '.design-token-lint.json');
-    await writeFile(
-      configPath,
-      JSON.stringify({
-        prohibited: [],
-        allowed: [],
-        ignore: [],
-        classAttributes: ['inputClassName', 'wrapperClass'],
-      }),
-    );
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({
+          prohibited: [],
+          allowed: [],
+          ignore: [],
+          classAttributes: ['inputClassName', 'wrapperClass'],
+        }),
+      );
       const config = await loadConfig(dir);
       expect(config.classAttributes).toEqual(['inputClassName', 'wrapperClass']);
-    } finally {
-      await unlink(configPath);
-    }
+    });
   });
 
   it('loads classFunctions from config file', async () => {
-    const dir = join(tmpdir(), `dtl-test-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    const configPath = join(dir, '.design-token-lint.json');
-    await writeFile(
-      configPath,
-      JSON.stringify({
-        prohibited: [],
-        allowed: [],
-        ignore: [],
-        classFunctions: ['cva', 'tv'],
-      }),
-    );
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({
+          prohibited: [],
+          allowed: [],
+          ignore: [],
+          classFunctions: ['cva', 'tv'],
+        }),
+      );
       const config = await loadConfig(dir);
       expect(config.classFunctions).toEqual(['cva', 'tv']);
-    } finally {
-      await unlink(configPath);
-    }
+    });
   });
 
   it('returns undefined classAttributes when not in config file (falls back in compileConfig)', async () => {
-    const dir = join(tmpdir(), `dtl-test-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    const configPath = join(dir, '.design-token-lint.json');
-    await writeFile(configPath, JSON.stringify({ prohibited: [], allowed: [], ignore: [] }));
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ prohibited: [], allowed: [], ignore: [] }),
+      );
       const config = await loadConfig(dir);
       expect(config.classAttributes).toBeUndefined();
       // compileConfig should fill in the default
       const compiled = compileConfig(config);
       expect(compiled.classAttributes).toEqual(['className', 'class']);
-    } finally {
-      await unlink(configPath);
-    }
+    });
   });
 });
 
@@ -541,22 +513,17 @@ describe('loadConfig — error handling', () => {
     content: string,
     fn: (dir: string) => Promise<void>,
   ): Promise<void> {
-    const dir = join(tmpdir(), `dtl-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    await mkdir(dir, { recursive: true });
-    const configPath = join(dir, '.design-token-lint.json');
-    await writeFile(configPath, content);
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(join(dir, '.design-token-lint.json'), content);
       await fn(dir);
-    } finally {
-      await unlink(configPath);
-    }
+    }, 'dtl-test-');
   }
 
   it('falls through to defaults when no config file exists (ENOENT unchanged)', async () => {
-    const dir = join(tmpdir(), `dtl-test-enoent-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    const config = await loadConfig(dir);
-    expect(config).toEqual(DEFAULT_CONFIG);
+    await withTempDir(async (dir) => {
+      const config = await loadConfig(dir);
+      expect(config).toEqual(DEFAULT_CONFIG);
+    }, 'dtl-test-enoent-');
   });
 
   it('throws ConfigError naming the file on malformed JSON', async () => {
@@ -602,24 +569,11 @@ describe('loadConfig — error handling', () => {
 });
 
 describe('loadConfig — config file discovery', () => {
-  async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
-    const dir = join(
-      tmpdir(),
-      `dtl-discovery-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    );
-    await mkdir(dir, { recursive: true });
-    try {
-      await fn(dir);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }
-
   it('falls back to DEFAULT_CONFIG when neither config filename is present', async () => {
     await withTempDir(async (dir) => {
       const config = await loadConfig(dir);
       expect(config).toEqual(DEFAULT_CONFIG);
-    });
+    }, 'dtl-discovery-');
   });
 
   it('picks up the second filename (design-token-lint.config.json) when the dotfile is absent', async () => {
@@ -630,7 +584,7 @@ describe('loadConfig — config file discovery', () => {
       );
       const config = await loadConfig(dir);
       expect(config.prohibited).toEqual(['m-{n}']);
-    });
+    }, 'dtl-discovery-');
   });
 
   it('prefers the dotfile (.design-token-lint.json) when both config files exist', async () => {
@@ -646,7 +600,7 @@ describe('loadConfig — config file discovery', () => {
       const config = await loadConfig(dir);
       // The dotfile's content wins — the second filename is never even read.
       expect(config.prohibited).toEqual(['p-{n}']);
-    });
+    }, 'dtl-discovery-');
   });
 });
 
@@ -770,11 +724,11 @@ describe('extends / presets', () => {
   });
 
   it('loadConfig passes extends/prohibitedAdd/allowedAdd through untouched; compileConfig resolves and surfaces the unknown-preset ConfigError', async () => {
-    const dir = join(tmpdir(), `dtl-test-extends-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    const configPath = join(dir, '.design-token-lint.json');
-    await writeFile(configPath, JSON.stringify({ extends: ['nope'], ignore: [] }));
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ extends: ['nope'], ignore: [] }),
+      );
       const config = await loadConfig(dir);
       expect(config.extends).toEqual(['nope']);
       // loadConfig itself doesn't resolve presets — compileConfig does — so
@@ -783,36 +737,30 @@ describe('extends / presets', () => {
       // same try/catch that maps to exit code 2).
       expect(() => compileConfig(config)).toThrow(ConfigError);
       expect(() => compileConfig(config)).toThrow(/Unknown preset "nope"/);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-extends-');
   });
 
   it('rejects a non-string, non-string-array "extends" value at load time', async () => {
-    const dir = join(tmpdir(), `dtl-test-extends-bad-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    const configPath = join(dir, '.design-token-lint.json');
-    await writeFile(configPath, JSON.stringify({ extends: 42, ignore: [] }));
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ extends: 42, ignore: [] }),
+      );
       await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
       await expect(loadConfig(dir)).rejects.toThrow(
         /"extends" must be a string or an array of strings/,
       );
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-extends-bad-');
   });
 
   it('rejects a non-string-array "prohibitedAdd"/"allowedAdd" value at load time', async () => {
-    const dir = join(tmpdir(), `dtl-test-add-bad-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    const configPath = join(dir, '.design-token-lint.json');
-    await writeFile(configPath, JSON.stringify({ prohibitedAdd: 'p-{n}', ignore: [] }));
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ prohibitedAdd: 'p-{n}', ignore: [] }),
+      );
       await expect(loadConfig(dir)).rejects.toThrow(/"prohibitedAdd" must be an array of strings/);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-add-bad-');
   });
 
   it('regression: a config without extends behaves exactly as before', () => {
@@ -824,17 +772,15 @@ describe('extends / presets', () => {
   });
 
   it('regression: loadConfig + compileConfig on a config with neither extends nor prohibited/allowed still yields DEFAULT_CONFIG rules', async () => {
-    const dir = join(tmpdir(), `dtl-test-noext-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    const configPath = join(dir, '.design-token-lint.json');
-    await writeFile(configPath, JSON.stringify({ patterns: ['src/**/*.tsx'] }));
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ patterns: ['src/**/*.tsx'] }),
+      );
       const config = await loadConfig(dir);
       const compiled = compileConfig(config);
       expect(compiled).toEqual(compileConfig(DEFAULT_CONFIG));
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-noext-');
   });
 });
 
@@ -960,54 +906,45 @@ describe('suggestions map — did-you-mean hints (issue #130)', () => {
   });
 
   it('loadConfig passes suggestions through, and compileConfig resolves the mapping', async () => {
-    const dir = join(tmpdir(), `dtl-test-suggestions-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    const configPath = join(dir, '.design-token-lint.json');
-    await writeFile(
-      configPath,
-      JSON.stringify({
-        prohibited: ['p-{n}'],
-        allowed: [],
-        ignore: [],
-        suggestions: { 'p-4': 'p-hsp-xs' },
-      }),
-    );
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({
+          prohibited: ['p-{n}'],
+          allowed: [],
+          ignore: [],
+          suggestions: { 'p-4': 'p-hsp-xs' },
+        }),
+      );
       const config = await loadConfig(dir);
       expect(config.suggestions).toEqual({ 'p-4': 'p-hsp-xs' });
       const compiled = compileConfig(config);
       const result = checkClassWithConfig('p-4', compiled);
       expect(result!.reason).toContain('did you mean "p-hsp-xs"?');
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-suggestions-');
   });
 
   it('loadConfig rejects a non-string value in "suggestions" with a clear ConfigError', async () => {
-    const dir = join(tmpdir(), `dtl-test-suggestions-bad-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    const configPath = join(dir, '.design-token-lint.json');
-    await writeFile(configPath, JSON.stringify({ suggestions: { 'p-4': 123 }, ignore: [] }));
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ suggestions: { 'p-4': 123 }, ignore: [] }),
+      );
       await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
       await expect(loadConfig(dir)).rejects.toThrow(
         /"suggestions" must be an object mapping class names to string suggestions/,
       );
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-suggestions-bad-');
   });
 
   it('loadConfig rejects "suggestions" when it is an array rather than an object', async () => {
-    const dir = join(tmpdir(), `dtl-test-suggestions-array-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    const configPath = join(dir, '.design-token-lint.json');
-    await writeFile(configPath, JSON.stringify({ suggestions: ['p-4'], ignore: [] }));
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ suggestions: ['p-4'], ignore: [] }),
+      );
       await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-suggestions-array-');
   });
 });
 
@@ -1035,58 +972,45 @@ describe('css config (issue #131)', () => {
   });
 
   it('loadConfig passes the css section through', async () => {
-    const dir = join(tmpdir(), `dtl-test-css-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    await writeFile(
-      join(dir, '.design-token-lint.json'),
-      JSON.stringify({ ignore: [], css: { zIndex: true, patterns: ['a/**/*.css'] } }),
-    );
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ ignore: [], css: { zIndex: true, patterns: ['a/**/*.css'] } }),
+      );
       const config = await loadConfig(dir);
       expect(config.css).toEqual({ zIndex: true, patterns: ['a/**/*.css'] });
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-css-');
   });
 
   it('loadConfig rejects a non-object css section', async () => {
-    const dir = join(tmpdir(), `dtl-test-css-bad-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, '.design-token-lint.json'), JSON.stringify({ ignore: [], css: [] }));
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ ignore: [], css: [] }),
+      );
       await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
       await expect(loadConfig(dir)).rejects.toThrow(/"css" must be an object/);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-css-bad-');
   });
 
   it('loadConfig rejects a non-boolean css.zIndex', async () => {
-    const dir = join(tmpdir(), `dtl-test-css-zbad-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    await writeFile(
-      join(dir, '.design-token-lint.json'),
-      JSON.stringify({ ignore: [], css: { zIndex: 'yes' } }),
-    );
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ ignore: [], css: { zIndex: 'yes' } }),
+      );
       await expect(loadConfig(dir)).rejects.toThrow(/"css.zIndex" must be a boolean/);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-css-zbad-');
   });
 
   it('loadConfig rejects a non-array css.patterns', async () => {
-    const dir = join(tmpdir(), `dtl-test-css-pbad-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    await writeFile(
-      join(dir, '.design-token-lint.json'),
-      JSON.stringify({ ignore: [], css: { patterns: 'src/**/*.css' } }),
-    );
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ ignore: [], css: { patterns: 'src/**/*.css' } }),
+      );
       await expect(loadConfig(dir)).rejects.toThrow(/"css.patterns" must be an array of strings/);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-css-pbad-');
   });
 });
 
@@ -1108,47 +1032,35 @@ describe('requireIgnoreReason / reportUnusedIgnores config (issue #132)', () => 
   });
 
   it('loadConfig passes both flags through', async () => {
-    const dir = join(tmpdir(), `dtl-test-hygiene-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    await writeFile(
-      join(dir, '.design-token-lint.json'),
-      JSON.stringify({ ignore: [], requireIgnoreReason: true, reportUnusedIgnores: true }),
-    );
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ ignore: [], requireIgnoreReason: true, reportUnusedIgnores: true }),
+      );
       const config = await loadConfig(dir);
       expect(config.requireIgnoreReason).toBe(true);
       expect(config.reportUnusedIgnores).toBe(true);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-hygiene-');
   });
 
   it('loadConfig rejects a non-boolean requireIgnoreReason', async () => {
-    const dir = join(tmpdir(), `dtl-test-hygiene-bad1-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    await writeFile(
-      join(dir, '.design-token-lint.json'),
-      JSON.stringify({ ignore: [], requireIgnoreReason: 'yes' }),
-    );
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ ignore: [], requireIgnoreReason: 'yes' }),
+      );
       await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
       await expect(loadConfig(dir)).rejects.toThrow(/"requireIgnoreReason" must be a boolean/);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-hygiene-bad1-');
   });
 
   it('loadConfig rejects a non-boolean reportUnusedIgnores', async () => {
-    const dir = join(tmpdir(), `dtl-test-hygiene-bad2-${Date.now()}`);
-    await mkdir(dir, { recursive: true });
-    await writeFile(
-      join(dir, '.design-token-lint.json'),
-      JSON.stringify({ ignore: [], reportUnusedIgnores: 1 }),
-    );
-    try {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ ignore: [], reportUnusedIgnores: 1 }),
+      );
       await expect(loadConfig(dir)).rejects.toThrow(/"reportUnusedIgnores" must be a boolean/);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
+    }, 'dtl-test-hygiene-bad2-');
   });
 });

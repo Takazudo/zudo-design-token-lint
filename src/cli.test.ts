@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync, mkdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -13,26 +12,7 @@ import {
 } from './cli.js';
 import { setConfig } from './rules.js';
 import { compileConfig, DEFAULT_CONFIG } from './config.js';
-
-interface CapturedIO {
-  stdout: string[];
-  stderr: string[];
-}
-
-function makeIO(): CapturedIO & {
-  write: { stdout: (m: string) => void; stderr: (m: string) => void };
-} {
-  const stdout: string[] = [];
-  const stderr: string[] = [];
-  return {
-    stdout,
-    stderr,
-    write: {
-      stdout: (m: string) => stdout.push(m),
-      stderr: (m: string) => stderr.push(m),
-    },
-  };
-}
+import { makeIO, useTempDir } from './test-utils.js';
 
 afterEach(() => {
   setConfig(compileConfig(DEFAULT_CONFIG));
@@ -256,13 +236,8 @@ describe('helpText', () => {
 
 describe('isMainModule', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-ismain-'));
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  useTempDir('design-token-lint-ismain-', (dir) => {
+    tmpDir = dir;
   });
 
   it('returns true when argv1 is a symlink pointing to the real module file', () => {
@@ -392,13 +367,8 @@ describe('runMain — unknown option handling', () => {
 
 describe('runMain — config error handling', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-config-err-'));
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  useTempDir('design-token-lint-config-err-', (dir) => {
+    tmpDir = dir;
   });
 
   it('exits 2 and names the file when the config JSON is malformed', async () => {
@@ -451,15 +421,13 @@ describe('runMain — config error handling', () => {
 
 describe('runMain — empty match handling', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-test-'));
-    // Create an empty src/ directory so the pattern is valid but matches nothing.
-    mkdirSync(join(tmpDir, 'src'));
+  useTempDir('design-token-lint-test-', (dir) => {
+    tmpDir = dir;
   });
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  beforeEach(() => {
+    // Create an empty src/ directory so the pattern is valid but matches nothing.
+    mkdirSync(join(tmpDir, 'src'));
   });
 
   it('exits 2 when no files match (default)', async () => {
@@ -538,9 +506,11 @@ describe('runMain — empty match handling', () => {
 
 describe('runMain — pattern precedence (args > config.patterns > defaults)', () => {
   let tmpDir: string;
+  useTempDir('design-token-lint-precedence-', (dir) => {
+    tmpDir = dir;
+  });
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-precedence-'));
     // A violation reachable only via DEFAULT_PATTERNS (src/**/*.{tsx,jsx,astro}).
     mkdirSync(join(tmpDir, 'src'), { recursive: true });
     writeFileSync(join(tmpDir, 'src', 'from-default.tsx'), `<div className="p-4">`);
@@ -550,10 +520,6 @@ describe('runMain — pattern precedence (args > config.patterns > defaults)', (
     // A violation reachable only via CLI args.
     mkdirSync(join(tmpDir, 'from-args'), { recursive: true });
     writeFileSync(join(tmpDir, 'from-args', 'only.tsx'), `<div className="gap-6">`);
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('CLI args win over config.patterns', async () => {
@@ -614,14 +580,12 @@ describe('runMain — pattern precedence (args > config.patterns > defaults)', (
 
 describe('runMain — happy path still works', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-test-'));
-    mkdirSync(join(tmpDir, 'src'));
+  useTempDir('design-token-lint-test-', (dir) => {
+    tmpDir = dir;
   });
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'));
   });
 
   it('returns 0 when files match and have no violations', async () => {
@@ -653,14 +617,12 @@ describe('runMain — happy path still works', () => {
 
 describe('runMain — --json output', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-json-'));
-    mkdirSync(join(tmpDir, 'src'));
+  useTempDir('design-token-lint-json-', (dir) => {
+    tmpDir = dir;
   });
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'));
   });
 
   it('prints a JSON array of flat LintResult objects on stdout and keeps exit code 1', async () => {
@@ -707,14 +669,12 @@ describe('runMain — --json output', () => {
 
 describe('runMain — --format github output', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-github-'));
-    mkdirSync(join(tmpDir, 'src'));
+  useTempDir('design-token-lint-github-', (dir) => {
+    tmpDir = dir;
   });
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'));
   });
 
   it('prints one ::error workflow command per violation on stdout', async () => {
@@ -812,14 +772,12 @@ describe('formatGithubAnnotation — workflow command escaping', () => {
 
 describe('runMain — human mode is unchanged by the new flags', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-human-'));
-    mkdirSync(join(tmpDir, 'src'));
+  useTempDir('design-token-lint-human-', (dir) => {
+    tmpDir = dir;
   });
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'));
   });
 
   it('produces identical stderr output and empty stdout without --json/--format', async () => {
@@ -843,14 +801,12 @@ describe('runMain — human mode is unchanged by the new flags', () => {
 
 describe('runMain — directory matches do not crash (nodir glob)', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-nodir-'));
-    mkdirSync(join(tmpDir, 'src'), { recursive: true });
+  useTempDir('design-token-lint-nodir-', (dir) => {
+    tmpDir = dir;
   });
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'), { recursive: true });
   });
 
   it('lints files only when a directory literally named "*.tsx" is also matched', async () => {
@@ -889,14 +845,12 @@ describe('runMain — directory matches do not crash (nodir glob)', () => {
 
 describe('runMain — unreadable file reports cleanly instead of crashing', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-unreadable-'));
-    mkdirSync(join(tmpDir, 'src'), { recursive: true });
+  useTempDir('design-token-lint-unreadable-', (dir) => {
+    tmpDir = dir;
   });
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'), { recursive: true });
   });
 
   it('exits 2 with a one-line message naming the file, not a raw stack dump', async () => {
@@ -928,15 +882,13 @@ describe('runMain — unreadable file reports cleanly instead of crashing', () =
 
 describe('runMain — patterns: [] in config', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-empty-patterns-'));
-    mkdirSync(join(tmpDir, 'src'), { recursive: true });
-    writeFileSync(join(tmpDir, 'src', 'dirty.tsx'), `<div className="p-4">`);
+  useTempDir('design-token-lint-empty-patterns-', (dir) => {
+    tmpDir = dir;
   });
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'dirty.tsx'), `<div className="p-4">`);
   });
 
   it('exits 2 naming the empty "patterns" config field instead of the generic no-match message', async () => {
@@ -972,14 +924,12 @@ describe('runMain — patterns: [] in config', () => {
 
 describe('runMain — __inbox/ is no longer ignored by default', () => {
   let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-inbox-'));
-    mkdirSync(join(tmpDir, 'src', '__inbox'), { recursive: true });
+  useTempDir('design-token-lint-inbox-', (dir) => {
+    tmpDir = dir;
   });
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src', '__inbox'), { recursive: true });
   });
 
   it('lints a violating file under a directory named __inbox/ (old default-ignore is gone)', async () => {
@@ -1001,9 +951,11 @@ describe('runMain — __inbox/ is no longer ignored by default', () => {
 
 describe('runMain — CSS scanning wiring (issue #131)', () => {
   let tmpDir: string;
+  useTempDir('design-token-lint-css-', (dir) => {
+    tmpDir = dir;
+  });
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'design-token-lint-css-'));
     mkdirSync(join(tmpDir, 'src'), { recursive: true });
     // A Tailwind violation reachable via DEFAULT_PATTERNS.
     writeFileSync(join(tmpDir, 'src', 'comp.tsx'), `<div className="p-4">`);
@@ -1012,10 +964,6 @@ describe('runMain — CSS scanning wiring (issue #131)', () => {
       join(tmpDir, 'src', 'styles.css'),
       `.modal {\n  z-index: 9999;\n  background: #ffe4e4;\n}`,
     );
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('scans css.patterns alongside the Tailwind patterns', async () => {
@@ -1071,5 +1019,126 @@ describe('runMain — CSS scanning wiring (issue #131)', () => {
     const results = JSON.parse(io.stdout[0]) as { className: string }[];
     // Only the css z-index violation (colorLiterals off, tailwind patterns empty).
     expect(results.map((r) => r.className)).toEqual(['z-index: 9999']);
+  });
+});
+
+describe('runMain — ignore-glob coverage (issue #133)', () => {
+  let tmpDir: string;
+  useTempDir('design-token-lint-ignore-glob-', (dir) => {
+    tmpDir = dir;
+  });
+
+  it('a config "ignore" glob excludes a violating file under the matched directory', async () => {
+    mkdirSync(join(tmpDir, 'src', 'skip'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'skip', 'dirty.tsx'), `<div className="p-4">`);
+    // A non-ignored, clean control file so the run scans something and
+    // reports "no violations" rather than "no files matched" (exit 2).
+    writeFileSync(join(tmpDir, 'src', 'clean.tsx'), `<div className="flex">`);
+    writeFileSync(
+      join(tmpDir, '.design-token-lint.json'),
+      JSON.stringify({ ignore: ['**/skip/**'] }),
+    );
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(0);
+    expect(io.stderr.join('\n')).toContain('No design token violations found');
+  });
+
+  it('DEFAULT_CONFIG.ignore skips a *.test.tsx file even though it matches the scan pattern', async () => {
+    mkdirSync(join(tmpDir, 'src'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'comp.test.tsx'), `<div className="p-4">`);
+    writeFileSync(join(tmpDir, 'src', 'clean.tsx'), `<div className="flex">`);
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(0);
+    expect(io.stderr.join('\n')).toContain('No design token violations found');
+  });
+
+  it('DEFAULT_IGNORE_PATTERNS skips a violating file under a nested node_modules/ directory', async () => {
+    mkdirSync(join(tmpDir, 'src', 'node_modules', 'pkg'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'node_modules', 'pkg', 'dirty.tsx'), `<div className="p-4">`);
+    writeFileSync(join(tmpDir, 'src', 'clean.tsx'), `<div className="flex">`);
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(0);
+    expect(io.stderr.join('\n')).toContain('No design token violations found');
+  });
+
+  it('DEFAULT_IGNORE_PATTERNS skips a violating file under a nested dist/ directory', async () => {
+    mkdirSync(join(tmpDir, 'src', 'dist'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src', 'dist', 'dirty.tsx'), `<div className="p-4">`);
+    writeFileSync(join(tmpDir, 'src', 'clean.tsx'), `<div className="flex">`);
+    const io = makeIO();
+    const code = await runMain({
+      args: ['src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(0);
+    expect(io.stderr.join('\n')).toContain('No design token violations found');
+  });
+});
+
+describe('runMain — --json and --format combos (issue #133)', () => {
+  let tmpDir: string;
+  useTempDir('design-token-lint-json-format-', (dir) => {
+    tmpDir = dir;
+  });
+
+  beforeEach(() => {
+    mkdirSync(join(tmpDir, 'src'));
+  });
+
+  it('--json wins over --format github on stdout when both are passed', async () => {
+    writeFileSync(join(tmpDir, 'src', 'dirty.tsx'), `<div className="p-4">`);
+    const io = makeIO();
+    const code = await runMain({
+      args: ['--json', '--format', 'github', 'src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    expect(io.stdout).toHaveLength(1);
+    const parsed = JSON.parse(io.stdout[0]);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed.length).toBeGreaterThan(0);
+    // The output is the JSON array, not a github ::error annotation line.
+    expect(io.stdout[0]).not.toMatch(/^::error/);
+  });
+
+  it('--format github with zero violations exits 0 with empty stdout', async () => {
+    writeFileSync(join(tmpDir, 'src', 'clean.tsx'), `<div className="flex">`);
+    const io = makeIO();
+    const code = await runMain({
+      args: ['--format', 'github', 'src/**/*.tsx'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(0);
+    expect(io.stdout).toEqual([]);
   });
 });

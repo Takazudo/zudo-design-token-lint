@@ -38,6 +38,10 @@ interface CliResult {
  * Run `node dist/cli.js <args>` and normalize the { code, stdout, stderr }
  * shape regardless of whether the process exits cleanly (execFile resolves)
  * or via a nonzero exit code (execFile rejects with stdout/stderr attached).
+ *
+ * `timeout` (issue #133 subprocess timeout hygiene) makes a hung child fail
+ * its own test with a clear timeout error instead of hanging until the
+ * `subprocess` project's own testTimeout eventually kills the whole test.
  */
 async function runCli(args: string[], cwd: string, env?: NodeJS.ProcessEnv): Promise<CliResult> {
   // GITHUB_ACTIONS flips the CLI's output format to github annotations
@@ -47,6 +51,7 @@ async function runCli(args: string[], cwd: string, env?: NodeJS.ProcessEnv): Pro
     const { stdout, stderr } = await execFileAsync(process.execPath, [distCli, ...args], {
       cwd,
       env: env ?? cleanEnv,
+      timeout: 15_000,
     });
     return { code: 0, stdout, stderr };
   } catch (err) {

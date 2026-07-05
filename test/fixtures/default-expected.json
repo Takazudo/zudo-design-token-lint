@@ -1,0 +1,32 @@
+[
+  {
+    "filePath": "src/comp.tsx",
+    "line": 3,
+    "className": "p-4",
+    "reason": "Numeric spacing \"p-4\" — use a semantic spacing token or arbitrary value"
+  },
+  {
+    "filePath": "src/comp.tsx",
+    "line": 3,
+    "className": "w-10",
+    "reason": "Numeric width \"w-10\" — use a semantic sizing token or arbitrary value"
+  },
+  {
+    "filePath": "src/comp.tsx",
+    "line": 3,
+    "className": "bg-gray-500",
+    "reason": "Default Tailwind color \"bg-gray-500\" — use a design system color token"
+  },
+  {
+    "filePath": "src/comp.tsx",
+    "line": 4,
+    "className": "h-20",
+    "reason": "Numeric height \"h-20\" — use a semantic sizing token or arbitrary value"
+  },
+  {
+    "filePath": "src/comp.tsx",
+    "line": 4,
+    "className": "max-w-40",
+    "reason": "Numeric max-width \"max-w-40\" — use a semantic sizing token or arbitrary value"
+  }
+]

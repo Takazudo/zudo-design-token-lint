@@ -1,7 +1,23 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { lintContent } from './linter.js';
+import { lintContent, lintFile } from './linter.js';
 import { setConfig, getConfig } from './rules.js';
 import { compileConfig, DEFAULT_CONFIG } from './config.js';
+import { join } from 'node:path';
+import { withTempDir } from './test-utils.js';
+
+describe('lintFile — ENOENT contract (issue #125)', () => {
+  it('rejects with the raw ENOENT error when the file is missing (e.g. deleted between glob and read)', async () => {
+    await withTempDir(async (dir) => {
+      // lintFile does no existence check of its own — it lets readFile's
+      // rejection propagate untouched. runMain (cli.ts) is the layer that
+      // catches this and turns it into a clean one-line CLI error; pinning
+      // the raw contract here documents what that catch block relies on.
+      await expect(lintFile(join(dir, 'does-not-exist.tsx'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    }, 'dtl-test-lintfile-enoent-');
+  });
+});
 
 describe('lintContent — integration with config classAttributes/classFunctions', () => {
   afterEach(() => {

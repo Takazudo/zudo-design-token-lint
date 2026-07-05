@@ -17,6 +17,11 @@ jobs:
   test-and-build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # engines is ">=18"; exercise the floor, an LTS midpoint, and current.
+        node-version: ['18.x', '20.x', '22.x']
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
@@ -24,15 +29,15 @@ jobs:
 
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build npm package
-        run: pnpm -w run build
-
+      # No separate build step: the root "pretest" script already runs
+      # `pnpm run build` before the test suite (and check-pack.sh below builds
+      # its own tarball independently).
       - name: Run package tests
         run: pnpm -w run test
 

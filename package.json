@@ -25,6 +25,9 @@
     "pretest": "pnpm run build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "pregolden:update": "pnpm run build",
+    "golden:update": "node scripts/update-golden.mjs",
     "lint": "prettier --check .",
     "lint:fix": "prettier --write .",
     "prepublishOnly": "pnpm run build && pnpm run test",
@@ -55,6 +58,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.2",
+    "@vitest/coverage-v8": "^4.1.9",
     "prettier": "^3.8.3",
     "typescript": "^6.0.0",
     "vitest": "^4.1.9"

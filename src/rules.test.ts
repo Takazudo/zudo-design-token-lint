@@ -81,6 +81,20 @@ describe('checkClass', () => {
     });
   });
 
+  describe('fractional spacing and custom color edge cases', () => {
+    it('flags fractional spacing values', () => {
+      expect(checkClass('p-4.5')).not.toBeNull();
+    });
+
+    it('allows custom color names', () => {
+      expect(checkClass('bg-custom-color')).toBeNull();
+    });
+
+    it('allows shade with non-numeric suffix', () => {
+      expect(checkClass('bg-gray-500a')).toBeNull();
+    });
+  });
+
   describe('fraction utilities — allowed (not false-positived as numeric spacing)', () => {
     it.each([
       'w-1/2',

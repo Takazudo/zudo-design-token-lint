@@ -53,6 +53,18 @@ describe('extractClasses', () => {
     ]);
   });
 
+  it('attr-level template literal: static tokens are flagged; ${...} tokens fall through unmatched', () => {
+    // Mirrors the cn(`p-6 ${x} m-6`) coverage below, but at the attribute
+    // level (className={`...`}) — only the fully-static form was tested here
+    // before, so an interpolated attr-level template literal was unpinned.
+    const content = '<div className={`px-6 ${x}`}>';
+    const result = extractClasses(content);
+    expect(result).toEqual([
+      { className: 'px-6', line: 1 },
+      { className: '${x}', line: 1 },
+    ]);
+  });
+
   it('extracts from class:list (Astro)', () => {
     const content = `<div class:list={["p-4 flex", 'bg-gray-500']}>`;
     const result = extractClasses(content);
@@ -85,6 +97,29 @@ describe('extractClasses', () => {
       { className: 'p-4', line: 2 },
       { className: 'flex', line: 2 },
       { className: 'bg-gray-500', line: 3 },
+    ]);
+  });
+
+  it('extracts a multiline class:list array with object-key syntax (Astro)', () => {
+    const content = `<div class:list={[
+  { "p-4": true, "m-8": isActive }
+]}>`;
+    const result = extractClasses(content);
+    expect(result).toEqual([
+      { className: 'p-4', line: 2 },
+      { className: 'm-8', line: 2 },
+    ]);
+  });
+
+  it('a `]` inside a class:list string literal does not close the array early', () => {
+    const content = `<div class:list={[
+  "p-4]",
+  "m-8"
+]}>`;
+    const result = extractClasses(content);
+    expect(result).toEqual([
+      { className: 'p-4]', line: 2 },
+      { className: 'm-8', line: 3 },
     ]);
   });
 
@@ -167,10 +202,18 @@ describe('extractClasses', () => {
       ]);
     });
 
-    it('bails gracefully past the 50-line cap without crashing', () => {
+    it('bails gracefully past the 50-line cap, extracting exactly what the cap allows', () => {
       const argLines = Array.from({ length: 60 }, (_, i) => `  "p-${i}",`);
       const content = `const cls = cn(\n${argLines.join('\n')}\n);`;
       expect(() => extractClasses(content)).not.toThrow();
+      const result = extractClasses(content);
+      // 50 arg lines are consumed (the cap), starting right after the opening
+      // `cn(` line — so p-0..p-49 on source lines 2..51 — and everything past
+      // the cap (p-50..p-59) is silently dropped rather than extracted.
+      expect(result).toHaveLength(50);
+      expect(result[0]).toEqual({ className: 'p-0', line: 2 });
+      expect(result[49]).toEqual({ className: 'p-49', line: 51 });
+      expect(result.some((r) => r.className === 'p-50')).toBe(false);
     });
 
     it('still scans source after a multiline call closes mid-line', () => {
@@ -205,6 +248,18 @@ describe('extractClasses', () => {
 
     it('still scans the configured function name itself', () => {
       const content = `const cls = cn("p-4");`;
+      const result = extractClasses(content);
+      expect(result).toEqual([{ className: 'p-4', line: 1 }]);
+    });
+
+    it('does not scan a function name preceded by $ (word-boundary lookbehind)', () => {
+      const content = 'const cls = $cn("p-4");';
+      const result = extractClasses(content);
+      expect(result).toEqual([]);
+    });
+
+    it('scans a call whose name is immediately preceded by a non-word character', () => {
+      const content = '<div className={cn("p-4")}>';
       const result = extractClasses(content);
       expect(result).toEqual([{ className: 'p-4', line: 1 }]);
     });
@@ -287,6 +342,34 @@ describe('extractClasses', () => {
       { className: 'p-hgap-sm', line: 1 },
       { className: 'bg-zd-black', line: 2 },
       { className: 'text-zd-white', line: 2 },
+    ]);
+  });
+
+  it('extracts from multiple className attributes on the same line', () => {
+    const content = '<div className="p-4" className="m-8">';
+    const result = extractClasses(content);
+    expect(result.some((r) => r.className === 'p-4')).toBe(true);
+    expect(result.some((r) => r.className === 'm-8')).toBe(true);
+  });
+
+  it('does not extract from a bare template literal expression outside any recognized attribute/function wrapper', () => {
+    const content = 'const cls = `p-${size} m-4`;';
+    const result = extractClasses(content);
+    expect(result.some((r) => r.className === 'm-4')).toBe(false);
+  });
+
+  it('mixes a multiline cn() call with a single-line cn() call in the same file', () => {
+    const content = `const a = cn("p-4", "flex");
+const b = cn(
+  "m-8",
+  "gap-2"
+);`;
+    const result = extractClasses(content);
+    expect(result).toEqual([
+      { className: 'p-4', line: 1 },
+      { className: 'flex', line: 1 },
+      { className: 'm-8', line: 3 },
+      { className: 'gap-2', line: 4 },
     ]);
   });
 
@@ -753,6 +836,49 @@ describe('extractClasses', () => {
       const content = "cn(a /* don't */, 'p-4')";
       const result = extractClasses(content);
       expect(result).toEqual([{ className: 'p-4', line: 1 }]);
+    });
+  });
+
+  describe('backslash-escaped quotes inside call arguments (scanBalancedDelimited)', () => {
+    it('a backslash-escaped quote does not end the call early, so a later sibling argument is still reached', () => {
+      // scanBalancedDelimited's backslash handling (extractor.ts:277-282)
+      // keeps the whole first argument inside one quoted span despite the
+      // embedded escaped quotes, so the call's true closing paren is found
+      // correctly and "m-8" is reached at all. extractFromCallArgs' own
+      // token regex has no escape awareness, though, so the escaped-quote
+      // argument itself is mangled into fragments rather than one clean
+      // string — that quirk is pinned exactly here rather than hidden behind
+      // a looser assertion.
+      const content = `const cls = cn("say \\"hi\\" p-4", "m-8");`;
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'say', line: 1 },
+        { className: '\\', line: 1 },
+        { className: 'p-4', line: 1 },
+        { className: 'm-8', line: 1 },
+      ]);
+    });
+  });
+
+  describe('CRLF (\\r\\n) line endings (Windows-authored files)', () => {
+    it('extracts correctly from single-line className attributes with CRLF endings', () => {
+      const content = '<div className="p-4 flex">\r\n<span className="m-8">\r\n';
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 1 },
+        { className: 'flex', line: 1 },
+        { className: 'm-8', line: 2 },
+      ]);
+    });
+
+    it('a multiline className attribute spanning CRLF-terminated lines extracts clean class names (no trailing \\r)', () => {
+      const content = '<div\r\n  className="p-4\r\n    bg-gray-500\r\n    m-8"\r\n/>';
+      const result = extractClasses(content);
+      expect(result).toEqual([
+        { className: 'p-4', line: 2 },
+        { className: 'bg-gray-500', line: 3 },
+        { className: 'm-8', line: 4 },
+      ]);
     });
   });
 
