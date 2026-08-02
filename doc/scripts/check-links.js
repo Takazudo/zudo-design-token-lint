@@ -16,20 +16,76 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 // --- Utilities ---
 
+/**
+ * Strip a top-level `versions: [ ... ]` array (bracket-depth aware) out of a
+ * zfb.config.ts source string before regex field extraction.
+ *
+ * Since 4.x, the host no longer has a standalone `src/config/settings.ts` —
+ * `base` / `trailingSlash` / `docsDir` / `locales` live inline in the
+ * `zudoDoc({...})` call in `zfb.config.ts`. That same call's `versions`
+ * array carries PER-VERSION entries that reuse the identical field names
+ * (`docsDir`, `locales.<lang>.dir`) for older doc snapshots. A naive regex
+ * over the whole file grabs whichever occurrence comes first, which silently
+ * picks up a versioned snapshot's `docsDir` instead of the project's actual
+ * (default) one when the project doesn't override `docsDir` at the top
+ * level. Stripping the array first keeps extraction scoped to top-level
+ * settings regardless of field order.
+ */
+function stripVersionsBlock(content) {
+  const idx = content.indexOf("versions:");
+  if (idx === -1) return content;
+  let i = content.indexOf("[", idx);
+  const colonIdx = content.indexOf(":", idx);
+  const valueStart = content.slice(colonIdx + 1).search(/\S/) + colonIdx + 1;
+  if (content[valueStart] !== "[" || i === -1 || i > valueStart + 1) {
+    // Not an array literal (e.g. `versions: false`) — nothing to strip.
+    return content;
+  }
+  let depth = 0;
+  do {
+    if (content[i] === "[") depth++;
+    else if (content[i] === "]") depth--;
+    i++;
+  } while (depth > 0 && i < content.length);
+  return content.slice(0, idx) + content.slice(i);
+}
+
+/**
+ * Extract the content between a top-level `key: { ... }` block's braces
+ * (bracket-depth aware). A naive `/key:\s*\{([\s\S]*?)\n\s*\},?/` regex stops
+ * at the FIRST nested closing brace, so with more than one locale entry
+ * (`locales: { ja: {...}, de: {...} }`) it silently returns only the first
+ * locale's block and every later locale gets dropped from `localeDirs`.
+ */
+function extractBracedBlock(content, key) {
+  const keyIdx = content.indexOf(`${key}:`);
+  if (keyIdx === -1) return null;
+  const braceStart = content.indexOf("{", keyIdx);
+  if (braceStart === -1) return null;
+  let depth = 0;
+  let i = braceStart;
+  do {
+    if (content[i] === "{") depth++;
+    else if (content[i] === "}") depth--;
+    i++;
+  } while (depth > 0 && i < content.length);
+  return content.slice(braceStart + 1, i - 1);
+}
+
 export async function parseBasePath(settingsPath) {
-  const content = await readFile(settingsPath, "utf-8");
+  const content = stripVersionsBlock(await readFile(settingsPath, "utf-8"));
   const match = content.match(/base:\s*["']([^"']*)["']/);
   return match ? match[1] : "/";
 }
 
 export async function parseTrailingSlash(settingsPath) {
-  const content = await readFile(settingsPath, "utf-8");
+  const content = stripVersionsBlock(await readFile(settingsPath, "utf-8"));
   const match = content.match(/trailingSlash:\s*(true|false)/);
   return match ? match[1] === "true" : false;
 }
 
 export async function parseContentDirs(settingsPath) {
-  const content = await readFile(settingsPath, "utf-8");
+  const content = stripVersionsBlock(await readFile(settingsPath, "utf-8"));
 
   // Extract docsDir
   const docsDirMatch = content.match(/docsDir:\s*["']([^"']*)["']/);
@@ -43,12 +99,13 @@ export async function parseContentDirs(settingsPath) {
   while ((legacyMatch = legacyRegex.exec(content)) !== null) {
     localeDirs.push(legacyMatch[1]);
   }
-  // Current shape: pull each `dir: "..."` out of the `locales` object.
-  const localesBlockMatch = content.match(/locales:\s*\{([\s\S]*?)\n\s*\},?/);
-  if (localesBlockMatch) {
+  // Current shape: pull each `dir: "..."` out of the `locales` object —
+  // depth-aware so every configured locale is captured, not just the first.
+  const localesBlock = extractBracedBlock(content, "locales");
+  if (localesBlock) {
     const dirRegex = /\bdir:\s*["']([^"']*)["']/g;
     let dirMatch;
-    while ((dirMatch = dirRegex.exec(localesBlockMatch[1])) !== null) {
+    while ((dirMatch = dirRegex.exec(localesBlock)) !== null) {
       localeDirs.push(dirMatch[1]);
     }
   }
@@ -93,12 +150,18 @@ export async function collectFiles(dir, extensions) {
 
 export function extractHtmlLinks(html) {
   const links = [];
-  const regex = /<a\s[^>]*?href=(?:"([^"]*)"|'([^']*)')[^>]*>/gi;
+  // 4.x `zfb build` output is minified with UNQUOTED attribute values
+  // (`href=/docs/...` rather than `href="/docs/..."`), unlike the pre-4.x
+  // build. Match all three HTML5 attribute-value forms — double-quoted,
+  // single-quoted, and unquoted (terminated by whitespace/`>`/backtick, per
+  // the HTML5 unquoted-attribute-value grammar) — or this extractor returns
+  // zero links against real 4.x dist output and every check silently no-ops.
+  const regex = /<a\s[^>]*?href=(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))[^>]*>/gi;
   let match;
   let lastIndex = 0;
   let currentLine = 1;
   while ((match = regex.exec(html)) !== null) {
-    const href = match[1] || match[2];
+    const href = match[1] ?? match[2] ?? match[3];
     if (/^https?:\/\//i.test(href)) continue;
     if (/^#/.test(href)) continue;
     if (/^mailto:/i.test(href)) continue;
@@ -399,7 +462,9 @@ function entryKey(e) {
 
 async function main() {
   const rootDir = resolve(__dirname, "..");
-  const settingsPath = join(rootDir, "src", "config", "settings.ts");
+  // 4.x: settings live inline in the `zudoDoc({...})` call in zfb.config.ts —
+  // there is no standalone `src/config/settings.ts` anymore.
+  const settingsPath = join(rootDir, "zfb.config.ts");
   const basePath = await parseBasePath(settingsPath);
   const trailingSlash = await parseTrailingSlash(settingsPath);
   const distDir = join(rootDir, "dist");

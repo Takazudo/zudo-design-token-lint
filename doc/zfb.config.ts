@@ -46,6 +46,13 @@ export default defineConfig(
     // pre-rescaffold docs content (last stable npm release before this
     // 4.x rescaffold) as of this commit, frozen under src/content/docs-v1.0(-ja)
     // so Wave 3/4's rewrite of src/content/docs/ doesn't lose it.
+    //
+    // Known upstream bug (zudo-doc@4.5.0): the `<CategoryNav>` MDX component
+    // renders unversioned links on /v/1.0/ pages (its category-index cards
+    // point at the default docs instead of the v1.0 archive) because
+    // `createCategoryNavWrapper` never threads `currentVersion` through,
+    // unlike the sidebar/header nav which do this correctly. Not fixable
+    // from this repo — filed as zudolab/zudo-doc#3194.
     versions: [
       {
         slug: "1.0",
