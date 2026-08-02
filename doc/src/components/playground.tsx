@@ -1,11 +1,17 @@
 "use client";
 
-// react → preact/compat: tsc resolves the alias via tsconfig `paths`
-// (react → ./node_modules/preact/compat/), and the bundler resolves it via
-// framework=preact + bundle.mainFields in zfb.config.ts. The "use client"
-// directive marks this as a hydrating island so zfb's scanner registers it in
-// the island manifest (the marker is set in pages/lib/_playground.tsx).
-import { useState, useRef, useEffect } from "react";
+// preact/compat is imported by its real specifier, NOT through the "react"
+// tsconfig alias: zfb 1.1.1's bundler consults the tsconfig `paths` entry
+// (react → ./node_modules/preact/compat/) ahead of its own framework alias and
+// cannot resolve that bare directory target, failing the build with "matched a
+// first-party mapping but no target resolved". Naming the package directly
+// resolves through preact's exports map and keeps this file's original typing
+// surface — plain preact/hooks would retype the JSX against @types/react,
+// where `spellcheck` must be spelled `spellCheck`, which preact then drops from
+// the DOM instead of setting. The "use client" directive marks this as a
+// hydrating island so zfb's scanner registers it in the island manifest (the
+// marker name is pinned in src/chrome-bindings.tsx).
+import { useState, useRef, useEffect } from "preact/compat";
 import {
   compileConfig,
   lintContent,

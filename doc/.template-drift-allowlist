@@ -23,13 +23,17 @@
 # 4-step template default of check/build/html/manual-smoke).
 scripts/run-b4push.sh
 
-# pages/lib/_chrome.ts — site-specific MDX `mdxExtras` added. This site's docs
-# corpus uses a custom <Playground> tag (the design-token-lint live browser
-# demo, S4/#115); _chrome.ts imports PlaygroundIsland from ./_playground and
-# registers it in the mdxExtras bag passed to createChrome(...) so MDX content
-# resolves the tag through the host chrome instead of 500ing. Intentional
-# divergence from the base template's empty mdxExtras block.
-pages/lib/_chrome.ts
+# pages/docs/[[...slug]].tsx and pages/[locale]/docs/[[...slug]].tsx — the
+# generated `virtual:zudo-doc-chrome-bindings` import is replaced by a STATIC
+# relative import of src/chrome-bindings. This site's docs corpus uses a custom
+# <Playground> tag (the design-token-lint live browser demo, #148) which is an
+# interactive island: the virtual-module path is SSR-presentational only and
+# leaves the island unreachable to zfb's scanner, so it would render the
+# placeholder and never hydrate. zudo-doc's "Interactive islands (experimental)"
+# recipe prescribes exactly this substitution in every applicable doc-route
+# stub. Everything else in both files is byte-identical to the template.
+pages/docs/[[...slug]].tsx
+pages/[locale]/docs/[[...slug]].tsx
 
 # pages/lib/_body-end-islands.tsx — @slot markers resolved; dynamicPageTransition
 # wiring added. The base template ships @slot:body-end-islands:imports /

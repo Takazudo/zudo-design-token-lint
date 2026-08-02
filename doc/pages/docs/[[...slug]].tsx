@@ -35,7 +35,15 @@ import {
 import { createChrome } from "@takazudo/zudo-doc/chrome";
 import { DocHistory } from "@takazudo/zudo-doc/doc-history";
 import { defineChromeBindings } from "@takazudo/zudo-doc/chrome-bindings";
-import { chromeBindings } from "virtual:zudo-doc-chrome-bindings";
+// STATIC import, not `virtual:zudo-doc-chrome-bindings` — deliberate divergence
+// from the generated stub. This site's bindings carry the `<Playground>`
+// interactive island; the virtual-module path is SSR-presentational only and
+// leaves the island unreachable to zfb's scanner, so it would render the
+// placeholder and never hydrate. zudo-doc's "Interactive islands
+// (experimental)" recipe prescribes exactly this substitution in every
+// applicable doc-route stub. `chromeBindingsModule` stays set in zfb.config.ts
+// so package-injected routes still receive the same bindings.
+import { chromeBindings } from "../../src/chrome-bindings";
 
 const ctx = routeContext as unknown as RouteContextPayload;
 const routeCtx = createRouteContext(ctx);

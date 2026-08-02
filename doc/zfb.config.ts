@@ -24,6 +24,12 @@ export default defineConfig(
     },
     llmsTxt: true,
     cjkFriendly: true,
+    // Host-callables channel — binds the `<Playground>` MDX tag (the live
+    // browser lint demo). See src/chrome-bindings.tsx: the doc-route stubs
+    // additionally import that module STATICALLY, because the virtual-module
+    // path this setting creates is SSR-presentational only and cannot make an
+    // island scanner-reachable.
+    chromeBindingsModule: "./src/chrome-bindings.tsx",
     designTokenPanel: true,
     sidebarResizer: true,
     sidebarToggle: true,
@@ -107,15 +113,5 @@ export default defineConfig(
     // Cloudflare adapter — required for the Workers deploy (dist/_worker.js) and
     // any non-prerendered package-owned routes. Bindings come from wrangler.toml.
     adapter: "@takazudo/zfb-adapter-cloudflare",
-    // The Playground island (src/components, ported by Wave 3) imports hooks
-    // from "react", which zfb's framework=preact resolves to `preact/compat`.
-    // That nested compat build is exposed only via a bare `main` field (no
-    // exports map), and esbuild's `--platform=neutral` page/SSR pass has an
-    // EMPTY main-fields list by default → "Main fields must be configured
-    // explicitly when using the neutral platform." Setting them lets the
-    // react→preact/compat resolve complete. zfb-documented escape hatch
-    // (BundleConfig.mainFields, #676). The reference thin config omits this;
-    // zdtl needs it for the island.
-    bundle: { mainFields: ["main", "module"] },
   }),
 );
