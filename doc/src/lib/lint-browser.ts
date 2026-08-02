@@ -16,9 +16,10 @@
  *   playground lints a single pasted code snippet, not a file with an
  *   extension to dispatch on, so the class-lint path is the only one that
  *   makes sense here.
- * - `classAttributes`/`classFunctions`/`semanticPrefixes` stay hardcoded to
- *   the core defaults (not configurable) — the playground config schema does
- *   not surface them, mirroring the pre-existing behavior of this file.
+ * - `classAttributes`/`classFunctions` stay hardcoded to the core defaults
+ *   (not configurable) — the playground config schema does not surface them,
+ *   mirroring the pre-existing behavior of this file. `semanticPrefixes` is
+ *   configurable (issue #160, v2 parity) — see `DEFAULT_SEMANTIC_PREFIXES`.
  */
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -49,6 +50,16 @@ export interface LintConfig {
    * violation reason as `— did you mean "<value>"?`.
    */
   suggestions?: Record<string, string>;
+  /**
+   * Value namespaces that mark a semantic spacing/sizing token. Mirrors
+   * `LintConfig.semanticPrefixes` in config.ts — a value starting with a
+   * listed entry has that namespace stripped and the remaining tail
+   * re-tested against the rule's own numeric pattern, so "p-hgap-sm" still
+   * passes but "p-hgap-2" (a numeric scale wearing a semantic name) is
+   * flagged. REPLACE semantics — omitting the field falls back to
+   * `DEFAULT_SEMANTIC_PREFIXES`, not `[]`.
+   */
+  semanticPrefixes?: string[];
 }
 
 export interface CompiledRule {
@@ -66,6 +77,8 @@ export interface CompiledConfig {
   ignore: string[];
   /** Normalized base class -> semantic replacement token, consulted at match time */
   suggestions: Map<string, string>;
+  /** Value namespaces that mark a semantic token — see `LintConfig.semanticPrefixes` */
+  semanticPrefixes: string[];
 }
 
 export interface Violation {
@@ -116,6 +129,17 @@ const TAILWIND_COLORS = [
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+/**
+ * Mirrors `DEFAULT_CONFIG.semanticPrefixes` in config.ts. The mirror has no
+ * `DEFAULT_CONFIG` object of its own (its `prohibited`/`allowed` are always
+ * given explicitly by the playground's textarea JSON, never falling back to
+ * core defaults — see the file header), so this const exists solely as the
+ * `semanticPrefixes` fallback in `compileConfig` below. The fallback must be
+ * this list, not `[]` — omitting the field in playground config JSON must
+ * keep enforcing the default namespaces, not silently disable them.
+ */
+const DEFAULT_SEMANTIC_PREFIXES = ["hgap-", "vgap-", "hsp-", "vsp-"];
 
 const PLACEHOLDER_TOKEN = /\{n\}|\{color\}|\{shade\}/g;
 const KNOWN_PLACEHOLDER_TOKENS = new Set(["{n}", "{color}", "{shade}"]);
@@ -258,6 +282,9 @@ export function compileConfig(config: LintConfig): CompiledConfig {
     allowed: new Set(config.allowed),
     ignore: config.ignore,
     suggestions: new Map(Object.entries(config.suggestions ?? {})),
+    semanticPrefixes: (config.semanticPrefixes ?? DEFAULT_SEMANTIC_PREFIXES).filter(
+      (p) => p.length > 0,
+    ),
   };
 }
 
@@ -778,16 +805,22 @@ function extractFromClassListArray(
 
 /**
  * Build the Violation for a matched rule, carrying an optional category
- * through and appending a `— did you mean "..."?` hint when the normalized
- * base class has a `suggestions` mapping.
+ * through, appending the semanticPrefixes parenthetical (see
+ * `selectSemanticPrefix`) when the match came from a stripped namespace, and
+ * finally appending a `— did you mean "..."?` hint when the normalized base
+ * class has a `suggestions` mapping.
  */
 function buildViolation(
   originalClassName: string,
   rule: CompiledRule,
   normalizedClassName: string,
   suggestions: Map<string, string>,
+  semanticPrefix?: string,
 ): Violation {
   let reason = rule.reasonTemplate.replace("{CLASS}", originalClassName);
+  if (semanticPrefix !== undefined) {
+    reason += ` (numeric tail after the "${semanticPrefix}" semantic prefix)`;
+  }
   const suggestion = suggestions.get(normalizedClassName);
   if (suggestion !== undefined) {
     reason += ` — did you mean "${suggestion}"?`;
@@ -800,10 +833,52 @@ function buildViolation(
   return violation;
 }
 
+/**
+ * Result of matching a value against the configured `semanticPrefixes`
+ * entries. A "namespace" match strips the matched entry (its `tail` is
+ * re-tested against the rule's numeric pattern by the caller); a "bypass"
+ * match preserves the 1.x pure-allowlist behavior outright — the entry
+ * matched but not as a namespace (e.g. a digit-leading prefix like "1"
+ * against "12", or an entry that consumes the whole value with nothing left
+ * to strip). Mirrors `SemanticHit`/`selectSemanticPrefix` in src/rules.ts —
+ * see the locked v2 contract (issue #158 §2) for the full algorithm.
+ */
+type SemanticHit = { kind: "namespace"; prefix: string; tail: string } | { kind: "bypass" };
+
+function selectSemanticPrefix(value: string, semanticPrefixes: string[]): SemanticHit | null {
+  let longestNamespace: { prefix: string; tail: string } | null = null;
+  let hasBypassMatch = false;
+
+  for (const prefix of semanticPrefixes) {
+    if (prefix.length === 0 || !value.startsWith(prefix)) {
+      continue;
+    }
+    const remainder = value.slice(prefix.length);
+    const isNamespaceMatch = prefix.endsWith("-") || remainder.startsWith("-");
+    if (isNamespaceMatch) {
+      const tail = prefix.endsWith("-") ? remainder : remainder.slice(1);
+      if (longestNamespace === null || prefix.length > longestNamespace.prefix.length) {
+        longestNamespace = { prefix, tail };
+      }
+    } else {
+      hasBypassMatch = true;
+    }
+  }
+
+  if (longestNamespace !== null) {
+    return { kind: "namespace", prefix: longestNamespace.prefix, tail: longestNamespace.tail };
+  }
+  if (hasBypassMatch) {
+    return { kind: "bypass" };
+  }
+  return null;
+}
+
 function matchRule(
   originalClassName: string,
   withoutNeg: string,
   rule: CompiledRule,
+  semanticPrefixes: string[],
   suggestions: Map<string, string>,
 ): Violation | null {
   // Exact-match rule (no placeholders, valuePattern is /^$/). Fires when
@@ -824,9 +899,24 @@ function matchRule(
 
   const value = withoutNeg.slice(rule.prefix.length + 1);
 
-  // Allow semantic tokens — only for spacing rules, not color rules.
-  if (rule.isSpacingRule && (value.startsWith("hgap-") || value.startsWith("vgap-"))) {
-    return null;
+  // semanticPrefixes only ever adds violations, it never removes one: a
+  // namespace match (e.g. "hgap-") strips the matched entry and re-tests the
+  // remaining tail against this same rule's own "0" bypass and numeric
+  // valuePattern — nothing else. A bypass match (an entry that matched but
+  // not as a namespace) preserves the 1.x pure-allowlist behavior unchanged.
+  if (rule.isSpacingRule) {
+    const hit = selectSemanticPrefix(value, semanticPrefixes);
+    if (hit !== null) {
+      if (hit.kind === "bypass") {
+        return null;
+      }
+      if (hit.tail === "" || hit.tail === "0") {
+        return null;
+      }
+      return rule.valuePattern.test(hit.tail)
+        ? buildViolation(originalClassName, rule, withoutNeg, suggestions, hit.prefix)
+        : null;
+    }
   }
 
   // Allow "0" for spacing rules. ("p-1px" is allowed via the config's
@@ -886,7 +976,13 @@ export function checkClassWithConfig(
     // Spacing/sizing rules must see the value with any `/N` intact; color
     // rules receive the opacity-stripped form.
     const candidate = rule.isSpacingRule ? withoutNeg : withoutOpacity;
-    const violation = matchRule(className, candidate, rule, config.suggestions);
+    const violation = matchRule(
+      className,
+      candidate,
+      rule,
+      config.semanticPrefixes,
+      config.suggestions,
+    );
     if (violation) {
       return violation;
     }
