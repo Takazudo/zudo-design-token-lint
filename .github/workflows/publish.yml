@@ -62,18 +62,21 @@ jobs:
       # Dist-tag policy (derive from the version string; always pass --tag):
       #   prerelease versions (matching -next./-beta./-rc.) → "next"
       #   stable versions (clean X.Y.Z)                      → "latest"
-      # `next` is a preview side-channel and is NOT auto-advanced to stable, so
-      # after a stable ships `@next` may point at an older prerelease until the
-      # next prerelease publishes — intentional: `@next` stays a preview channel,
-      # distinct from `@latest`, never mirrored onto it.
+      # `next` is a preview side-channel and is NOT auto-advanced to stable —
+      # publishing to `latest` never touches `next`. A `next` left pointing at
+      # an OLDER prerelease once a stable ships is stale, not intentional; the
+      # "Clean up stale next dist-tag" step below removes it once confirmed
+      # behind the new `latest`.
       # NPM_TOKEN MUST be an Automation-type token: scoped publish (@takazudo/*)
       # requires 2FA, and only an Automation (or 2FA-bypassing granular) token can
       # publish unattended in CI. A standard user token fails with an OTP/EOTP error.
       - name: Publish package
+        id: publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Publishing @takazudo/zudo-design-token-lint@$VERSION"
           if echo "$VERSION" | grep -Eq -- '-(next|beta|rc)\.'; then
             echo "Prerelease → dist-tag 'next'"
@@ -81,4 +84,96 @@ jobs:
           else
             echo "Stable → dist-tag 'latest'"
             pnpm publish --tag latest --access public --no-git-checks --provenance
+          fi
+
+      # Post-publish cleanup, stable path only: a `next` dist-tag that's still
+      # pointing at an OLDER prerelease than the `latest` we just published is
+      # stale, not the intentional lag described above. Guarded, not a blanket
+      # `|| true` — query first, remove only when `next` exists AND is
+      # semver-older, then re-query to confirm removal. `continue-on-error` is
+      # a backstop only; failures are handled explicitly as `::warning::`
+      # below since the publish itself already succeeded and must not be
+      # failed by cleanup.
+      - name: Clean up stale next dist-tag
+        if: ${{ !contains(steps.publish.outputs.version, '-') }}
+        continue-on-error: true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          STABLE_VERSION="${{ steps.publish.outputs.version }}"
+
+          if ! DIST_TAGS=$(npm dist-tag ls "$PKG_NAME" 2>&1); then
+            echo "::warning::Could not query dist-tags for $PKG_NAME — skipping stale 'next' cleanup ($DIST_TAGS)"
+            exit 0
+          fi
+
+          NEXT_VERSION=$(echo "$DIST_TAGS" | sed -n 's/^next: //p')
+          if [ -z "$NEXT_VERSION" ]; then
+            echo "No 'next' dist-tag set — nothing to clean up"
+            exit 0
+          fi
+
+          IS_OLDER=$(NEXT_VERSION="$NEXT_VERSION" STABLE_VERSION="$STABLE_VERSION" node -e '
+            const a = process.env.NEXT_VERSION;
+            const b = process.env.STABLE_VERSION;
+            function parse(v) {
+              const parts = v.split("-");
+              const core = parts[0];
+              const pre = parts.length > 1 ? parts.slice(1).join("-") : null;
+              const nums = core.split(".").map(Number);
+              return { major: nums[0], minor: nums[1], patch: nums[2], pre: pre ? pre.split(".") : null };
+            }
+            function cmpIdent(x, y) {
+              const nx = /^\d+$/.test(x);
+              const ny = /^\d+$/.test(y);
+              if (nx && ny) return Number(x) - Number(y);
+              if (nx) return -1;
+              if (ny) return 1;
+              return x < y ? -1 : x > y ? 1 : 0;
+            }
+            function cmp(x, y) {
+              if (x.major !== y.major) return x.major - y.major;
+              if (x.minor !== y.minor) return x.minor - y.minor;
+              if (x.patch !== y.patch) return x.patch - y.patch;
+              if (!x.pre && !y.pre) return 0;
+              if (!x.pre) return 1;
+              if (!y.pre) return -1;
+              const len = Math.max(x.pre.length, y.pre.length);
+              for (let i = 0; i < len; i++) {
+                if (x.pre[i] === undefined) return -1;
+                if (y.pre[i] === undefined) return 1;
+                const c = cmpIdent(x.pre[i], y.pre[i]);
+                if (c !== 0) return c;
+              }
+              return 0;
+            }
+            process.stdout.write(String(cmp(parse(a), parse(b)) < 0));
+          ' 2>/dev/null)
+
+          if [ "$IS_OLDER" != "true" ]; then
+            echo "'next' ($NEXT_VERSION) is not older than the published $STABLE_VERSION — leaving it"
+            exit 0
+          fi
+
+          # Re-verify immediately before deleting: a concurrent prerelease publish
+          # could have moved `next` since it was read above, and an unconditional
+          # rm here would delete a fresh tag instead of the stale one we checked.
+          RECHECK_NEXT_VERSION=$(npm dist-tag ls "$PKG_NAME" 2>/dev/null | sed -n 's/^next: //p')
+          if [ "$RECHECK_NEXT_VERSION" != "$NEXT_VERSION" ]; then
+            echo "'next' changed to '$RECHECK_NEXT_VERSION' since it was checked — skipping removal to avoid deleting a fresh tag"
+            exit 0
+          fi
+
+          echo "'next' ($NEXT_VERSION) is older than the published $STABLE_VERSION — removing stale 'next' dist-tag"
+          if ! npm dist-tag rm "$PKG_NAME" next; then
+            echo "::warning::Failed to remove stale 'next' dist-tag ($NEXT_VERSION) after publishing $STABLE_VERSION — remove it manually"
+            exit 0
+          fi
+
+          AFTER=$(npm dist-tag ls "$PKG_NAME" 2>&1 | sed -n 's/^next: //p')
+          if [ -n "$AFTER" ]; then
+            echo "::warning::'next' dist-tag still shows '$AFTER' after removal — remove it manually"
+          else
+            echo "Confirmed stale 'next' dist-tag removed"
           fi
