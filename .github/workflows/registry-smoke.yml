@@ -10,6 +10,13 @@
 # scripts/check-pack.sh's artifact checks (version + violation exit code),
 # against @latest and @next.
 #
+# The `next` leg is conditional on the `next` dist-tag actually existing.
+# Under the stable-by-default release policy (see .claude/skills/l-make-release/
+# SKILL.md's Dist-tag policy), publish.yml removes a graduated `next` dist-tag
+# after a stable release, so `next` can legitimately be absent for long
+# stretches between soaks — an unconditional `npm i @next` would then fail
+# with ETARGET. When absent, the leg is skipped with a notice instead.
+#
 # Schedule: weekly, Monday 04:23 UTC — an off-minute (not top-of-hour) to
 # avoid the scheduled-workflow stampede documented in GitHub's own guidance.
 
@@ -43,7 +50,40 @@ jobs:
         with:
           node-version: 22
 
+      - name: Check dist-tag exists
+        id: check-tag
+        run: |
+          PKG_NAME="@takazudo/zudo-design-token-lint"
+          if [ "${{ matrix.tag }}" != "next" ]; then
+            # latest always exists once the package has published at all
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! DIST_TAGS=$(npm view "$PKG_NAME" dist-tags --json 2>&1); then
+            echo "::error::Failed to query dist-tags for $PKG_NAME — cannot determine whether 'next' exists"
+            echo "$DIST_TAGS"
+            exit 1
+          fi
+          HAS_NEXT=$(echo "$DIST_TAGS" | node -e '
+            let d = "";
+            process.stdin.on("data", c => d += c);
+            process.stdin.on("end", () => {
+              try {
+                const tags = JSON.parse(d);
+                console.log(Object.prototype.hasOwnProperty.call(tags, "next") ? "true" : "false");
+              } catch {
+                console.log("false");
+              }
+            });
+          ')
+          echo "exists=$HAS_NEXT" >> "$GITHUB_OUTPUT"
+
+      - name: Notice — no 'next' dist-tag published, skipping
+        if: matrix.tag == 'next' && steps.check-tag.outputs.exists == 'false'
+        run: echo "::notice::No 'next' dist-tag currently published for @takazudo/zudo-design-token-lint — expected under the stable-by-default release policy when no prerelease soak is in flight. Skipping the @next smoke leg."
+
       - name: Install @takazudo/zudo-design-token-lint@${{ matrix.tag }}
+        if: steps.check-tag.outputs.exists == 'true'
         run: |
           WORK_DIR=$(mktemp -d)
           echo "WORK_DIR=$WORK_DIR" >> "$GITHUB_ENV"
@@ -52,11 +92,13 @@ jobs:
           npm i "@takazudo/zudo-design-token-lint@${{ matrix.tag }}"
 
       - name: Check design-token-lint --version exits 0
+        if: steps.check-tag.outputs.exists == 'true'
         run: |
           cd "$WORK_DIR"
           npx --no-install design-token-lint --version
 
       - name: Check violation fixture exits 1
+        if: steps.check-tag.outputs.exists == 'true'
         run: |
           cd "$WORK_DIR"
           mkdir -p src
