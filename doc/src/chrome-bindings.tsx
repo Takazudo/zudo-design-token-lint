@@ -33,38 +33,42 @@
 // page -> chrome-bindings -> Playground and register the constructor under the
 // SSR marker name.
 
-import type { VNode } from "preact";
-import { Island } from "@takazudo/zfb";
-import { defineChromeBindings } from "@takazudo/zudo-doc/chrome-bindings";
-import Playground from "./components/playground";
+import type { VNode } from 'preact';
+import { Island } from '@takazudo/zfb';
+import { defineChromeBindings } from '@takazudo/zudo-doc/chrome-bindings';
+import Playground, { type PlaygroundLang } from './components/playground';
 
 // Pin displayName so zfb's captureComponentName produces a stable marker name
 // even after the SSR pipeline runs the component through a function-name
 // rewriting layer. Must match the `data-zfb-island-skip-ssr="Playground"`
 // attribute the hydration runtime queries.
-(Playground as { displayName?: string }).displayName = "Playground";
+(Playground as { displayName?: string }).displayName = 'Playground';
 
 /**
  * MDX binding for `<Playground />`. SSR emits the placeholder notice as static
  * HTML inside the skip-ssr div; the hydration runtime mounts the real
- * interactive component into it after load.
+ * interactive component into it after load. The optional `lang` MDX attribute
+ * (`<Playground lang="ja" />` on the JA page) localizes the island's UI chrome;
+ * only that plain string crosses the island prop boundary.
  */
-export function PlaygroundIsland(): VNode {
+export function PlaygroundIsland({ lang }: { lang?: PlaygroundLang } = {}): VNode {
   const fallback = (
     <div
       className="zd-playground-placeholder rounded-lg border border-muted/30 bg-surface/50 p-hsp-md"
       data-playground-placeholder
     >
       <p className="text-caption text-muted">
-        Loading the interactive playground…
+        {lang === 'ja'
+          ? 'インタラクティブな Playground を読み込み中…'
+          : 'Loading the interactive playground…'}
       </p>
     </div>
   );
 
   return Island({
-    when: "load",
+    when: 'load',
     ssrFallback: fallback,
-    children: <Playground />,
+    children: <Playground lang={lang} />,
   }) as unknown as VNode;
 }
 
