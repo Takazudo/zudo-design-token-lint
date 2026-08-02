@@ -187,7 +187,68 @@ export function extractHtmlLinks(html) {
  *   'directoryIndex' — resolved via dir/index.html (page link without trailing slash)
  *   'missing'        — target does not exist
  */
-export async function resolveLinkDetail(href, distDir, basePath = "/", fileDir = "") {
+/**
+ * Parse dist/_redirects (Cloudflare Workers static-asset redirects) into
+ * matchers. Without this the checker reports a redirected URL as broken: it
+ * resolves hrefs against files on disk, and a redirect source has no file.
+ *
+ * Supports the two rule forms this project uses — `:placeholder` (one segment)
+ * and `*` (splat) — and substitutes captures back into the target so the
+ * TARGET is resolved too. A rule pointing at a nonexistent page is still a
+ * broken link, and must not be laundered into a pass by the mere presence of
+ * a redirect.
+ *
+ * Cached per distDir: _redirects does not change during a run.
+ */
+const redirectRuleCache = new Map();
+
+async function loadRedirectRules(distDir) {
+  if (redirectRuleCache.has(distDir)) return redirectRuleCache.get(distDir);
+
+  const rules = [];
+  const file = join(distDir, "_redirects");
+  if (await fileExists(file)) {
+    const text = await readFile(file, "utf8");
+    for (const line of text.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const [from, to] = trimmed.split(/\s+/);
+      if (!from || !to) continue;
+
+      // Capture names in SOURCE order, so the target can substitute by name.
+      // Cloudflare binds `*` to `:splat` and `:name` to that same `:name` —
+      // positional substitution breaks as soon as a rule has both (a target
+      // `:splat` would otherwise pick up the `:version` capture).
+      const names = [];
+      for (const m of from.matchAll(/\*|:[A-Za-z_]\w*/g)) {
+        names.push(m[0] === "*" ? "splat" : m[0].slice(1));
+      }
+
+      // Escape regex metacharacters, then re-open the two wildcard forms.
+      const pattern = from
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        .replace(/\\\*/g, "(.*)")
+        .replace(/:[A-Za-z_]\w*/g, "([^/]+)");
+      rules.push({ regex: new RegExp(`^${pattern}$`), to, names });
+    }
+  }
+  redirectRuleCache.set(distDir, rules);
+  return rules;
+}
+
+/** Substitute a rule's captures into its target, matching `:name` by name. */
+function applyRedirectTarget(to, names, captures) {
+  const bound = new Map(names.map((n, i) => [n, captures[i] ?? ""]));
+  return to.replace(/:[A-Za-z_]\w*/g, (token) => bound.get(token.slice(1)) ?? token);
+}
+
+export async function resolveLinkDetail(
+  href,
+  distDir,
+  basePath = "/",
+  fileDir = "",
+  followRedirects = true,
+) {
   const clean = href.split("#")[0].split("?")[0];
   if (!clean) return "root";
 
@@ -209,22 +270,53 @@ export async function resolveLinkDetail(href, distDir, basePath = "/", fileDir =
   const relPath = stripped.startsWith("/") ? stripped.slice(1) : stripped;
   if (!relPath) return "root";
 
+  const onDisk = await resolveOnDisk(relPath, distDir);
+  if (onDisk !== "missing") return onDisk;
+
+  // Nothing on disk — the asset layer may still serve it via _redirects.
+  // This fallback must sit AFTER every on-disk branch, not inside one: a
+  // redirect source is exactly a path with no file behind it, and each branch
+  // shape (extension / trailing slash / bare) can be a redirect source.
+  if (followRedirects) {
+    const redirected = await resolveViaRedirects(stripped, distDir, basePath);
+    if (redirected) return redirected;
+  }
+  return "missing";
+}
+
+/** Resolve a dist-relative path against built files only. */
+async function resolveOnDisk(relPath, distDir) {
   // Has file extension → check exact path
   if (extname(relPath)) {
-    const exists = await fileExists(join(distDir, relPath));
-    return exists ? "file" : "missing";
+    return (await fileExists(join(distDir, relPath))) ? "file" : "missing";
   }
 
   // Ends with / → check index.html inside
   if (relPath.endsWith("/")) {
-    const exists = await fileExists(join(distDir, relPath, "index.html"));
-    return exists ? "directoryIndex" : "missing";
+    return (await fileExists(join(distDir, relPath, "index.html"))) ? "directoryIndex" : "missing";
   }
 
   // No extension, no trailing slash → try dir/index.html then .html
   if (await fileExists(join(distDir, relPath, "index.html"))) return "directoryIndex";
   if (await fileExists(join(distDir, relPath + ".html"))) return "file";
   return "missing";
+}
+
+/**
+ * Match a path against dist/_redirects and resolve the rule's target.
+ * Returns "redirect" only when the target itself resolves — a rule pointing
+ * nowhere leaves the link broken.
+ */
+async function resolveViaRedirects(pathname, distDir, basePath) {
+  const rules = await loadRedirectRules(distDir);
+  for (const rule of rules) {
+    const m = pathname.match(rule.regex);
+    if (!m) continue;
+    const target = applyRedirectTarget(rule.to, rule.names, m.slice(1));
+    const targetType = await resolveLinkDetail(target, distDir, basePath, "", false);
+    if (targetType !== "missing") return "redirect";
+  }
+  return null;
 }
 
 export async function resolveLink(href, distDir, basePath = "/", fileDir = "") {
@@ -444,18 +536,37 @@ export function formatReport(brokenLinks, mdxWarnings, trailingSlashWarnings = [
  * Returns a Set for O(1) lookup against `entryKey()` output below.
  */
 export async function readAllowlist(allowlistPath) {
-  if (!allowlistPath) return new Set();
-  if (!(await fileExists(allowlistPath))) return new Set();
+  const empty = { exact: new Set(), hrefs: new Set() };
+  if (!allowlistPath) return empty;
+  if (!(await fileExists(allowlistPath))) return empty;
   const text = await readFile(allowlistPath, "utf-8");
   const lines = text
     .split("\n")
     .map((l) => l.replace(/#.*$/, "").trim())
     .filter((l) => l.length > 0);
-  return new Set(lines);
+
+  // Two entry forms:
+  //   file:line:href  — pins one occurrence (default; precise but line-fragile)
+  //   href=<href>     — allows that href wherever it appears
+  // The href= form exists for upstream bugs that emit the SAME broken link
+  // from every page of a tree: pinning those by line means dozens of entries
+  // that all silently stop matching the moment any content edit shifts a line,
+  // turning the allowlist into a no-op without anyone noticing.
+  const exact = new Set();
+  const hrefs = new Set();
+  for (const line of lines) {
+    if (line.startsWith("href=")) hrefs.add(line.slice("href=".length).trim());
+    else exact.add(line);
+  }
+  return { exact, hrefs };
 }
 
 function entryKey(e) {
   return `${e.file}:${e.line}:${e.href}`;
+}
+
+function isAllowlisted(allowlist, e) {
+  return allowlist.exact.has(entryKey(e)) || allowlist.hrefs.has(e.href);
 }
 
 // --- Main ---
@@ -476,8 +587,13 @@ async function main() {
     process.exit(1);
   }
 
-  // Exclude versioned docs links — version content may be incomplete
-  const excludePatterns = [/\/v\/[^/]+\//];
+  // Versioned (/v/<slug>/) links ARE checked. They used to be excluded
+  // wholesale ("version content may be incomplete"), but that also hid real,
+  // fixable 404s — the versions-page entry-slug bug (issue #168) lived under
+  // that blanket exemption for its whole life. Genuinely unavoidable
+  // upstream-caused breakage belongs in .check-links-allowlist, named and
+  // dated, so it stays visible instead of silently covering the whole tree.
+  const excludePatterns = [];
 
   const { docsDir, localeDirs } = await parseContentDirs(settingsPath);
   const contentDirs = [join(rootDir, docsDir), ...localeDirs.map((d) => join(rootDir, d))];
@@ -519,14 +635,14 @@ async function main() {
   // Filter out allowlisted entries before strict-mode decisions but
   // AFTER the printed report — so the report shows the full picture
   // and the strict gate counts only "real" entries.
-  const filterOut = (entries) => entries.filter((e) => !allowlist.has(entryKey(e)));
+  const filterOut = (entries) => entries.filter((e) => !isAllowlisted(allowlist, e));
   const realBroken = filterOut(brokenLinks);
   const realAbsolute = filterOut(mdxWarnings);
   const realTrailing = filterOut(trailingSlashWarnings);
 
   console.log(formatReport(brokenLinks, mdxWarnings, trailingSlashWarnings));
 
-  if (allowlist.size > 0) {
+  if (allowlist.exact.size + allowlist.hrefs.size > 0) {
     const skipped =
       (brokenLinks.length - realBroken.length) +
       (mdxWarnings.length - realAbsolute.length) +

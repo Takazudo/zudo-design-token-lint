@@ -1,9 +1,41 @@
-# Known-broken links caused by an upstream @takazudo/zudo-doc limitation,
-# not by this project's content. The package's `/docs/versions` page
-# hardcodes the entry-doc slug as the flat `docs/getting-started`, but this
-# project's actual entry doc is nested at `docs/overview/getting-started`.
-# Filed upstream: https://github.com/zudolab/zudo-doc/issues/3195
-# Remove these lines once that issue ships a fix (or a config hook) and this
-# project adopts it.
-dist/docs/versions/index.html:1003:/docs/getting-started
-dist/ja/docs/versions/index.html:1003:/ja/docs/getting-started
+# Known-broken links caused by upstream @takazudo/zudo-doc limitations, not by
+# this project's content. Every entry must name the upstream issue and be
+# removable once that issue ships a fix.
+#
+# Entry forms:
+#   file:line:href   pins one occurrence (precise, but breaks if lines shift)
+#   href=<href>      allows that href wherever it appears
+#
+# ---------------------------------------------------------------------------
+# zudolab/zudo-doc#3196 — the version switcher offers a snapshot link for a
+# page that exists only in newer docs instead of greying it out. The
+# VersionSwitcher component supports `unavailableVersions`, but
+# `buildInlineVersionSwitcher` never computes it.
+#
+# Concretely: the changelog entries below exist in Latest and in the 2.0
+# snapshot but not in 1.0 (which predates them), so every page rendering a
+# version switcher for them emits a dead /v/1.0/ link — 32 links across the EN
+# and JA trees, from both the header switcher (line ~109) and the in-content
+# one (line ~1003).
+#
+# Not redirectable, unlike the other two cases now handled in public/_redirects
+# (the versions-page entry slug, and the unversioned /docs/claude* tree): there
+# is no correct destination here, because the page genuinely does not exist in
+# 1.0. Silently landing the reader on a different changelog entry would be
+# worse than the 404.
+#
+# The href= form is deliberate — pinning 32 line numbers across changelog pages
+# would rot on the next changelog edit, silently turning this into a no-op.
+href=/v/1.0/docs/changelog/v1.1.0-next.1
+href=/v/1.0/docs/changelog/v1.1.0-next.2
+href=/v/1.0/docs/changelog/v1.1.0-next.3
+href=/v/1.0/docs/changelog/v2.0.0
+href=/v/1.0/ja/docs/changelog/v1.1.0-next.1
+href=/v/1.0/ja/docs/changelog/v1.1.0-next.2
+href=/v/1.0/ja/docs/changelog/v1.1.0-next.3
+href=/v/1.0/ja/docs/changelog/v2.0.0
+
+# ---------------------------------------------------------------------------
+# Removed 2026-08-02: the two `/docs/getting-started` entries for
+# zudolab/zudo-doc#3195 (versions-page entry slug). That link is now served by
+# public/_redirects, so it resolves and no longer needs an exception.

@@ -73,10 +73,13 @@ export default defineConfig(
     // (for a different reason: its old island wiring no longer builds). Apply
     // the same treatment to any future live-data component before snapshotting.
     //
-    // `banner: 'unmaintained'` on every entry, per the versioning guide's
-    // "Creating a New Version" step: a snapshot is frozen by definition, so it
-    // points readers at Latest even while its label still names the current
-    // release.
+    // Banner: the versioning guide's "Creating a New Version" step says to set
+    // `banner: 'unmaintained'` on a new snapshot, and that is right for every
+    // entry EXCEPT the one whose label is still the current release. Telling a
+    // reader on /v/2.0/ that they are "viewing an older version" is simply
+    // false while 2.0.0 IS the latest — so 2.0 carries `banner: false` until
+    // the next release lands. See the per-entry note below; that flip is the
+    // one piece of this block that needs doing by hand.
     //
     // Known upstream bug (zudo-doc@4.5.0): the `<CategoryNav>` MDX component
     // renders unversioned links on /v/<slug>/ pages (its category-index cards
@@ -101,7 +104,13 @@ export default defineConfig(
         locales: {
           ja: { dir: 'src/content/docs-v2.0-ja' },
         },
-        banner: 'unmaintained',
+        // FLIP TO 'unmaintained' WHEN A RELEASE AFTER 2.0.0 SHIPS. False only
+        // because 2.0.0 is currently the latest release, so an "older version"
+        // banner would be a lie. The moment 2.1/3.0 lands this snapshot really
+        // is old, and without the banner it loses its only signal that the
+        // reader is not on the current docs. Nothing enforces this flip yet —
+        // it is a manual step at release time.
+        banner: false,
       },
       {
         slug: '1.0',
