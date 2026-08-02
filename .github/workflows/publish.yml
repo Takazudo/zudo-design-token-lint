@@ -6,8 +6,12 @@ on:
       - 'v*.*.*'
   workflow_dispatch:
 
+# Single shared group (not per-ref): the stale-'next'-dist-tag cleanup below does a
+# check-then-delete against the registry, so a concurrent stable+prerelease publish
+# must not interleave, or a prerelease run could move 'next' between the recheck and
+# the rm and have a fresh tag deleted out from under it.
 concurrency:
-  group: publish-${{ github.ref }}
+  group: publish
   cancel-in-progress: false
 
 permissions:
@@ -171,7 +175,12 @@ jobs:
             exit 0
           fi
 
-          AFTER=$(npm dist-tag ls "$PKG_NAME" 2>&1 | sed -n 's/^next: //p')
+          if ! AFTER_TAGS=$(npm dist-tag ls "$PKG_NAME" 2>&1); then
+            echo "::warning::Could not query dist-tags for $PKG_NAME after removal — unable to confirm ($AFTER_TAGS)"
+            exit 0
+          fi
+
+          AFTER=$(echo "$AFTER_TAGS" | sed -n 's/^next: //p')
           if [ -n "$AFTER" ]; then
             echo "::warning::'next' dist-tag still shows '$AFTER' after removal — remove it manually"
           else
