@@ -18,43 +18,7 @@ import {
   type LintConfig,
   type LintResult,
 } from "@/lib/lint-browser";
-
-const DEFAULT_CODE = `<div className="p-4 bg-gray-200">
-  <h1 className="text-xl mb-vsp-md">Title</h1>
-  <p className="mt-2 text-gray-600">
-    Some content here
-  </p>
-</div>`;
-
-const DEFAULT_CONFIG = JSON.stringify(
-  {
-    prohibited: [
-      "p-{n}",
-      "py-{n}",
-      "px-{n}",
-      "pt-{n}",
-      "pb-{n}",
-      "pl-{n}",
-      "pr-{n}",
-      "m-{n}",
-      "my-{n}",
-      "mx-{n}",
-      "mt-{n}",
-      "mb-{n}",
-      "ml-{n}",
-      "mr-{n}",
-      "gap-{n}",
-      "gap-x-{n}",
-      "gap-y-{n}",
-      "bg-{color}-{shade}",
-      "text-{color}-{shade}",
-      "border-{color}-{shade}",
-    ],
-    allowed: ["p-0", "m-0", "gap-0"],
-  },
-  null,
-  2,
-);
+import { DEFAULT_CODE, DEFAULT_CONFIG } from "@/lib/playground-samples";
 
 const TEXTAREA_CLASS =
   "min-h-[10rem] w-full resize-y rounded-lg border border-muted/30 bg-code-bg p-hsp-md font-mono text-caption leading-relaxed text-code-fg focus:border-accent focus:outline-none";

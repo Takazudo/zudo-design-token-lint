@@ -87,15 +87,18 @@ File glob patterns to scan when the CLI is called without explicit file argument
 A string appended to violation messages after the `—` separator, replacing the default suggestion text. Use this to point developers toward your project's specific token naming convention.
 
 **Default messages (no `suggestionSuffix`):**
+
 - Spacing: `Numeric spacing "p-4" — use a semantic spacing token or arbitrary value`
 - Color: `Default Tailwind color "bg-gray-500" — use a design system color token`
 
 **With `suggestionSuffix`:**
+
 ```json
 {
   "suggestionSuffix": "use hgap-*/vgap-* or zd-* tokens"
 }
 ```
+
 - Spacing: `Numeric spacing "p-4" — use hgap-*/vgap-* or zd-* tokens`
 - Color: `Default Tailwind color "bg-gray-500" — use hgap-*/vgap-* or zd-* tokens`
 
