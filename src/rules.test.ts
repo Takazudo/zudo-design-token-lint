@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { checkClass, checkClassWithConfig } from './rules.js';
-import { compileConfig, DEFAULT_CONFIG, type LintConfig } from './config.js';
+import { compileConfig, DEFAULT_CONFIG, CONFIG_PRESETS, type LintConfig } from './config.js';
+import semanticPrefixesMatrix from './__fixtures__/semantic-prefixes-matrix.json';
 
 describe('checkClass', () => {
   describe('numeric spacing — prohibited', () => {
@@ -307,7 +308,7 @@ describe('checkClass', () => {
       expect(result!.reason).toContain('Numeric spacing');
     });
 
-    it('custom prefixes only allow their own tokens, not old defaults', () => {
+    it('custom prefixes only allow their own tokens, not old defaults (issue #158 §8.8)', () => {
       const custom: LintConfig = {
         prohibited: DEFAULT_CONFIG.prohibited,
         allowed: DEFAULT_CONFIG.allowed,
@@ -318,8 +319,17 @@ describe('checkClass', () => {
       // New custom prefixes are allowed
       expect(checkClassWithConfig('p-hsp-sm', compiled)).toBeNull();
       expect(checkClassWithConfig('gap-vsp-xs', compiled)).toBeNull();
-      // Old defaults pass through (no violation because hgap-sm is non-numeric anyway)
+      // "hgap-" isn't in this config's semanticPrefixes at all, so p-hgap-*
+      // is judged on its raw value like any other class: p-hgap-sm passes
+      // because "hgap-sm" isn't numeric, but p-hgap-2 is judged on "hgap-2"
+      // which is also not numeric as a whole string, so it passes too — it's
+      // the presence of a *matching* semanticPrefixes entry (§8.1/§8.4) that
+      // triggers the namespace-strip-and-re-test behavior, not its absence.
       expect(checkClassWithConfig('p-hgap-sm', compiled)).toBeNull();
+      expect(checkClassWithConfig('p-hgap-2', compiled)).toBeNull();
+      // "hsp-" IS in this config's semanticPrefixes, so p-hsp-2 strips to
+      // tail "2", which is numeric — flagged.
+      expect(checkClassWithConfig('p-hsp-2', compiled)).not.toBeNull();
     });
 
     it('empty semanticPrefixes preserves normal behavior', () => {
@@ -565,6 +575,201 @@ describe('checkClass', () => {
       const result = checkClassWithConfig('hover:p-2', compiled);
       expect(result).not.toBeNull();
       expect(result!.reason).toContain('did you mean "p-hsp-sm"?');
+    });
+  });
+
+  // Locked v2 contract — issue #158. The matrix fixture (shared with the
+  // Playground mirror parity test, #160) covers §8.1, §8.2, §8.3, and §8.4;
+  // the describe blocks below cover the remaining rows (§8.5-§8.7) plus the
+  // exact reason-string and category assertions the fixture's pass/flag
+  // shape can't express on its own.
+  describe('semanticPrefixes v2 — namespace strip (issue #158)', () => {
+    it.each(
+      semanticPrefixesMatrix as {
+        prohibited: LintConfig['prohibited'];
+        allowed: string[];
+        semanticPrefixes: string[];
+        className: string;
+        expect: 'pass' | 'flag';
+      }[],
+    )(
+      '$expect: $className with semanticPrefixes=$semanticPrefixes',
+      ({ prohibited, allowed, semanticPrefixes, className, expect: expected }) => {
+        const compiled = compileConfig({ prohibited, allowed, ignore: [], semanticPrefixes });
+        const result = checkClassWithConfig(className, compiled);
+        if (expected === 'pass') {
+          expect(result).toBeNull();
+        } else {
+          expect(result).not.toBeNull();
+        }
+      },
+    );
+
+    describe('§8.1 — the named observability pair, full reason string', () => {
+      it('p-hgap-2 flags with the exact §4 reason string', () => {
+        const compiled = compileConfig({
+          prohibited: ['p-{n}'],
+          allowed: [],
+          ignore: [],
+          semanticPrefixes: ['hgap-'],
+        });
+        const result = checkClassWithConfig('p-hgap-2', compiled);
+        expect(result).not.toBeNull();
+        expect(result!.reason).toBe(
+          'Numeric spacing "p-hgap-2" — use a semantic spacing token or arbitrary value' +
+            ' (numeric tail after the "hgap-" semantic prefix)',
+        );
+      });
+
+      it('appends the did-you-mean hint after the parenthetical when a suggestion is configured', () => {
+        const compiled = compileConfig({
+          prohibited: ['p-{n}'],
+          allowed: [],
+          ignore: [],
+          semanticPrefixes: ['hgap-'],
+          suggestions: { 'p-hgap-2': 'p-hgap-sm' },
+        });
+        const result = checkClassWithConfig('p-hgap-2', compiled);
+        expect(result).not.toBeNull();
+        expect(result!.reason).toBe(
+          'Numeric spacing "p-hgap-2" — use a semantic spacing token or arbitrary value' +
+            ' (numeric tail after the "hgap-" semantic prefix)' +
+            ' — did you mean "p-hgap-sm"?',
+        );
+      });
+
+      it('the parenthetical names the entry verbatim as authored — no dash added', () => {
+        const compiled = compileConfig({
+          prohibited: ['p-{n}'],
+          allowed: [],
+          ignore: [],
+          semanticPrefixes: ['hgap'],
+        });
+        const result = checkClassWithConfig('p-hgap-2', compiled);
+        expect(result).not.toBeNull();
+        expect(result!.reason).toContain('(numeric tail after the "hgap" semantic prefix)');
+      });
+    });
+
+    describe('§8.4 — category is carried through the strip for sizing rules', () => {
+      it.each([
+        ['w-hsp-3', 'sizing'],
+        ['h-vsp-2', 'sizing'],
+        ['size-hgap-2', 'sizing'],
+        ['min-w-hgap-1', 'sizing'],
+        ['basis-hgap-2', 'sizing'],
+      ] as const)('%s carries category %s', (cls, category) => {
+        const result = checkClassWithConfig(cls, compileConfig(DEFAULT_CONFIG));
+        expect(result).not.toBeNull();
+        expect(result!.category).toBe(category);
+      });
+
+      it('bare p-hgap-2 (from an unstructured pattern) carries no category', () => {
+        const result = checkClassWithConfig('p-hgap-2', compileConfig(DEFAULT_CONFIG));
+        expect(result).not.toBeNull();
+        expect(result!.category).toBeUndefined();
+      });
+
+      it.each(['-m-hgap-2', 'sm:p-hgap-2', 'p-hgap-2!', '!p-hgap-2'])(
+        '%s: variant/negative/important normalization runs before the strip, and className echoes the original',
+        (cls) => {
+          const result = checkClassWithConfig(cls, compileConfig(DEFAULT_CONFIG));
+          expect(result).not.toBeNull();
+          expect(result!.className).toBe(cls);
+        },
+      );
+    });
+
+    describe('§8.5 — still flagged, unchanged (DEFAULT_CONFIG + z-index preset)', () => {
+      const compiled = compileConfig({
+        ignore: [],
+        extends: ['default', 'z-index'],
+      });
+
+      it.each(['p-4', 'w-64', 'z-10', 'bg-gray-500', 'sm:p-4', '-mt-4', 'p-4!'])(
+        'flags %s',
+        (cls) => {
+          expect(checkClassWithConfig(cls, compiled)).not.toBeNull();
+        },
+      );
+    });
+
+    describe('§8.6 — z-{n} family', () => {
+      const compiled = compileConfig({
+        prohibited: [CONFIG_PRESETS['z-index'].prohibited[0]],
+        allowed: ['z-0'],
+        ignore: [],
+        semanticPrefixes: ['ztier-'],
+      });
+
+      it('z-auto passes (not numeric)', () => {
+        expect(checkClassWithConfig('z-auto', compiled)).toBeNull();
+      });
+
+      it('z-0 passes (allowed)', () => {
+        expect(checkClassWithConfig('z-0', compiled)).toBeNull();
+      });
+
+      it('z-10 flags with category z-index', () => {
+        const result = checkClassWithConfig('z-10', compiled);
+        expect(result).not.toBeNull();
+        expect(result!.category).toBe('z-index');
+      });
+
+      it('z-ztier-modal passes (non-numeric tail)', () => {
+        expect(checkClassWithConfig('z-ztier-modal', compiled)).toBeNull();
+      });
+
+      it('z-ztier-2 flags with category z-index (NEW)', () => {
+        const result = checkClassWithConfig('z-ztier-2', compiled);
+        expect(result).not.toBeNull();
+        expect(result!.category).toBe('z-index');
+      });
+    });
+
+    describe('§8.7 — escape hatches and message composition', () => {
+      it('allowed wins over a semanticPrefixes-triggered flag', () => {
+        const compiled = compileConfig({
+          prohibited: ['p-{n}'],
+          allowed: ['p-hgap-2'],
+          ignore: [],
+          semanticPrefixes: ['hgap-'],
+        });
+        expect(checkClassWithConfig('p-hgap-2', compiled)).toBeNull();
+      });
+
+      it('a custom reason on a structured entry keeps the §4 parenthetical appended', () => {
+        const compiled = compileConfig({
+          prohibited: [{ pattern: 'p-{n}', reason: 'Custom message for "{CLASS}"' }],
+          allowed: [],
+          ignore: [],
+          semanticPrefixes: ['hgap-'],
+        });
+        const result = checkClassWithConfig('p-hgap-2', compiled);
+        expect(result).not.toBeNull();
+        expect(result!.reason).toBe(
+          'Custom message for "p-hgap-2" (numeric tail after the "hgap-" semantic prefix)',
+        );
+      });
+
+      it('semanticPrefixes has REPLACE semantics under extends, not merge', () => {
+        const compiled = compileConfig({
+          ignore: [],
+          extends: ['default'],
+          semanticPrefixes: ['hsp-'],
+        });
+        expect(compiled.semanticPrefixes).toEqual(['hsp-']);
+      });
+
+      it('empty-string semanticPrefixes entries are filtered', () => {
+        const compiled = compileConfig({
+          prohibited: DEFAULT_CONFIG.prohibited,
+          allowed: DEFAULT_CONFIG.allowed,
+          ignore: [],
+          semanticPrefixes: ['', 'hgap-'],
+        });
+        expect(compiled.semanticPrefixes).toEqual(['hgap-']);
+      });
     });
   });
 });
