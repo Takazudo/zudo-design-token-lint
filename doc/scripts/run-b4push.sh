@@ -12,7 +12,6 @@ set -euo pipefail
 #   6. Build (zfb build)
 #   7. HTML validation (html-validate dist/**/*.html)
 #   8. Link check (check-links)
-#   9. Z-index token drift check (check:z-index)
 #
 # Env overrides for non-interactive use:
 #   B4PUSH_SKIP_HTML_VALIDATE=1  — skip HTML validation (step 7)
@@ -20,7 +19,7 @@ set -euo pipefail
 
 START_TIME=$(date +%s)
 FAILURES=()
-TOTAL_STEPS=9
+TOTAL_STEPS=8
 CURRENT_STEP=0
 
 step() {
@@ -115,16 +114,6 @@ else
   else
     fail "Link check"
   fi
-fi
-
-# ── Step 9: Z-index token drift check ─────────────────
-# Pure Node: verifies the generated block in global.css matches
-# src/config/z-index-tokens.ts (the source of truth).
-step "Z-index token drift check (check:z-index)"
-if (cd "$ROOT_DIR" && pnpm check:z-index); then
-  pass "Z-index token drift check passed"
-else
-  fail "Z-index token drift check"
 fi
 
 # ── Summary ──────────────────────────────────────────

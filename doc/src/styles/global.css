@@ -12,8 +12,26 @@
 @import "tailwindcss/preflight" layer(zd-preflight);
 @import "tailwindcss/utilities";
 
+/* designTokenPanel: true (zfb.config.ts) requires this line here — it can't
+ * ship unconditionally from @takazudo/zudo-doc/theme.css because it pulls in
+ * zdtp's own bytes. Matches create-zudo-doc's designTokenPanel feature
+ * postProcess, which inserts this exact line right after the @layer
+ * declaration above for every project with the panel enabled. */
+@import "@takazudo/zdtp/styles.css";
+
 /* ========================================
- * @takazudo/zudo-doc package safelist
+ * @takazudo/zudo-doc package tokens + base rules + safelist
+ *
+ * theme.css is the package's single source of truth for the default
+ * `@theme` token block (colors, spacing, icon sizes, elevation, typography,
+ * radius, breakpoints, z-index) plus the project-agnostic base rules
+ * (scroll-margin, selection color, focus ring, search / find-in-page
+ * highlight, version-switcher visibility) every zudo-doc project needs —
+ * see zudolab/zudo-doc#2655. Order below is load-bearing (theme.css's own
+ * header comment): theme.css MUST precede safelist/content/page-loading/
+ * features (all four consume its @theme tokens) and MUST precede this
+ * file's own token-override @theme block further down (last-declaration-
+ * wins per custom property).
  *
  * The package ships a build-generated safelist at `dist/safelist.css`
  * (zudolab/zudo-doc#1993). Importing it via the module resolver is
@@ -33,6 +51,7 @@
  * symlink traversal, auto-syncs on package upgrade (zudolab/zudo-doc#1994).
  * ======================================== */
 
+@import "@takazudo/zudo-doc/theme.css";
 @import "@takazudo/zudo-doc/safelist.css";
 
 /* Content typography (`.zd-content` rules + admonitions + mermaid layout).
@@ -42,13 +61,12 @@
    above (line 11); the safelist import above generates the component utilities
    its headings/links/etc. depend on. */
 @import "@takazudo/zudo-doc/content.css";
+@import "@takazudo/zudo-doc/page-loading.css";
 /* Non-island feature CSS (code block buttons, syntect light-dark token rule,
    .zd-html-preview-code, KaTeX, sidebar toggle geometry, view-transition chrome,
-   .ai-chat-md, .zd-enlarge*, .zd-mermaid*).
+   .ai-chat-md, .zd-enlarge*, .zd-mermaid*, doc-history diff viewer).
    Shipped by @takazudo/zudo-doc as single source of truth. See zudolab/zudo-doc#2331. */
 @import "@takazudo/zudo-doc/features.css";
-
-@import "@takazudo/zudo-doc/page-loading.css";
 
 /* ========================================
  * Tailwind v4 content sources
@@ -70,259 +88,18 @@
 @source "pages/**/*.{tsx,ts,jsx,js}";
 
 /* ========================================
- * Design Token System
+ * Project token overrides
  *
- * Tight token strategy: import preflight + utilities only (no default theme).
- * Only project-specific tokens are available.
- *
- * Raw palette: --zd-0 to --zd-15 + bg/fg/sel (injected by ColorSchemeProvider)
- * Tailwind tokens: registered below via @theme
- *
- * Palette slots:
- *   0/8:  black / bright-black (surfaces, muted text, borders)
- *   1/9:  red / bright-red
- *   2/10: green / bright-green
- *   3/11: yellow / bright-yellow
- *   4/12: blue / bright-blue
- *   5/13: magenta / bright-magenta
- *   6/14: cyan / bright-cyan
- *   7/15: white / bright-white
+ * Only genuinely project-specific additions on top of the package defaults
+ * in @takazudo/zudo-doc/theme.css live below — theme.css now covers the
+ * full color/spacing/typography/radius/breakpoint/z-index @theme block, the
+ * :root scale tokens, and the base rules (selection, focus ring, search
+ * highlight, version-switcher visibility, find-in-page highlight) that used
+ * to be hand-carried here verbatim from the pre-4.x site. See the doc
+ * rescaffold PR body for the full ported/discarded audit.
  * ======================================== */
-
-@theme {
-  /* ========================================
-   * Project tight-token color reset
-   *
-   * Wipes all Tailwind default color tokens (`--color-*`) so only
-   * project-defined palette and semantic tokens remain. This enforces the
-   * tight-token policy: "NEVER use Tailwind default colors" (per Color Rules
-   * in src/CLAUDE.md). Project color tokens (defined below) are added back
-   * after this reset.
-   *
-   * The upstream split-import fix (zfb#159 / 9e37551, shipped in f68a9ba)
-   * eliminated the original leak cause (zfb no longer prepends the full
-   * @import "tailwindcss" bundle). The reset is retained as an explicit
-   * design guardrail — it prevents accidental default palette bleed from any
-   * future upstream change and keeps the project's color surface intentional.
-   *
-   * NOT reset: `--spacing` (the base spacing scale, default 0.25rem).
-   * Tailwind spacing utilities compute as calc(var(--spacing) * N); wiping
-   * `--spacing` collapses them to zero (observed in Wave 4 Sub-7 #1403).
-   * ======================================== */
-  --color-*: initial;
-
-  /* ========================================
-   * Colors — Three-tier token system
-   * ======================================== */
-
-  /* ── Base ── */
-  --color-bg: var(--zd-bg);
-  --color-fg: var(--zd-fg);
-  --color-sel-bg: var(--zd-sel-bg);
-  --color-sel-fg: var(--zd-sel-fg);
-
-  /* ── Raw palette (p0–p15) ── */
-  --color-p0: var(--zd-0);
-  --color-p1: var(--zd-1);
-  --color-p2: var(--zd-2);
-  --color-p3: var(--zd-3);
-  --color-p4: var(--zd-4);
-  --color-p5: var(--zd-5);
-  --color-p6: var(--zd-6);
-  --color-p7: var(--zd-7);
-  --color-p8: var(--zd-8);
-  --color-p9: var(--zd-9);
-  --color-p10: var(--zd-10);
-  --color-p11: var(--zd-11);
-  --color-p12: var(--zd-12);
-  --color-p13: var(--zd-13);
-  --color-p14: var(--zd-14);
-  --color-p15: var(--zd-15);
-
-  /* ── Semantic aliases ── */
-  --color-surface: var(--zd-surface);
-  --color-muted: var(--zd-muted);
-  --color-accent: var(--zd-accent);
-  --color-accent-hover: var(--zd-accent-hover);
-  --color-code-bg: var(--zd-code-bg);
-  --color-code-fg: var(--zd-code-fg);
-  --color-success: var(--zd-success);
-  --color-danger: var(--zd-danger);
-  --color-warning: var(--zd-warning);
-  --color-info: var(--zd-info);
-  /* Overlay is intentionally theme-independent (always dark, not scheme-driven) */
-  --color-overlay: #000;
-  /* The page-loading overlay scrim token is feature-gated: the dynamicPageTransition
-     feature injects it into @slot:global-css:theme-tokens when enabled, so it is
-     intentionally absent from this base @theme block (the host showcase global.css
-     carries it inline only because the host is fully featured). Do not re-add it here. */
-  --color-image-overlay-bg: var(--zd-image-overlay-bg);
-  --color-image-overlay-fg: var(--zd-image-overlay-fg);
-  /* --color-mermaid-* aliases removed: mermaid-init-script.ts reads --zd-mermaid-* directly;
-     these @theme registrations were unused (no Tailwind utility references). --zd-mermaid-*
-     injection in color-scheme-utils.ts is preserved and remains the live source. */
-  --color-chat-user-bg: var(--zd-chat-user-bg);
-  --color-chat-user-text: var(--zd-chat-user-text);
-  --color-chat-assistant-bg: var(--zd-chat-assistant-bg);
-  --color-chat-assistant-text: var(--zd-chat-assistant-text);
-  --color-matched-keyword-bg: var(--zd-matched-keyword-bg);
-  --color-matched-keyword-fg: var(--zd-matched-keyword-fg);
-
---color-page-loading-overlay: color-mix(in oklch, var(--color-overlay) 60%, transparent);
-
-  /* ========================================
-   * Spacing — hsp (horizontal) + vsp (vertical)
-   * ======================================== */
-  --spacing-0: 0;
-  --spacing-px: 1px;
-
-  /* Horizontal spacing (7 steps) */
-  --spacing-hsp-2xs: 0.125rem;   /* 2px  — tight inline */
-  --spacing-hsp-xs: 0.375rem;   /* 6px  — compact inline */
-  --spacing-hsp-sm: 0.5rem;     /* 8px  — small padding */
-  --spacing-hsp-md: 0.75rem;    /* 12px — default gaps */
-  --spacing-hsp-lg: 1rem;       /* 16px — standard padding */
-  --spacing-hsp-xl: 1.5rem;     /* 24px — generous padding */
-  --spacing-hsp-2xl: 2rem;      /* 32px — large padding */
-
-  /* Vertical spacing (8 steps) */
-  --spacing-vsp-3xs: 0.25rem;     /* 4px — hairline gap */
-  --spacing-vsp-2xs: 0.4375rem;   /* 7px — tight gap */
-  --spacing-vsp-xs: 0.875rem;    /* 14px — small gap */
-  --spacing-vsp-sm: 1.25rem;     /* 20px — compact gap */
-  --spacing-vsp-md: 1.5rem;      /* 24px — standard gap */
-  --spacing-vsp-lg: 1.75rem;     /* 28px — section gap */
-  --spacing-vsp-xl: 2.5rem;      /* 40px — large section gap */
-  --spacing-vsp-2xl: 3.5rem;     /* 56px — page-level gap */
-
-  /* ========================================
-   * Element sizes — semantic icon dimensions
-   * ======================================== */
-  --spacing-icon-xs: 0.75rem;    /* 12px — inline meta icons, chevrons */
-  --spacing-icon-sm: 1rem;       /* 16px — standard UI icons */
-  --spacing-icon-md: 1.25rem;    /* 20px — medium emphasis icons */
-  --spacing-icon-lg: 1.5rem;     /* 24px — large / mobile icons */
-
-  /* Image overlay button chrome */
-  --spacing-image-overlay-inset: 0.5rem;  /* 8px — overlay button corner inset + internal padding */
-
-  /* ========================================
-   * Elevation — the tight `@import "tailwindcss/utilities"` (no default
-   * @theme) drops Tailwind's default shadow scale, so `shadow-*` utilities
-   * generate nothing. Re-add the one elevation the components use: header
-   * and version-switcher dropdown panels apply `shadow-lg`. Value is
-   * Tailwind v4's default shadow-lg; the black is intentionally
-   * theme-independent (a drop shadow is absence of light, not a themed color).
-   * ======================================== */
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-
-  /* ========================================
-   * Typography
-   * ======================================== */
-
-  /* ── Tier 2: Semantic font-size tokens (reference Tier 1 scale only) ── */
-  --text-micro:      var(--text-scale-2xs);  /* 12px — compact panel labels, color swatch annotations */
-  --text-caption:    var(--text-scale-xs);   /* labels, timestamps */
-  --text-small:      var(--text-scale-sm);   /* secondary text, nav items */
-  --text-body:       var(--text-scale-md);   /* paragraphs, default */
-  --text-title:      var(--text-scale-lg);   /* card titles, section labels */
-  --text-heading:    var(--text-scale-xl);   /* page headings */
-  --text-display:    var(--text-scale-2xl);  /* hero text */
-
-  /* Font families */
-  --font-sans: system-ui, sans-serif;
-  --font-mono: ui-monospace, monospace;
-  /* Brand display face for page h1 titles + the header site name. System
-     Futura with graceful fallbacks (Jost / Century Gothic). Verbatim carryover
-     of the pre-zfb site's --font-futura token. Registered here so Tailwind v4
-     emits both the `font-futura` utility and a :root `--font-futura` var. */
-  --font-futura:
-    Futura, Jost, "Century Gothic", system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", "Noto Sans", "Noto Sans JP", "Hiragino Sans", sans-serif;
-
-  /* Font weights (4 steps) */
-  --font-weight-normal: 400;
-  --font-weight-medium: 500;
-  --font-weight-semibold: 600;
-  --font-weight-bold: 700;
-
-  /* Line heights (4 steps) */
-  --leading-tight: 1.25;
-  --leading-snug: 1.375;
-  --leading-normal: 1.5;
-  --leading-relaxed: 1.625;
-
-  /* Letter spacing / tracking (4 steps) */
-  --tracking-tight: -0.025em;   /* headings, display text */
-  --tracking-normal: normal;    /* browser default — resets any inherited tracking */
-  --tracking-wide: 0.05em;      /* labels, UI text */
-  --tracking-wider: 0.1em;      /* small caps, decorative */
-
-  /* ========================================
-   * Border radius (3 steps)
-   * ======================================== */
-  --radius-DEFAULT: 0.25rem;    /* 4px — rounded */
-  --radius-lg: 0.5rem;          /* 8px — rounded-lg */
-  --radius-full: 9999px;        /* rounded-full */
-
-  /* ========================================
-   * Breakpoints (3 steps)
-   * ======================================== */
-  --breakpoint-sm: 640px;
-  --breakpoint-lg: 1024px;
-  --breakpoint-xl: 1280px;
-}
-
-/* ========================================
- * Z-index tiers — semantic, single-namespace scale.
- *
- * The @theme block below is GENERATED from src/config/z-index-tokens.ts
- * (the single source of truth) by `pnpm gen:z-index`. Tailwind v4 reads the
- * --z-index-<name> theme key and generates a `z-<name>` utility, so e.g.
- * --z-index-toolbar: 20 produces `.z-toolbar { z-index: 20 }`; raw CSS can
- * also reference `z-index: var(--z-index-<name>)`. `pnpm check:z-index` fails
- * on drift. Do NOT hand-edit between the BEGIN/END markers.
- * ======================================== */
-  /* GENERATED:Z_INDEX_BEGIN
-   * GENERATED:Z_INDEX — do not hand-edit; run pnpm gen:z-index.
-   * Source of truth: src/config/z-index-tokens.ts. Tailwind v4 reads the
-   * --z-index-<name> theme key and generates a z-<name> utility. */
-  @theme {
-    --z-index-content: 0;
-    --z-index-local-1: 1;
-    --z-index-local-2: 2;
-    --z-index-local-3: 3;
-    --z-index-sidebar: 10;
-    --z-index-toolbar: 20;
-    --z-index-dropdown: 30;
-    --z-index-popover: 40;
-    --z-index-modal-backdrop: 50;
-    --z-index-modal: 60;
-    --z-index-toast: 70;
-    --z-index-tooltip: 80;
-    --z-index-drag: 90;
-  }
-  /* GENERATED:Z_INDEX_END */
 
 :root {
-  /* Default responsive range; sidebar-resizer.ts allows 192–448px for explicit resizing. */
-  --zd-sidebar-w: clamp(14rem, 20vw, 22rem);
-
-  /* ── Tier 1: Abstract font-size scale (raw values — NOT for direct component use) ── */
-  /* Used only as a source of truth for Tier 2 semantic tokens above. */
-  --text-scale-2xs: 0.75rem;    /* 12px */
-  --text-scale-xs:  0.875rem;   /* 14px */
-  --text-scale-sm:  1rem;       /* 16px */
-  --text-scale-md:  1.2rem;     /* 19.2px */
-  --text-scale-lg:  1.4rem;     /* 22.4px */
-  --text-scale-xl:  3rem;       /* 48px */
-  --text-scale-2xl: 3.75rem;    /* 60px */
-
-  --default-transition-duration: 150ms; /* consumed by image-enlarge and hash-link opacity fade */
-  --zd-transition-slow: 200ms;          /* sidebar transform/visibility and content-band max-width */
-  --zd-transition-slower: 300ms;        /* view-transition fade-in (contentFadeIn animation) */
-  --zd-header-h: 80px;                  /* sticky header height; consumed by scroll-margin-top on [id] anchors */
-
   /* Brand display face on every page-title <h1>. @takazudo/zudo-doc renders all
      page-title h1s (doc-title, home hero, auto-index, versions, tag pages) as
      `h1.text-heading` and exposes the --zdc-doc-title-font / --zdc-doc-title-weight
@@ -330,125 +107,20 @@
      var(--font-weight-bold); see the package's config/component-tokens). The
      markup is framework-owned, so redefining these tokens in :root is the
      no-eject way to rebrand every page h1 to Futura at normal weight — the
-     equivalent of the pre-migration site's `font-futura font-normal` h1 classes. */
+     equivalent of the pre-migration site's `font-futura font-normal` h1 classes.
+     NOTE: with themePack: "bauhaus" active, the bauhaus pack scopes its own
+     `--zdc-doc-title-font: var(--font-display)` under
+     `html[data-theme-pack="bauhaus"]`, which outranks this `:root` rule by
+     specificity — so this override is currently inert while bauhaus is
+     active. Kept for when the pack changes or a theme-pack switcher is
+     enabled; not removed unilaterally since the branding call belongs to
+     product, not this port. */
+  --font-futura:
+    Futura, Jost, "Century Gothic", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "Noto Sans", "Noto Sans JP", "Hiragino Sans", sans-serif;
   --zdc-doc-title-font: var(--font-futura);
   --zdc-doc-title-weight: var(--font-weight-normal);
 }
-
-/* ========================================
- * Base styles
- * ======================================== */
-
-[id] {
-  scroll-margin-top: var(--zd-header-h);
-}
-
-body {
-  background-color: var(--color-bg);
-  color: var(--color-fg);
-}
-
-::selection {
-  background-color: var(--color-sel-bg);
-  color: var(--color-sel-fg);
-}
-
-@layer base {
-  a {
-    text-underline-offset: 4px;
-  }
-  button {
-    cursor: pointer;
-  }
-  :focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
-  }
-}
-
-/* ── Search highlight ── */
-[data-search-results] mark {
-  background-color: var(--color-matched-keyword-bg);
-  color: var(--color-matched-keyword-fg);
-  padding: 0;
-  border-radius: 2px;
-}
-
-/* Version-switcher responsive visibility (moved out of the component to
- * avoid <style>-inside-<div> HTML5 content-model violation; required when
- * the i18nVersion feature ships a <VersionSwitcher> wrapped in
- * `<div class="hidden lg:block">`. Inert when no version-switcher is on
- * the page. */
-@media (min-width: 64rem) {
-  .hidden:has(> [data-version-switcher]) {
-    display: block;
-  }
-}
-
-/* ── Find-in-page highlight (W7A: unconditional — Tauri feature gates at runtime) ── */
-.find-match {
-  background-color: color-mix(in oklch, var(--color-warning) 40%, transparent);
-  border-radius: 2px;
-}
-.find-match-active {
-  background-color: color-mix(in oklch, var(--color-warning) 70%, transparent);
-  border-radius: 2px;
-  outline: 2px solid color-mix(in oklch, var(--color-warning) 90%, transparent);
-}
-
-/* ========================================
- * Doc History Diff Viewer (side-by-side)
- * ======================================== */
-
-.diff-row {
-  border-bottom: 1px solid color-mix(in oklch, var(--color-muted) 15%, transparent);
-}
-
-.diff-line-num {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: var(--text-caption);
-  line-height: 1.5;
-  padding: 0 var(--spacing-hsp-xs);
-  text-align: right;
-  color: var(--color-muted);
-  user-select: none;
-  vertical-align: top;
-  border-right: 1px solid color-mix(in oklch, var(--color-muted) 15%, transparent);
-}
-
-.diff-line-content {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: var(--text-caption);
-  line-height: 1.5;
-  padding: 0 var(--spacing-hsp-sm);
-  white-space: pre-wrap;
-  word-break: break-all;
-  vertical-align: top;
-}
-
-/* Left column right border to separate the two sides */
-.diff-row td:nth-child(2) {
-  border-right: 2px solid var(--color-muted);
-}
-
-.diff-line-added {
-  background-color: color-mix(in oklch, var(--color-success) 15%, transparent);
-}
-
-.diff-line-removed {
-  background-color: color-mix(in oklch, var(--color-danger) 15%, transparent);
-}
-
-.diff-line-empty {
-  background-color: color-mix(in oklch, var(--color-muted) 8%, transparent);
-}
-
-/* View-Transitions CSS (chrome extraction, root cross-fade, reduced-motion) is
- * shipped by the package's dynamicPageTransition feature via the
- * `@import "@takazudo/zudo-doc/features.css"` above — it is the single driver.
- * The hand-written chrome-extraction block that used to live here was removed
- * to avoid double-driving the same ::view-transition-* rules the feature
- * already injects (see zudolab/zudo-doc#1558/#2072/#2086 — now owned upstream). */
 
 /* ── Brand typography ──
  * Futura on the header site name. The page-title <h1> elements are rendered by
@@ -458,7 +130,10 @@ body {
  * site-name anchor exposes no className hook, so it is targeted here via its
  * stable `data-header-logo` attribute. Normal weight matches the pre-zfb site
  * (the package defaults the logo to font-bold). Unlayered + last in source
- * order, so it overrides Tailwind's `font-bold` utility. */
+ * order, so it overrides Tailwind's `font-bold` utility.
+ * Same specificity caveat as above: bauhaus scopes its own
+ * `html[data-theme-pack="bauhaus"] [data-header-logo]` rule, which currently
+ * wins over this bare-attribute selector while bauhaus is active. */
 [data-header-logo] {
   font-family: var(--font-futura);
   font-weight: var(--font-weight-normal);

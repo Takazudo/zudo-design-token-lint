@@ -11,14 +11,16 @@ allowBuilds:
   sharp: true
   workerd: true
 minimumReleaseAgeExclude:
-  - '@takazudo/zfb-adapter-cloudflare@0.1.0-next.76'
-  - '@takazudo/zfb-darwin-arm64@0.1.0-next.76'
-  - '@takazudo/zfb-darwin-x64@0.1.0-next.76'
-  - '@takazudo/zfb-linux-arm64-gnu@0.1.0-next.76'
-  - '@takazudo/zfb-linux-x64-gnu@0.1.0-next.76'
-  - '@takazudo/zfb-runtime@0.1.0-next.76'
-  - '@takazudo/zfb-win32-x64-msvc@0.1.0-next.76'
-  - '@takazudo/zfb@0.1.0-next.76'
-  - '@takazudo/zudo-doc-history-server@2.5.1'
-  - '@takazudo/zudo-doc@2.5.1'
-  - create-zudo-doc@2.5.1
+  - '@takazudo/zfb-adapter-cloudflare@1.1.1'
+  - '@takazudo/zfb-darwin-arm64@1.1.1'
+  - '@takazudo/zfb-darwin-x64@1.1.1'
+  - '@takazudo/zfb-linux-arm64-gnu@1.1.1'
+  - '@takazudo/zfb-linux-x64-gnu@1.1.1'
+  - '@takazudo/zfb-md-wasm@1.1.1'
+  - '@takazudo/zfb-runtime@1.1.1'
+  - '@takazudo/zfb-win32-x64-msvc@1.1.1'
+  - '@takazudo/zfb@1.1.1'
+  - '@takazudo/zdtp@0.4.9'
+  - '@takazudo/zudo-doc-history-server@4.5.0'
+  - '@takazudo/zudo-doc@4.5.0'
+  - create-zudo-doc@4.5.0

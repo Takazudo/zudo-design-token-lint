@@ -108,17 +108,23 @@ export function checkClassWithConfig(className: string, config: CompiledConfig):
 
 /**
  * Build the Violation for a matched rule, carrying an optional category
- * through and appending a `— did you mean "..."?` hint when the normalized
- * base class (post variant/important/negative/opacity stripping — the same
- * shape `allowed` entries use) has a `suggestions` mapping.
+ * through, appending the semanticPrefixes parenthetical (see
+ * `selectSemanticPrefix`) when the match came from a stripped namespace, and
+ * finally appending a `— did you mean "..."?` hint when the normalized base
+ * class (post variant/important/negative/opacity stripping — the same shape
+ * `allowed` entries use) has a `suggestions` mapping.
  */
 function buildViolation(
   originalClassName: string,
   rule: CompiledRule,
   normalizedClassName: string,
   suggestions: Map<string, string>,
+  semanticPrefix?: string,
 ): Violation {
   let reason = rule.reasonTemplate.replace('{CLASS}', originalClassName);
+  if (semanticPrefix !== undefined) {
+    reason += ` (numeric tail after the "${semanticPrefix}" semantic prefix)`;
+  }
   const suggestion = suggestions.get(normalizedClassName);
   if (suggestion !== undefined) {
     reason += ` — did you mean "${suggestion}"?`;
@@ -132,6 +138,60 @@ function buildViolation(
     violation.category = rule.category;
   }
   return violation;
+}
+
+/**
+ * Result of matching a value against the configured `semanticPrefixes`
+ * entries. A "namespace" match strips the matched entry (its `tail` is
+ * re-tested against the rule's numeric pattern by the caller); a "bypass"
+ * match preserves the 1.x pure-allowlist behavior outright — the entry
+ * matched but not as a namespace (e.g. a digit-leading prefix like "1"
+ * against "12", or an entry that consumes the whole value with nothing left
+ * to strip).
+ */
+type SemanticHit = { kind: 'namespace'; prefix: string; tail: string } | { kind: 'bypass' };
+
+/**
+ * Select which configured `semanticPrefixes` entry (if any) applies to
+ * `value`, distinguishing a namespace match (strip + re-test the tail) from
+ * a bypass match (1.x behavior, unchanged). See the locked v2 contract
+ * (issue #158 §2) for the full selection algorithm this implements.
+ *
+ * A config entry matches when `value` starts with it. It is a *namespace*
+ * match when the entry ends with "-", or the remainder after stripping it
+ * starts with "-" — this makes the trailing dash optional in config
+ * authoring ("hgap" and "hgap-" behave identically). Among namespace
+ * matches, the longest one wins, so array order never affects the verdict.
+ * If nothing matched as a namespace but something matched anyway, that's a
+ * bypass. No match at all returns null.
+ */
+function selectSemanticPrefix(value: string, semanticPrefixes: string[]): SemanticHit | null {
+  let longestNamespace: { prefix: string; tail: string } | null = null;
+  let hasBypassMatch = false;
+
+  for (const prefix of semanticPrefixes) {
+    if (prefix.length === 0 || !value.startsWith(prefix)) {
+      continue;
+    }
+    const remainder = value.slice(prefix.length);
+    const isNamespaceMatch = prefix.endsWith('-') || remainder.startsWith('-');
+    if (isNamespaceMatch) {
+      const tail = prefix.endsWith('-') ? remainder : remainder.slice(1);
+      if (longestNamespace === null || prefix.length > longestNamespace.prefix.length) {
+        longestNamespace = { prefix, tail };
+      }
+    } else {
+      hasBypassMatch = true;
+    }
+  }
+
+  if (longestNamespace !== null) {
+    return { kind: 'namespace', prefix: longestNamespace.prefix, tail: longestNamespace.tail };
+  }
+  if (hasBypassMatch) {
+    return { kind: 'bypass' };
+  }
+  return null;
 }
 
 function matchRule(
@@ -163,14 +223,30 @@ function matchRule(
 
   const value = withoutNeg.slice(rule.prefix.length + 1);
 
-  // Allow semantic tokens — only for spacing rules, not color rules. This
-  // check runs before the numeric valuePattern test below, so a
-  // semanticPrefixes entry always takes priority — including, deliberately,
-  // for a digit-leading prefix that would otherwise also satisfy the numeric
-  // spacing pattern (pinned in rules.test.ts under "semanticPrefixes bypass
-  // — priority over the numeric check").
-  if (rule.isSpacingRule && semanticPrefixes.some((prefix) => value.startsWith(prefix))) {
-    return null;
+  // semanticPrefixes only ever adds violations, it never removes one: a
+  // namespace match (e.g. "hgap-") strips the matched entry and re-tests the
+  // remaining tail against this same rule's own "0" bypass and numeric
+  // valuePattern — nothing else. The `allowed` set, the arbitrary-value "["
+  // guard, and variant/negative/important/opacity normalization all ran
+  // earlier in checkClassWithConfig against the whole class and are
+  // deliberately not re-run against the tail. A bypass match (an entry that
+  // matched but not as a namespace — e.g. a digit-leading prefix like "1"
+  // against "12") preserves the 1.x pure-allowlist behavior unchanged
+  // (pinned in rules.test.ts under "semanticPrefixes bypass — priority over
+  // the numeric check").
+  if (rule.isSpacingRule) {
+    const hit = selectSemanticPrefix(value, semanticPrefixes);
+    if (hit !== null) {
+      if (hit.kind === 'bypass') {
+        return null;
+      }
+      if (hit.tail === '' || hit.tail === '0') {
+        return null;
+      }
+      return rule.valuePattern.test(hit.tail)
+        ? buildViolation(originalClassName, rule, withoutNeg, suggestions, hit.prefix)
+        : null;
+    }
   }
 
   // Allow "0" for spacing rules. (There is no equivalent "1px" bypass here:

@@ -5,99 +5,44 @@
 # Format: one repo-relative path per line (no leading slash).
 # Blank lines and `#` comments are ignored.
 #
-# Re-authored from scratch for the new thin-preset model (create-zudo-doc
-# 2.5.1) during Wave 3 (S5) integration confirm — see issue #116. Note: the
-# drift check (scripts/check-template-drift.sh) only walks
+# Re-baselined against create-zudo-doc 4.5.0 (the version pinned in
+# doc/package.json's devDependencies) after the 4.x doc-site rescaffold
+# (issue #150). The drift check (scripts/check-template-drift.sh) only walks
 # node_modules/create-zudo-doc/templates/{base,features}; top-level identity
-# files (zfb.config.ts, wrangler.toml, src/config/settings.ts, package.json,
-# setup-preset.json) have no template counterpart there and are never
-# compared, so they need no allowlist entry.
+# files (zfb.config.ts, wrangler.toml, package.json, setup-preset.json) have
+# no template counterpart there and are never compared, so they need no
+# allowlist entry. The old pre-rescaffold entries (settings.ts/settings-types.ts,
+# pages/lib/, per-feature component shims, etc.) are gone because the files
+# and template feature dirs they referenced no longer exist in the 4.5.0
+# template shape — nothing to allowlist for paths the drift check no longer
+# walks at all.
 
-# .zfb/ directory is gitignored; doc-history-meta.json is written at build
-# time by the doc-history plugin. It does not exist in the working tree.
-.zfb/doc-history-meta.json
+# scripts/setup-doc-skill.sh is intentionally customized for this repo's
+# hybrid layout. The template version assumes Claude/Codex resources live
+# inside the doc-app itself (project root == doc/); this repo's `.claude/`
+# lives one level ABOVE `doc/`, at the repo root (root = the npm lint
+# package, doc/ = the doc site). The customized script resolves the project
+# name from the ROOT package.json (not doc/package.json), reads/writes
+# `.claude/skills/` at the repo root (never `doc/.claude`), and does not
+# implement the template's newer --target/tracked-skill-linking machinery
+# (single Claude Code target only; no Codex support needed here).
+scripts/setup-doc-skill.sh
 
-# scripts/run-b4push.sh is intentionally customized for this consuming site
-# (full 9-step gate: format:md:check + template-drift + pin-parity +
-# wrangler-pin + check + build + html + links + z-index; replaces the
-# 4-step template default of check/build/html/manual-smoke).
-scripts/run-b4push.sh
+# pages/docs/[[...slug]].tsx and pages/[locale]/docs/[[...slug]].tsx replace
+# the generated `virtual:zudo-doc-chrome-bindings` import with a STATIC
+# relative import of src/chrome-bindings, because this site's docs use a
+# custom <Playground> interactive island that the virtual-module (SSR-only)
+# path can't make scanner-reachable. Both files carry an in-file comment
+# explaining the substitution (zudo-doc's "Interactive islands
+# (experimental)" recipe). Everything else is byte-identical to the template.
+pages/docs/[[...slug]].tsx
+pages/[locale]/docs/[[...slug]].tsx
 
-# pages/lib/_chrome.ts — site-specific MDX `mdxExtras` added. This site's docs
-# corpus uses a custom <Playground> tag (the design-token-lint live browser
-# demo, S4/#115); _chrome.ts imports PlaygroundIsland from ./_playground and
-# registers it in the mdxExtras bag passed to createChrome(...) so MDX content
-# resolves the tag through the host chrome instead of 500ing. Intentional
-# divergence from the base template's empty mdxExtras block.
-pages/lib/_chrome.ts
-
-# pages/lib/_body-end-islands.tsx — @slot markers resolved; dynamicPageTransition
-# wiring added. The base template ships @slot:body-end-islands:imports /
-# :display-names / :extra-islands injection markers. Production has these
-# slots resolved (removed) and the real dynamicPageTransition feature wiring
-# inlined in their place: ClientRouterBootstrap (SPA transition bootstrap,
-# hydrated via <Island when="load">) + PageLoadingOverlay (pure-SSR loading
-# overlay), gated behind `settings.dynamicPageTransition` (true for this site —
-# see epic #111 "Added: dynamicPageTransition").
-pages/lib/_body-end-islands.tsx
-
-# src/config/settings-types.ts — @slot:settings-types:trigger-names markers
-# removed. The base template ships @slot: markers so compose can inject
-# feature-specific trigger name types. Production has these slots resolved
-# and removed.
-src/config/settings-types.ts
-
-# src/styles/global.css — @slot markers resolved; Futura brand typography +
-# dynamicPageTransition/doc-history CSS added.
-# The base template ships @slot:global-css:imports, :theme-tokens, and
-# :feature-styles injection markers. Production has these slots resolved
-# (removed) and adds:
-#   - `@import "@takazudo/zudo-doc/page-loading.css"` + the
-#     `--color-page-loading-overlay` token (dynamicPageTransition feature).
-#   - the `--font-futura` token + `--zdc-doc-title-font` /
-#     `--zdc-doc-title-weight` component-token overrides (rebrand every
-#     framework-owned page-title h1 to Futura at normal weight, no-eject —
-#     see epic #111 risk 4) and the `[data-header-logo]` rule (Futura on the
-#     header site-name anchor, which exposes no className hook).
-#   - the doc-history side-by-side diff viewer CSS (docHistory: true).
-# The hand-written view-transition chrome-extraction block from the old model
-# was deliberately NOT ported here — dynamicPageTransition's own
-# `@takazudo/zudo-doc/features.css` is now the single driver, avoiding a
-# double-drive of the same ::view-transition-* rules (epic #111 risk 5).
+# src/styles/global.css carries project-specific content beyond the
+# generated @slot markers: brand typography overrides (Futura page titles/
+# header logo, currently inert while themePack: "bauhaus" is active — see
+# the in-file comment), extra `@source` content globs for src/components,
+# and the designTokenPanel import. See the file's own header comments for
+# the full rationale; not reproduced here to avoid a second copy drifting
+# from the first.
 src/styles/global.css
-
-# Feature shims vs. base W6A stubs — the base template ships no-op W6A stubs
-# for these three components (so imports resolve at typecheck on a stub-only
-# scaffold). This site enables the imageEnlarge / docHistory / sidebarToggle
-# features, so each file is the feature-template re-export shim that forwards
-# to the package island (@takazudo/zudo-doc/{image-enlarge,doc-history,
-# desktop-sidebar-toggle-island}). The drift check's base-template pass always
-# flags these shims because they differ from the base stubs; keep them
-# allowlisted. (The feature-template pass would match the shims exactly, but a
-# path-based allowlist entry skips both passes.)
-src/components/desktop-sidebar-toggle.tsx
-src/components/doc-history.tsx
-src/components/image-enlarge.tsx
-
-# src/integrations/claude-resources/* — MISSING (intentional).
-# The claudeResources feature template ships an Astro-integration-style
-# generator (src/integrations/claude-resources/{generate,escape-for-mdx}.ts +
-# tests). This site instead drives claude-resources generation purely through
-# the thin preset: `settings.claudeResources = { claudeDir: "../.claude",
-# projectRoot: ".", scanRoot: ".." }` passed into `zudoDocPreset(...)` in
-# zfb.config.ts (see src/config/settings.ts). No host-side integration files
-# are needed — the package-owned preset plugin does the generation, anchoring
-# generated `claude*` pages under doc/src/content/docs/ while scanning the
-# repo-root .claude/ one level above doc/ (the hybrid-repo path, epic #111
-# risk 2). Intentionally absent.
-src/integrations/claude-resources/__tests__/escape-for-mdx.test.ts
-src/integrations/claude-resources/__tests__/generate.test.ts
-src/integrations/claude-resources/escape-for-mdx.ts
-src/integrations/claude-resources/generate.ts
-
-# tagGovernance — tags-audit.ts and tags-suggest.ts scripts are present in the
-# tagGovernance feature template but have not been scaffolded for this site
-# (settings.tagGovernance = "off"; settings.docTags = false). Intentionally
-# absent; add later if tag governance is enabled.
-scripts/tags-audit.ts
-scripts/tags-suggest.ts

@@ -6,15 +6,42 @@
   "darkScheme": "Default Dark",
   "defaultMode": "dark",
   "respectPrefersColorScheme": true,
-  "features": ["search","sidebarFilter","imageEnlarge","i18n","claudeResources","sidebarResizer","sidebarToggle","docHistory","bodyFootUtil","llmsTxt","skillSymlinker","changelog","footerCopyright","dynamicPageTransition","claudeSkills"],
+  "themePack": "bauhaus",
+  "features": [
+    "search",
+    "sidebarFilter",
+    "imageEnlarge",
+    "dynamicPageTransition",
+    "footerCopyright",
+    "i18n",
+    "claudeResources",
+    "claudeSkills",
+    "designTokenPanel",
+    "sidebarResizer",
+    "sidebarToggle",
+    "versioning",
+    "docHistory",
+    "skillSymlinker",
+    "changelog",
+    "llmsTxt",
+    "bodyFootUtil"
+  ],
   "cjkFriendly": true,
   "packageManager": "pnpm",
+  "githubUrl": "https://github.com/Takazudo/zudo-design-token-lint",
   "headerRightItems": [
-    {"type":"component","component":"github-link"},
-    {"type":"component","component":"theme-toggle"},
-    {"type":"component","component":"search"},
-    {"type":"component","component":"language-switcher"},
-    {"type":"component","component":"version-switcher"}
+    { "type": "component", "component": "github-link" },
+    { "type": "component", "component": "theme-toggle" },
+    { "type": "component", "component": "search" },
+    { "type": "component", "component": "language-switcher" },
+    { "type": "component", "component": "version-switcher" }
   ],
-  "metaTags": {"description": true, "keywords":"", "ogImage":"/img/ogp.png", "ogSiteName": true, "twitterCard":"summary"}
+  "metaTags": {
+    "description": true,
+    "keywords": "design token, Takazudo, lint, frontend, utility",
+    "ogImage": "/img/ogp.png",
+    "ogSiteName": true,
+    "twitterCard": "summary_large_image",
+    "twitterCreator": "@Takazudo"
+  }
 }
