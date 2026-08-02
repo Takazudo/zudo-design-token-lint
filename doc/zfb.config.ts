@@ -44,26 +44,57 @@ export default defineConfig(
       docHistory: true,
       viewSourceLink: true,
     },
-    // Versioning (newly enabled): the `versions` array holds OLDER snapshots
-    // only — the current/latest docs always live at the default docsDir and
-    // are never listed here (zudo-doc versioning guide). "1.0" archives the
-    // pre-rescaffold docs content (last stable npm release before this
-    // 4.x rescaffold) as of this commit, frozen under src/content/docs-v1.0(-ja)
-    // so Wave 3/4's rewrite of src/content/docs/ doesn't lose it.
+    // Versioning: the `versions` array holds OLDER snapshots only — the
+    // current/latest docs always live at the default docsDir and are never
+    // listed here (zudo-doc versioning guide). Entries are newest-first; that
+    // order is what the header switcher and /docs/versions/ render.
+    //
+    // Release-time snapshot practice: at each release, freeze the then-current
+    // src/content/docs(-ja) into src/content/docs-v<X.Y>(-ja) and PREPEND an
+    // entry here, so the released docs stay browsable at /v/<X.Y>/ after the
+    // default docs move on. "2.0" is the first snapshot taken under this
+    // practice — it pins v2.0.0, the current npm release, so its content is
+    // byte-identical to Latest until the next doc change lands. "1.0" predates
+    // the practice: it archives the pre-rescaffold docs (last stable release
+    // before the 4.x rescaffold), frozen so Wave 3/4's rewrite of
+    // src/content/docs/ didn't lose them.
+    //
+    // A snapshot copies only git-TRACKED content. src/content/docs/claude* is
+    // gitignored build output that the claude-resources plugin regenerates into
+    // the DEFAULT docsDir on every build, and that plugin is version-unaware —
+    // copying it in would commit build output and freeze a stale mirror of the
+    // repo's .claude/. So snapshots carry no Claude section (same as "1.0").
+    //
+    // `banner: 'unmaintained'` on every entry, per the versioning guide's
+    // "Creating a New Version" step: a snapshot is frozen by definition, so it
+    // points readers at Latest even while its label still names the current
+    // release.
     //
     // Known upstream bug (zudo-doc@4.5.0): the `<CategoryNav>` MDX component
-    // renders unversioned links on /v/1.0/ pages (its category-index cards
-    // point at the default docs instead of the v1.0 archive) because
+    // renders unversioned links on /v/<slug>/ pages (its category-index cards
+    // point at the default docs instead of the archive) because
     // `createCategoryNavWrapper` never threads `currentVersion` through,
-    // unlike the sidebar/header nav which do this correctly. Not fixable
-    // from this repo — filed as zudolab/zudo-doc#3194.
+    // unlike the sidebar/header nav which do this correctly. Applies to every
+    // snapshot, 2.0 included. Not fixable from this repo — filed as
+    // zudolab/zudo-doc#3194.
     //
-    // Also upstream (zudo-doc@4.5.0): the version switcher offers a v1.0 link
-    // for slugs that exist only in the latest docs (changelog v1.1.0-next.*,
-    // the generated /docs/claude* tree), which 404s — the VersionSwitcher
-    // component supports unavailableVersions but buildInlineVersionSwitcher
-    // never computes it. Not fixable host-side — filed as zudolab/zudo-doc#3196.
+    // Also upstream (zudo-doc@4.5.0): the version switcher offers a snapshot
+    // link for slugs that exist only in the latest docs, which 404s — the
+    // VersionSwitcher component supports unavailableVersions but
+    // buildInlineVersionSwitcher never computes it. For 1.0 that is the
+    // changelog v1.1.0-next.* pages and the generated /docs/claude* tree; for
+    // 2.0 it is /docs/claude* today, plus any doc page added to Latest after
+    // this snapshot. Not fixable host-side — filed as zudolab/zudo-doc#3196.
     versions: [
+      {
+        slug: '2.0',
+        label: '2.0.0',
+        docsDir: 'src/content/docs-v2.0',
+        locales: {
+          ja: { dir: 'src/content/docs-v2.0-ja' },
+        },
+        banner: 'unmaintained',
+      },
       {
         slug: '1.0',
         label: '1.0.0',
@@ -105,7 +136,14 @@ export default defineConfig(
       { label: 'Changelog', path: '/docs/changelog', categoryMatch: 'changelog' },
       { label: 'Claude', path: '/docs/claude', categoryMatch: 'claude' },
     ],
+    // Rendered left-to-right in the header's right-hand cluster. The version
+    // switcher leads so its wide "Version: <label>" pill sits at the cluster's
+    // LEFT edge instead of the window edge.
     headerRightItems: [
+      {
+        type: 'component',
+        component: 'version-switcher',
+      },
       {
         type: 'component',
         component: 'github-link',
@@ -121,10 +159,6 @@ export default defineConfig(
       {
         type: 'component',
         component: 'language-switcher',
-      },
-      {
-        type: 'component',
-        component: 'version-switcher',
       },
     ],
     // Cloudflare adapter — required for the Workers deploy (dist/_worker.js) and

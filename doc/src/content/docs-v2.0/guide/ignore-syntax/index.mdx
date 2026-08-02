@@ -1,0 +1,151 @@
+---
+title: Ignore Syntax
+description: Suppress design-token-lint violations on specific lines with ignore comments.
+sidebar_position: 4
+category: guide
+---
+
+Sometimes you need to use a prohibited class for legitimate reasons — a third-party integration, a one-off experiment, or a deliberate escape hatch. Use an ignore comment to suppress violations on the next line.
+
+## Syntax
+
+Place a `design-token-lint-ignore` comment on the line **immediately before** the line containing the violation. Three comment forms are recognized:
+
+### JSX/TSX
+
+```tsx
+{/* design-token-lint-ignore */}
+<div className="p-4 bg-gray-500">
+```
+
+### CSS-in-JS / block comments
+
+```tsx
+/* design-token-lint-ignore */
+<div className="p-4 bg-gray-500">
+```
+
+### Line comments
+
+```tsx
+// design-token-lint-ignore
+<div className="p-4 bg-gray-500">
+```
+
+## How It Works
+
+When the linter scans a file, it remembers ignore markers. For each violation, it checks whether the previous line is marked. If so, the violation is suppressed.
+
+Ignore comments only affect the **next line**. They do not suppress violations further down.
+
+```tsx
+{/* design-token-lint-ignore */}
+<div className="p-4">  {/* suppressed */}
+<div className="p-4">  {/* NOT suppressed */}
+```
+
+## Same-Line Trailing Ignore
+
+An ignore comment doesn't have to sit alone on its own line. Placed as a **trailing** comment after real code, it also suppresses violations on that same line — in addition to still suppressing the line that follows:
+
+```tsx
+<div className="p-4"> {/* design-token-lint-ignore */}
+<div className="m-8">
+<div className="gap-6">
+```
+
+Here, `p-4` is suppressed because the ignore comment trails its own line, and `m-8` is suppressed because the comment also covers the next line as usual. Only `gap-6` is reported.
+
+<Note>
+
+A trailing same-line ignore always covers **both** its own line and the next one — there's no way to suppress only the current line. If that's surprising, prefer a plain next-line ignore on its own line instead, so the suppression scope stays obvious to reviewers.
+
+</Note>
+
+All three comment forms (JSX, block, line) support the trailing position:
+
+```tsx
+<div className="p-4"> /* design-token-lint-ignore */
+<div className="p-4"> // design-token-lint-ignore
+```
+
+## When to Use
+
+### Good reasons
+
+- **Third-party library integration** — when a component requires raw Tailwind classes for props
+- **Generated code** — auto-generated files you can't or shouldn't modify
+- **Temporary workaround** — documented with a comment explaining why
+
+### Bad reasons
+
+- **"I don't feel like adding a semantic token"** — add the token
+- **Widespread use** — if you're ignoring the same class in many places, add it to the `allowed` list in config
+- **Silencing the linter entirely** — that defeats the purpose
+
+## File-level Ignore
+
+To skip an entire file, add a `design-token-lint-ignore-file` comment anywhere in the file. The linter will produce zero violations for that file regardless of its content.
+
+### JSX/TSX
+
+```tsx
+{/* design-token-lint-ignore-file */}
+```
+
+### CSS-in-JS / block comments
+
+```tsx
+/* design-token-lint-ignore-file */
+```
+
+### Line comments
+
+```tsx
+// design-token-lint-ignore-file
+```
+
+The comment can appear at the top of the file or anywhere inside it — the entire file is skipped either way.
+
+### When to use file-level ignore
+
+- **Generated files** — auto-generated output you can't or shouldn't modify (e.g. icon sprites, Storybook story files, auto-generated wrappers)
+- **Legacy files under migration** — temporarily suppress a file while you work through a large codebase migration, then remove the comment when done
+- **Test fixtures** — snapshot or fixture files that intentionally contain raw utility classes
+
+Avoid using file-level ignore as a blanket suppressor for active source files. Prefer line-level ignore or the `allowed` config list for targeted exceptions.
+
+## Alternatives
+
+Before reaching for an ignore comment, consider:
+
+1. **Arbitrary value syntax**: `p-[14px]` is explicit and doesn't need an ignore
+2. **Semantic token**: `p-hgap-md` if an appropriate scale exists
+3. **Config allowlist**: add the class to `allowed` in `.design-token-lint.json` if it's a legitimate exception that repeats
+
+## Documenting Ignores
+
+Ignore comments are invisible in diffs when reviewers aren't paying attention. Add a `why` comment so future maintainers understand — add a reason after a `-`, `–`, `—`, or `:` separator:
+
+```tsx
+{/* design-token-lint-ignore — third-party Calendar widget requires raw p-4 */}
+<CalendarWidget className="p-4" />
+```
+
+This still suppresses `p-4` exactly as before — the reason text is optional and, by default, purely a courtesy to reviewers.
+
+## Enforcing Documented Reasons
+
+Two opt-in config flags turn the "add a reason" convention above into something the linter actually checks, instead of relying on reviewer discipline:
+
+- **`requireIgnoreReason`** — a bare ignore (no reason text) that shields a real violation is reported instead of silently suppressing it.
+- **`reportUnusedIgnores`** — an ignore comment that suppressed nothing is itself reported (the ESLint `reportUnusedDisableDirectives` equivalent).
+
+```json
+{
+  "requireIgnoreReason": true,
+  "reportUnusedIgnores": true
+}
+```
+
+Both flags apply to every ignore comment form on this page — next-line, same-line, and (for `requireIgnoreReason`) everywhere except `design-token-lint-ignore-file` — and to the [`css` declaration-scanning](../configuration/index.mdx#fields-css) path too. See [`requireIgnoreReason` / `reportUnusedIgnores`](../configuration/index.mdx#fields-requireignorereason-reportunusedignores) in the Configuration guide for the full behavior and example output.
