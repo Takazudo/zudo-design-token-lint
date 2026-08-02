@@ -278,18 +278,19 @@ Override this to match your project's naming convention:
 
 <Warning>
 
-**Counter-intuitive direction — read this before changing the list.** `semanticPrefixes` is a namespace *declaration*, not an allowlist. **Adding** a prefix can **add** violations, because it exposes the numeric tail hiding behind a semantic-looking name — it never removes one. `p-hgap-2` is flagged once `hgap-` is listed; `p-hgap-sm` still passes either way. See [Changed in v2.0.0](#fields-changed-in-v2-0-0) below.
+**Counter-intuitive direction — read this before changing the list.** For a `-`-suffixed, namespace-style entry (the only style used by the defaults and every example on this page), `semanticPrefixes` is a namespace *declaration*, not an allowlist. **Adding** such an entry can **add** violations, because it exposes the numeric tail hiding behind a semantic-looking name — it never removes one. `p-hgap-2` is flagged once `hgap-` is listed; `p-hgap-sm` still passes either way. (A dash-less entry is a separate, legacy case — see step 3 below.) See [Changed in v2.0.0](#fields-changed-in-v2-0-0) below.
 
 </Warning>
 
 #### How the strip works
 
 1. A configured entry matches when the value starts with it. The trailing `-` is optional in config — `"hgap"` and `"hgap-"` behave identically.
-2. It's a **namespace match** when the matched entry ends in `-`, or is immediately followed by `-` in the value. Its **tail** is everything after the stripped namespace (and its `-`, if the entry didn't already carry one).
-3. When more than one entry matches as a namespace, the **longest** one wins — this keeps the result independent of array order.
-4. The tail is then judged exactly like a plain value would be for this rule: empty or `"0"` passes (the same zero bypass every spacing/sizing rule already has), a tail matching the rule's own numeric pattern is **flagged**, and anything else — a token name like `sm` or `2xs` — passes.
-5. The strip happens **once**, with no recursion: `p-hgap-vgap-2` strips only the outer `hgap-`, leaving tail `vgap-2`, which is not numeric, so it passes.
-6. Matching is **case-sensitive** (`p-HGAP-2` does not match a `hgap-` entry).
+2. It's a **namespace match** when the matched entry ends in `-`, or is immediately followed by `-` in the value. Its **tail** is everything after the stripped namespace (and its `-`, if the entry didn't already carry one). Every entry in the default list, and every example in this section, ends in `-`, so it's always a namespace match.
+3. If an entry matches but not as a namespace — a bare, dash-less entry like `"1"` matching mid-token inside `p-12`, or an exact match that leaves nothing after it like `"2"` against `p-2` — the class **passes unconditionally, with no tail re-test**. This is the original 1.x allowlist behavior, preserved unchanged for backward compatibility; it only applies to unusual, non-namespace-shaped entries, never to a `-`-suffixed one like the built-in defaults.
+4. When more than one entry matches as a namespace, the **longest** one wins — this keeps the result independent of array order.
+5. The tail is then judged exactly like a plain value would be for this rule: empty or `"0"` passes (the same zero bypass every spacing/sizing rule already has), a tail matching the rule's own numeric pattern is **flagged**, and anything else — a token name like `sm` or `2xs` — passes.
+6. The strip happens **once**, with no recursion: `p-hgap-vgap-2` strips only the outer `hgap-`, leaving tail `vgap-2`, which is not numeric, so it passes.
+7. Matching is **case-sensitive** (`p-HGAP-2` does not match a `hgap-` entry).
 
 | Class | `semanticPrefixes` | Result | Why |
 |---|---|---|---|

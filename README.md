@@ -170,15 +170,16 @@ Namespace prefixes for your semantic-token vocabulary. A value that starts with 
 }
 ```
 
-> **Counter-intuitive direction**: `semanticPrefixes` is a namespace _declaration_, not an allowlist. **Adding** a prefix can **add** violations — it exposes the numeric tail hiding behind a semantic-looking name (`p-hgap-2` is flagged) while a true semantic token (`p-hgap-sm`) still passes. It never removes a violation.
+> **Counter-intuitive direction**: for a `-`-suffixed, namespace-style entry (the only style used by the default and every example here), `semanticPrefixes` is a namespace _declaration_, not an allowlist. **Adding** such an entry can **add** violations — it exposes the numeric tail hiding behind a semantic-looking name (`p-hgap-2` is flagged) while a true semantic token (`p-hgap-sm`) still passes. It never removes a violation. (A dash-less entry is a separate, legacy case — see point 3 below.)
 
 How the strip works:
 
 1. An entry matches when the value starts with it (the trailing `-` is optional in config — `"hgap"` and `"hgap-"` behave the same).
-2. It's a **namespace match** when the entry ends in `-`, or is immediately followed by `-` in the value. When more than one entry matches as a namespace, the **longest** one wins, independent of array order.
-3. The matched namespace (and its trailing `-`) is stripped, leaving a **tail**, judged exactly like a plain value would be for this rule: empty or `"0"` passes, a tail matching the rule's numeric pattern is flagged, anything else (`sm`, `2xs`, ...) passes.
-4. The strip happens exactly once — `p-hgap-vgap-2` strips only the outer `hgap-`, leaving tail `vgap-2` (not numeric), so it passes.
-5. Matching is case-sensitive.
+2. It's a **namespace match** when the entry ends in `-`, or is immediately followed by `-` in the value. Every entry in the default list ends in `-`, so it's always a namespace match. When more than one entry matches as a namespace, the **longest** one wins, independent of array order.
+3. An entry that matches but **not** as a namespace — a dash-less entry like `"1"` matching mid-token inside `p-12`, or an exact match leaving nothing after it like `"2"` against `p-2` — makes the class pass **unconditionally, with no tail re-test**. This is the original 1.x allowlist behavior, preserved unchanged for backward compatibility; it never applies to a `-`-suffixed entry like the built-in defaults.
+4. The matched namespace (and its trailing `-`) is stripped, leaving a **tail**, judged exactly like a plain value would be for this rule: empty or `"0"` passes, a tail matching the rule's numeric pattern is flagged, anything else (`sm`, `2xs`, ...) passes.
+5. The strip happens exactly once — `p-hgap-vgap-2` strips only the outer `hgap-`, leaving tail `vgap-2` (not numeric), so it passes.
+6. Matching is case-sensitive.
 
 This applies to every rule whose value placeholder is the exact `{n}` form — every spacing rule, the numeric sizing scale, the opt-in `z-{n}` preset, and any custom `{n}` rule — since the mechanism belongs to the `{n}` placeholder, not to a specific rule family.
 
