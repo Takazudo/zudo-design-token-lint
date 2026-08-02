@@ -1,0 +1,40 @@
+---
+title: v2.0.0
+description: First stable 2.x — semanticPrefixes becomes an observable namespace declaration, the doc site moves to zudo-doc 4.5, and releases go stable-by-default.
+sidebar_position: 9993
+category: changelog
+---
+
+The first stable release since v1.0.0. Everything from the `v1.1.0-next.1`–`v1.1.0-next.3` prerelease line ships here too — if you are upgrading from v1.0.0, read those entries as well ([v1.1.0-next.1](./v1.1.0-next.1.mdx), [v1.1.0-next.2](./v1.1.0-next.2.mdx), [v1.1.0-next.3](./v1.1.0-next.3.mdx)). The 2.0 major itself is carried by one deliberate linting behavior change: `semanticPrefixes` now actually does something.
+
+<Warning>
+
+**Behavior change:** `semanticPrefixes` is now a **namespace declaration**, not a no-op allowlist. Adding a prefix can **add** violations: `p-hgap-2` is flagged under the default config (numeric tail after the `hgap-` namespace), while true semantic tokens like `p-hgap-sm` keep passing. See [Migrating](#behavior-changes-migrating-semanticprefixes-as-a-namespace-declaration) below.
+
+</Warning>
+
+## Behavior Changes
+
+### Migrating: `semanticPrefixes` as a namespace declaration
+
+In 1.x, `semanticPrefixes` had no observable effect for any config built on the `{n}` placeholder — a semantic value like `hgap-sm` never matched the numeric pattern in the first place, so the bypass never fired. In 2.0 the option declares **token namespaces**: when a value starts with a listed `-`-suffixed prefix, the namespace is stripped and the rule's numeric test re-applies to the remainder (7adcb49).
+
+- `p-hgap-sm` — passes (remainder `sm` is not numeric) — same as 1.x
+- `p-hgap-2` — **newly flagged** (remainder `2` is numeric): a raw number hiding inside a token namespace
+- `DEFAULT_CONFIG.semanticPrefixes` grew from `["hgap-", "vgap-"]` to `["hgap-", "vgap-", "hsp-", "vsp-"]`
+- Applies uniformly to every exact-`{n}` rule (spacing, the sizing scale, the opt-in `z-index` preset)
+- A legacy entry without a trailing `-` that matches mid-token keeps its 1.x unconditional-bypass behavior (documented in the [configuration guide](../guide/configuration/index.mdx))
+- To compare behaviors set `"semanticPrefixes": []` — deleting the field restores the defaults, not an empty list
+- No public API shape changed: `LintResult`, `Violation`, `checkClass`, `CompiledRule`, and `compilePattern` are all identical
+
+The [Playground](../playground/index.mdx) mirrors the new behavior and ships a demo pair showing the pass/flag flip, backed by a parity test in the package's own test suite.
+
+## Docs Site
+
+The documentation site was rescaffolded onto zudo-doc 4.5.0 + zfb 1.1.1 (bauhaus theme pack). Docs versioning is now enabled — the v1.0.0 documentation is preserved as a browsable archive — and the site gained a design-token panel, real favicons, working SPA transitions on the 404 page, and a Japanese-localized Playground. The pre-2.0 configuration guide and API reference were fully re-synced (EN + JA).
+
+## Other Changes
+
+- Releases are now **stable-by-default**: a release lands directly on the npm `latest` tag, and the `next` dist-tag is an explicit opt-in soak channel that is cleaned up automatically after a stable publish (b4043b6, 273f498). `npm i @takazudo/zudo-design-token-lint@next` may therefore legitimately report no version between soaks.
+- Registry smoke tests skip the `@next` leg gracefully when no `next` dist-tag exists (ce6a824)
+- Home hero uses the site's own logo instead of a generated placeholder (b23a64d); zudo-doc-internal skills removed from the published claude-skills docs (a17eae0)
