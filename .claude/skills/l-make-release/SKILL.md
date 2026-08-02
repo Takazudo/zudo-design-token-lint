@@ -264,6 +264,34 @@ Rules:
 - The JA file mirrors the EN file: **translate prose to Japanese**, keep code blocks / inline code / identifiers / `sidebar_position` / `category` identical (see `doc/src/content/CLAUDE.md`).
 - Each entry: a short description; append the commit short hash in parentheses when it maps to a single commit.
 
+### 4c. Retire the outgoing release's doc-snapshot banner
+
+`doc/zfb.config.ts`'s `versions[]` array pins older docs at `/v/<slug>/`. An entry carries `banner: false` **only** while its `label` is the current latest release — it exists so that snapshot does not tell readers they are "viewing documentation for an older version" while that version is in fact the newest. **This release makes that false.**
+
+For every entry in `versions[]` whose `banner` is `false`, set it to `'unmaintained'`, and delete the `FLIP TO 'unmaintained'` reminder comment above it:
+
+```bash
+grep -nE '^[[:space:]]*banner: false' doc/zfb.config.ts   # empty output = nothing to do
+```
+
+**Anchor the pattern.** A bare `grep "banner: false"` also matches the surrounding comment prose, which discusses the literal — it returns 3 hits where only 1 is a real config line. Matching on line-start-plus-whitespace selects the config line alone.
+
+Example — shipping `2.1.0` while `versions[]` holds `{ slug: '2.0', label: '2.0.0', banner: false }`:
+
+```diff
+-        // FLIP TO 'unmaintained' WHEN A RELEASE AFTER 2.0.0 SHIPS. False only
+-        // because 2.0.0 is currently the latest release, so an "older version"
+-        // banner would be a lie. ...
+-        banner: false,
++        banner: 'unmaintained',
+```
+
+Skip when `versions` is `false`/absent or the grep is empty. **Verify after editing** — `grep -cE '^[[:space:]]*banner: false' doc/zfb.config.ts` must print `0`, and `pnpm check:doc` must still pass (Step 5 covers the build).
+
+Why this is a release step and not a doc chore: nothing else in the repo can detect that a snapshot has gone stale. The signal is precisely "a newer version shipped", which only this skill knows. Left undone, `/v/2.0/` keeps presenting itself as current forever.
+
+> **Not automated: creating a NEW snapshot for this release.** Freezing the outgoing docs into `src/content/docs-v<X.Y>(-ja)` is a per-release judgement call (worth it when the docs changed materially; noise when they did not), and it has real constraints — copy git-TRACKED content only, and neutralise anything that reaches outside the content dir, or the "frozen" page silently tracks HEAD. The rules are documented in the `versions` comment block in `doc/zfb.config.ts`. Read it before snapshotting; do not improvise a `cp -r`.
+
 ## Step 5: Build + Test
 
 ```bash
@@ -286,6 +314,8 @@ Stage and commit the bumped files atomically in a **single commit**:
 git add package.json \
   doc/src/content/docs/changelog/v<version>.mdx \
   doc/src/content/docs-ja/changelog/v<version>.mdx
+# Only when Step 4c actually changed it (grep found a `banner: false`):
+git add doc/zfb.config.ts
 git commit -m "chore(release): bump to v<version>"
 git push origin main
 BUMP_SHA=$(git rev-parse HEAD)

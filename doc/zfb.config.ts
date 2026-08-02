@@ -114,8 +114,13 @@ export default defineConfig(
         // because 2.0.0 is currently the latest release, so an "older version"
         // banner would be a lie. The moment 2.1/3.0 lands this snapshot really
         // is old, and without the banner it loses its only signal that the
-        // reader is not on the current docs. Nothing enforces this flip yet —
-        // it is a manual step at release time.
+        // reader is not on the current docs.
+        //
+        // /l-make-release Step 4c does this flip as part of the bump commit, so
+        // it should not need doing by hand — but a release cut any other way
+        // still does. That step locates this entry with a line-anchored grep
+        // (`^[[:space:]]*banner: false`), so keep the assignment on its own
+        // line; prose above may mention the literal freely.
         banner: false,
       },
     ],
