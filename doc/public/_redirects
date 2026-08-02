@@ -1,0 +1,51 @@
+# Cloudflare Workers static-asset redirects.
+#
+# zudo-doc@4.5.0's versions page hardcodes the entry-doc slug as a flat
+# `docs/getting-started` (dist/versions-page/index.js:40,46 — no prop, no
+# setting), but this project's entry doc is nested at
+# `docs/overview/getting-started`. Every "Docs" link on /docs/versions/ —
+# Latest and every snapshot row — therefore 404s.
+#
+# Redirecting at the asset layer fixes all rows at once without touching
+# snapshot content: adding a stub `getting-started` page inside docs-v2.0/ or
+# docs-v1.0/ would put a page in an archive that never shipped in that release.
+#
+# Remove these once upstream zudolab/zudo-doc#3195 ships a configurable
+# entry slug and this project adopts it.
+#
+# Placeholder rules count against Cloudflare's 100-dynamic-rule limit; these
+# four are well under it.
+
+/docs/getting-started              /docs/overview/getting-started/              301
+/docs/getting-started/             /docs/overview/getting-started/              301
+/ja/docs/getting-started           /ja/docs/overview/getting-started/           301
+/ja/docs/getting-started/          /ja/docs/overview/getting-started/           301
+/v/:version/docs/getting-started   /v/:version/docs/overview/getting-started/   301
+/v/:version/docs/getting-started/  /v/:version/docs/overview/getting-started/   301
+/v/:version/ja/docs/getting-started  /v/:version/ja/docs/overview/getting-started/  301
+/v/:version/ja/docs/getting-started/ /v/:version/ja/docs/overview/getting-started/  301
+
+# The Claude section (/docs/claude, /docs/claude-md/*, /docs/claude-skills/*)
+# is generated from the repo's live .claude/ directory by the claude-resources
+# plugin, which only ever writes into the DEFAULT docsDir. It is inherently
+# unversioned — there is exactly one copy — so snapshots deliberately do not
+# carry it (see the versions block in zfb.config.ts).
+#
+# Two things still emit versioned Claude URLs, and both 404 without these rules:
+#   - the header nav's "Claude" item, version-prefixed on every snapshot page
+#     (88 links across /v/1.0/ and /v/2.0/) — the visible one: clicking Claude
+#     from any archived page was a dead end;
+#   - the version switcher on Claude pages, offering snapshot links for pages
+#     that exist only in Latest (upstream zudolab/zudo-doc#3196).
+#
+# Sending both to the canonical unversioned page is the correct destination:
+# the content is the same regardless of which doc version you came from.
+
+/v/:version/docs/claude              /docs/claude                     301
+/v/:version/docs/claude/             /docs/claude                     301
+/v/:version/ja/docs/claude           /ja/docs/claude                  301
+/v/:version/ja/docs/claude/          /ja/docs/claude                  301
+/v/:version/docs/claude-md/*         /docs/claude-md/:splat           301
+/v/:version/docs/claude-skills/*     /docs/claude-skills/:splat       301
+/v/:version/docs/claude-agents/*     /docs/claude-agents/:splat       301
+/v/:version/docs/claude-commands/*   /docs/claude-commands/:splat     301
