@@ -137,6 +137,12 @@ interface Violation {
 
 `category` is an optional, additive field — it's only populated when the matching rule came from a structured `prohibited` entry (see `compilePattern` below) that set a `category`. Plain string `prohibited` entries never produce a `category`, so existing code destructuring `{ className, reason }` keeps working unchanged.
 
+<Note>
+
+**v2.0.0**: when a value matches under [`semanticPrefixes`](../../guide/configuration/index.mdx#fields-semanticprefixes) but its remaining tail is still numeric (e.g. `p-hgap-2` with `hgap-` listed), `reason` gets an extra parenthetical naming the matched prefix, inserted before any `suggestions` hint — `Numeric spacing "p-hgap-2" — use a semantic spacing token or arbitrary value (numeric tail after the "hgap-" semantic prefix)`. This is a message-content change only; the `Violation` shape itself is unchanged.
+
+</Note>
+
 ### `checkClassWithConfig(className, compiledConfig)`
 
 Same as above, but with an explicit compiled config instead of the global one.

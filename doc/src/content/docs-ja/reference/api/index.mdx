@@ -137,6 +137,12 @@ interface Violation {
 
 `category` はオプションで追加的なフィールドです — マッチしたルールが `category` を設定した構造化 `prohibited` エントリ(下記 `compilePattern` 参照)由来である場合にのみ値が入ります。プレーンな文字列の `prohibited` エントリは決して `category` を生成しないため、`{ className, reason }` を分割代入している既存のコードはそのまま変わらず動作します。
 
+<Note>
+
+**v2.0.0**: 値が [`semanticPrefixes`](../../guide/configuration/index.mdx#fields-semanticprefixes) の下でマッチしても、その残りの末尾がまだ数値である場合(例: `hgap-` が列挙された状態での `p-hgap-2`)、`reason` にはマッチしたプレフィックスを名指しする追加の丸括弧が、`suggestions` のヒントより前に挿入されます — `Numeric spacing "p-hgap-2" — use a semantic spacing token or arbitrary value (numeric tail after the "hgap-" semantic prefix)`。これはメッセージ内容のみの変更であり、`Violation` の形状自体は変わっていません。
+
+</Note>
+
 ### `checkClassWithConfig(className, compiledConfig)`
 
 上記と同じですが、グローバル設定ではなく明示的なコンパイル済み設定を使用します。

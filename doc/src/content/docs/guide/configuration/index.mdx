@@ -42,7 +42,7 @@ Create a `.design-token-lint.json` or `design-token-lint.config.json` file at yo
 | `patterns` | `string[]` | File glob patterns to scan (used when no CLI args are given) |
 | `suggestionSuffix` | `string` | Custom suffix for violation messages (replaces the default suggestion text) |
 | `suggestions` | `Record<string, string>` | Map from a banned class's normalized base form to your project's semantic replacement token, appended to the violation message as a "did you mean" hint |
-| `semanticPrefixes` | `string[]` | Value prefixes that bypass spacing rules (default: `["hgap-", "vgap-"]`) |
+| `semanticPrefixes` | `string[]` | Namespace prefixes for your semantic-token vocabulary — a value under a listed namespace has the namespace stripped and its remaining tail re-tested against the same rule (default: `["hgap-", "vgap-", "hsp-", "vsp-"]`) |
 | `classAttributes` | `string[]` | HTML/JSX attribute names the extractor scans for class names |
 | `classFunctions` | `string[]` | Utility function names the extractor scans for class name arguments |
 | `extends` | `string \| string[]` | Named preset(s) to inherit `prohibited`/`allowed` patterns from |
@@ -264,9 +264,9 @@ This is message-only guidance — it does not drive an autofix, and it is not co
 
 ### `semanticPrefixes`
 
-Value prefixes that mark a spacing value as an already-semantic token — a value starting with one of these prefixes bypasses the numeric-spacing check without needing to look numeric in the first place.
+Namespace prefixes for your semantic-token vocabulary. A value that starts with a listed namespace has that namespace stripped, and the **remaining tail is re-tested** against the same rule — it is not an automatic pass.
 
-**Default**: `["hgap-", "vgap-"]`
+**Default**: `["hgap-", "vgap-", "hsp-", "vsp-"]`
 
 Override this to match your project's naming convention:
 
@@ -276,11 +276,77 @@ Override this to match your project's naming convention:
 }
 ```
 
-With this override, `p-hsp-sm` and `gap-vsp-md` are explicitly declared as semantic tokens. Set to `[]` to remove the prefix allowlist entirely.
+<Warning>
+
+**Counter-intuitive direction — read this before changing the list.** For a `-`-suffixed, namespace-style entry (the only style used by the defaults and every example on this page), `semanticPrefixes` is a namespace *declaration*, not an allowlist. **Adding** such an entry can **add** violations, because it exposes the numeric tail hiding behind a semantic-looking name — it never removes one. `p-hgap-2` is flagged once `hgap-` is listed; `p-hgap-sm` still passes either way. (A dash-less entry is a separate, legacy case — see step 3 below.) See [Changed in v2.0.0](#fields-changed-in-v2-0-0) below.
+
+</Warning>
+
+#### How the strip works
+
+1. A configured entry matches when the value starts with it. The trailing `-` is optional in config — `"hgap"` and `"hgap-"` behave identically.
+2. It's a **namespace match** when the matched entry ends in `-`, or is immediately followed by `-` in the value. Its **tail** is everything after the stripped namespace (and its `-`, if the entry didn't already carry one). Every entry in the default list, and every example in this section, ends in `-`, so it's always a namespace match.
+3. If an entry matches but not as a namespace — a bare, dash-less entry like `"1"` matching mid-token inside `p-12`, or an exact match that leaves nothing after it like `"2"` against `p-2` — the class **passes unconditionally, with no tail re-test**. This is the original 1.x allowlist behavior, preserved unchanged for backward compatibility; it only applies to unusual, non-namespace-shaped entries, never to a `-`-suffixed one like the built-in defaults.
+4. When more than one entry matches as a namespace, the **longest** one wins — this keeps the result independent of array order.
+5. The tail is then judged exactly like a plain value would be for this rule: empty or `"0"` passes (the same zero bypass every spacing/sizing rule already has), a tail matching the rule's own numeric pattern is **flagged**, and anything else — a token name like `sm` or `2xs` — passes.
+6. The strip happens **once**, with no recursion: `p-hgap-vgap-2` strips only the outer `hgap-`, leaving tail `vgap-2`, which is not numeric, so it passes.
+7. Matching is **case-sensitive** (`p-HGAP-2` does not match a `hgap-` entry).
+
+| Class | `semanticPrefixes` | Result | Why |
+|---|---|---|---|
+| `p-hgap-sm` | `["hgap-"]` | pass | tail `sm` isn't numeric |
+| `p-hgap-2` | `["hgap-"]` | **FLAG** | tail `2` matches the rule's numeric pattern — a numeric scale wearing a semantic name |
+| `p-hgap-2.5` | `["hgap-"]` | **FLAG** | a decimal tail still matches |
+| `p-hgap-0` | `["hgap-"]` | pass | zero tail |
+| `p-hgap-` | `["hgap-"]` | pass | empty tail |
+| `p-hgap-2xs` | `["hgap-"]` | pass | digit-*leading* token name (`2xs`), not purely numeric |
+| `w-hsp-3` | `["hsp-"]` | **FLAG**, `category: "sizing"` | applies to every exact-`{n}` rule, including the sizing scale |
+| `z-ztier-2` | `["ztier-"]` | **FLAG**, `category: "z-index"` | applies to the opt-in `z-index` preset too |
+
+This applies uniformly to **every rule whose value placeholder is the exact `{n}` form** — every built-in spacing rule, the numeric sizing scale (`w-{n}`, `h-{n}`, `size-{n}`, etc.), the opt-in [`z-index` preset](#fields-extends)'s `z-{n}`, and any custom `{n}` rule you add. There is no per-family carve-out — the strip is a property of the `{n}` placeholder, not of a specific rule.
+
+A flagged namespace match appends a parenthetical to the violation message, naming the matched entry verbatim as authored, before any [`suggestions`](#fields-suggestions) hint:
+
+```text
+Numeric spacing "p-hgap-2" — use a semantic spacing token or arbitrary value (numeric tail after the "hgap-" semantic prefix)
+```
+
+```text
+Numeric spacing "p-hgap-2" — use a semantic spacing token or arbitrary value (numeric tail after the "hgap-" semantic prefix) — did you mean "p-hgap-sm"?
+```
+
+#### `semanticPrefixes` has replace semantics
+
+Unlike `prohibited`/`allowed`, `semanticPrefixes` is **not** contributed by `extends`/presets and is not additive — setting it replaces the default outright, even when combined with `extends`:
+
+```json
+{
+  "extends": ["default"],
+  "semanticPrefixes": ["hsp-"]
+}
+```
+
+Here `compiled.semanticPrefixes` is exactly `["hsp-"]` — `hgap-`, `vgap-`, and `vsp-` are gone, not merged in. This matters for escape hatch 3 below.
+
+#### Escape hatches for a newly-flagged class
+
+For a class like `p-hgap-2` that starts failing under the new default, in order of preference:
+
+1. **Rename the token** so it isn't a numeric scale in disguise (`p-hgap-2` → `p-hgap-sm`) — this is the point of the rule.
+2. **Allow the specific class**: `"allowed": ["p-hgap-2"]` — `allowed` is checked before any rule, so it always wins.
+3. **Drop that namespace** from `semanticPrefixes` (e.g. list `["vgap-", "hsp-", "vsp-"]` without `hgap-`) — restores exact 1.x behavior for values under that namespace, since a non-numeric tail passes whether or not the entry is listed.
+4. **Use an arbitrary value**: `p-[8px]`.
+
+#### Changed in v2.0.0
 
 <Note>
 
-The built-in prohibited patterns only flag purely numeric values (`p-4`, `m-8`, ...), so an alphabetic suffix like `hgap-sm` or `hsp-sm` already fails that check regardless of this setting. `semanticPrefixes` mainly matters as an explicit declaration of your semantic-token vocabulary, or if you add a custom prohibited pattern with looser value matching.
+In 1.x, `semanticPrefixes` had no observable effect on any built-in rule — a value like `hgap-sm` already failed the numeric-spacing check on its own, allowlist or not (tracked as [#108](https://github.com/Takazudo/zudo-design-token-lint/issues/108)). v2 makes the field real by re-testing the tail after the strip instead of treating any prefix match as an automatic pass.
+
+- **Newly flagged**: exactly one shape — `<rule prefix>-<listed namespace>-<number>`, e.g. `p-hgap-2`, `gap-vgap-4`, `w-hsp-3`, `px-hgap-2.5`. Nothing else changes; unrelated classes are unaffected.
+- **Newly passing**: nothing — the change is strictly additive, it never turns a previous violation into a pass.
+- **The default list itself also grew**, from `["hgap-", "vgap-"]` to `["hgap-", "vgap-", "hsp-", "vsp-"]`, to cover this project's full documented token vocabulary. If you relied on the previous default and have a numeric-tail `hsp-`/`vsp-` value anywhere (e.g. `p-hsp-2`), it will newly flag too. Pin the old list explicitly (`"semanticPrefixes": ["hgap-", "vgap-"]`) to opt out.
+- No exported type or function signature changed — `CompiledRule`, `compilePattern`, and `CompiledConfig.semanticPrefixes` (`string[]`) are unchanged. Only the runtime behavior of the built-in matcher (`checkClass`/`checkClassWithConfig`/`lintFile`/`lintContent`) is different. A consumer who imported `compilePattern` and wrote a fully custom matcher against `CompiledRule` needs to add the strip step themselves to pick up the new behavior.
 
 </Note>
 
@@ -471,7 +537,7 @@ See the [package README](https://github.com/Takazudo/zudo-design-token-lint/blob
 
 These classes always pass without being in `allowed`:
 
-- **Semantic spacing tokens**: `p-hgap-sm`, `gap-vgap-xs`, `m-hgap-md` (classes with `hgap-*` or `vgap-*` suffixes)
+- **Semantic spacing tokens**: `p-hgap-sm`, `gap-vgap-xs`, `m-hgap-md` (classes with a non-numeric `hgap-*`/`vgap-*`/`hsp-*`/`vsp-*` tail — see [`semanticPrefixes`](#fields-semanticprefixes); a numeric tail like `p-hgap-2` is flagged, not allowed)
 - **Non-default colors**: `bg-surface`, `text-fg`, `bg-zd-black` (any color name that isn't one of the standard Tailwind palette names)
 - **Arbitrary values**: `w-[28px]`, `bg-[#123]`, `p-[10px]`
 - **Non-spacing and non-color utilities**: `flex`, `grid`, `hidden`, `w-full`, `font-bold`, etc.
