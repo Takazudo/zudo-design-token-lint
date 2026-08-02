@@ -72,10 +72,15 @@ jobs:
                 const tags = JSON.parse(d);
                 console.log(Object.prototype.hasOwnProperty.call(tags, "next") ? "true" : "false");
               } catch {
-                console.log("false");
+                console.log("parse-error");
               }
             });
           ')
+          if [ "$HAS_NEXT" = "parse-error" ]; then
+            echo "::error::Could not parse dist-tags JSON for $PKG_NAME — existence of 'next' is unknown, not confirmed absent"
+            echo "$DIST_TAGS"
+            exit 1
+          fi
           echo "exists=$HAS_NEXT" >> "$GITHUB_OUTPUT"
 
       - name: Notice — no 'next' dist-tag published, skipping

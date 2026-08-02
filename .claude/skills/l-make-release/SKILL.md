@@ -180,13 +180,13 @@ git fetch --tags origin
 - **Normal case** (no-arg / `major` / `minor` / `patch` / `next` / `next <level>` from a stable current version, or any forced form) — base = the latest `v*` tag:
 
   ```bash
-  git tag -l 'v*' --sort=-v:refname | head -1
+  BASE_TAG=$(git tag -l 'v*' --sort=-v:refname | head -1)
   ```
 
 - **No-arg promotion from a prerelease** (current version is `X.Y.Z-next.N` and no argument was given) — base = the latest **stable** tag, per the last-stable-tag rule in Step 2:
 
   ```bash
-  git tag -l 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1
+  BASE_TAG=$(git tag -l 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
   ```
 
   Match stable tags **positively** (bare `vMAJOR.MINOR.PATCH`), not by excluding a `-` suffix — a negative pattern like `grep -v -- '-'` is not portable (`ugrep`, which shadows `grep` on some setups, rejects a bare `-` as a pattern and fails the whole pipeline).
