@@ -52,26 +52,32 @@ export default defineConfig(
     // Release-time snapshot practice: at each release, freeze the then-current
     // src/content/docs(-ja) into src/content/docs-v<X.Y>(-ja) and PREPEND an
     // entry here, so the released docs stay browsable at /v/<X.Y>/ after the
-    // default docs move on. "2.0" is the first snapshot taken under this
-    // practice — it pins v2.0.0, the current npm release. "1.0" predates the
-    // practice: it archives the pre-rescaffold docs (last stable release
-    // before the 4.x rescaffold), frozen so Wave 3/4's rewrite of
-    // src/content/docs/ didn't lose them.
+    // default docs move on. "2.0" pins v2.0.0, the current npm release, and is
+    // the first snapshot taken under this practice.
+    //
+    // There was also a "1.0" entry archiving the pre-rescaffold docs. It was
+    // removed deliberately: it predated this practice and was a by-product of
+    // the 4.x rescaffold rather than a snapshot anyone chose to publish, so it
+    // documented a state that was never a meaningful released reference. Its
+    // content is still in git history if it is ever wanted back. /v/1.0/ URLs
+    // now 404 by design — redirecting them to Latest would silently serve
+    // different content under a version label, which is worse than a 404.
     //
     // A snapshot copies only git-TRACKED content. src/content/docs/claude* is
     // gitignored build output that the claude-resources plugin regenerates into
     // the DEFAULT docsDir on every build, and that plugin is version-unaware —
     // copying it in would commit build output and freeze a stale mirror of the
-    // repo's .claude/. So snapshots carry no Claude section (same as "1.0").
+    // repo's .claude/. So snapshots carry no Claude section; public/_redirects
+    // sends the versioned Claude URLs the header nav emits to the canonical
+    // unversioned pages.
     //
     // A snapshot is NOT a byte-copy of the docs: anything that reaches outside
     // the content dir has to be neutralised, or the "frozen" page silently
     // tracks HEAD. Concretely, playground/index.mdx drops the <Playground /> tag
     // for a link to the live one — the island binds to src/lib/lint-browser.ts,
     // an unversioned mirror of the CURRENT linter, so an archived page would
-    // report results from a linter newer than its own label. "1.0" does the same
-    // (for a different reason: its old island wiring no longer builds). Apply
-    // the same treatment to any future live-data component before snapshotting.
+    // report results from a linter newer than its own label. Apply the same
+    // treatment to any future live-data component before snapshotting.
     //
     // Banner: the versioning guide's "Creating a New Version" step says to set
     // `banner: 'unmaintained'` on a new snapshot, and that is right for every
@@ -85,17 +91,17 @@ export default defineConfig(
     // renders unversioned links on /v/<slug>/ pages (its category-index cards
     // point at the default docs instead of the archive) because
     // `createCategoryNavWrapper` never threads `currentVersion` through,
-    // unlike the sidebar/header nav which do this correctly. Applies to every
-    // snapshot, 2.0 included. Not fixable from this repo — filed as
-    // zudolab/zudo-doc#3194.
+    // unlike the sidebar/header nav which do this correctly. Not fixable from
+    // this repo — filed as zudolab/zudo-doc#3194.
     //
     // Also upstream (zudo-doc@4.5.0): the version switcher offers a snapshot
     // link for slugs that exist only in the latest docs, which 404s — the
     // VersionSwitcher component supports unavailableVersions but
-    // buildInlineVersionSwitcher never computes it. For 1.0 that is the
-    // changelog v1.1.0-next.* pages and the generated /docs/claude* tree; for
-    // 2.0 it is /docs/claude* today, plus any doc page added to Latest after
-    // this snapshot. Not fixable host-side — filed as zudolab/zudo-doc#3196.
+    // buildInlineVersionSwitcher never computes it. With only "2.0" configured
+    // this is currently dormant (2.0 has every page Latest has except the
+    // generated /docs/claude* tree, which public/_redirects covers), but it
+    // returns as soon as a doc page is added to Latest without re-snapshotting.
+    // Not fixable host-side — filed as zudolab/zudo-doc#3196.
     versions: [
       {
         slug: '2.0',
@@ -111,15 +117,6 @@ export default defineConfig(
         // reader is not on the current docs. Nothing enforces this flip yet —
         // it is a manual step at release time.
         banner: false,
-      },
-      {
-        slug: '1.0',
-        label: '1.0.0',
-        docsDir: 'src/content/docs-v1.0',
-        locales: {
-          ja: { dir: 'src/content/docs-v1.0-ja' },
-        },
-        banner: 'unmaintained',
       },
     ],
     // Hybrid repo: this doc-app lives in `doc/` (cwd at build), while zdtl's

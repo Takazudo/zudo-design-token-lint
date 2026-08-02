@@ -32,11 +32,13 @@
 # carry it (see the versions block in zfb.config.ts).
 #
 # Two things still emit versioned Claude URLs, and both 404 without these rules:
-#   - the header nav's "Claude" item, version-prefixed on every snapshot page
-#     (88 links across /v/1.0/ and /v/2.0/) — the visible one: clicking Claude
-#     from any archived page was a dead end;
+#   - the header nav's "Claude" item, version-prefixed on every snapshot page —
+#     the visible one: clicking Claude from any archived page was a dead end;
 #   - the version switcher on Claude pages, offering snapshot links for pages
 #     that exist only in Latest (upstream zudolab/zudo-doc#3196).
+#
+# The rules are written against :version rather than a literal slug, so they
+# keep working as snapshots are added or removed.
 #
 # Sending both to the canonical unversioned page is the correct destination:
 # the content is the same regardless of which doc version you came from.
