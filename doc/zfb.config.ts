@@ -34,7 +34,23 @@ export default defineConfig(
       docHistory: true,
       viewSourceLink: true,
     },
-    versions: [],
+    // Versioning (newly enabled): the `versions` array holds OLDER snapshots
+    // only — the current/latest docs always live at the default docsDir and
+    // are never listed here (zudo-doc versioning guide). "1.0" archives the
+    // pre-rescaffold docs content (last stable npm release before this
+    // 4.x rescaffold) as of this commit, frozen under src/content/docs-v1.0(-ja)
+    // so Wave 3/4's rewrite of src/content/docs/ doesn't lose it.
+    versions: [
+      {
+        slug: "1.0",
+        label: "1.0.0",
+        docsDir: "src/content/docs-v1.0",
+        locales: {
+          ja: { dir: "src/content/docs-v1.0-ja" },
+        },
+        banner: "unmaintained",
+      },
+    ],
     // Hybrid repo: this doc-app lives in `doc/` (cwd at build), while zdtl's
     // Claude resources live at the REPO ROOT, one level up. projectRoot "."
     // anchors claudeDir/docsDir resolution at the doc-app root (cwd = doc/);

@@ -1,0 +1,165 @@
+---
+title: CLI
+description: Command-line usage and options for design-token-lint.
+sidebar_position: 2
+category: guide
+---
+
+The `design-token-lint` CLI scans files for prohibited Tailwind class names and reports violations.
+
+## Basic Usage
+
+```bash
+# Scan default patterns (from config.patterns or built-in defaults)
+design-token-lint
+
+# Scan specific files or globs
+design-token-lint "src/**/*.tsx" "pages/**/*.tsx"
+
+# Scan a single file
+design-token-lint src/App.tsx
+```
+
+## Options
+
+| Option | Description |
+|---|---|
+| `-h`, `--help` | Show the help message and exit |
+| `-V`, `--version` | Print the package version and exit |
+| `--json` | Print results as a JSON array on stdout (the human-readable display still goes to stderr) |
+| `--format <fmt>` | Output format for violations: `human` (default) or `github` |
+
+```bash
+design-token-lint --help
+design-token-lint --version
+design-token-lint --json
+design-token-lint --format github
+```
+
+An unrecognized option (anything starting with `-` that isn't one of the above) is rejected with an error and exit code `2` rather than being silently treated as a glob pattern.
+
+## Exit Codes
+
+| Code | Meaning |
+|---|---|
+| `0` | No violations found |
+| `1` | Violations found |
+| `2` | No files matched the configured patterns, or a config/unexpected error occurred |
+
+Use exit code `1` in CI to fail builds when violations appear:
+
+```yaml
+# .github/workflows/lint.yml
+- run: pnpm design-token-lint
+```
+
+## Environment Variables
+
+| Variable | Description |
+|---|---|
+| `TOKEN_LINT_ALLOW_EMPTY` | When set to `1`, `true`, `yes`, or `on` (case-insensitive), exit `0` instead of `2` when no files match. Useful as a first-run/bootstrap escape hatch. |
+| `GITHUB_ACTIONS` | Set automatically by GitHub Actions. When truthy, auto-selects `--format github` unless `--format` is passed explicitly (the flag always wins). |
+
+## Output Format
+
+By default (`human` format), violations are grouped by file. Each line shows the line number, the offending class, and the reason:
+
+```
+Scanning 1 file(s)...
+
+src/App.tsx
+  L12: p-4 — Numeric spacing "p-4" — use a semantic spacing token or arbitrary value
+  L12: bg-gray-500 — Default Tailwind color "bg-gray-500" — use a design system color token
+
+Found 2 violation(s) in 1 file(s).
+```
+
+All output goes to stderr so it doesn't interfere with scripts that pipe stdout — except `--json` (writes the JSON array to stdout) and `--format github` (writes `::error` annotations to stdout).
+
+## JSON Output
+
+Pass `--json` to get the results as a JSON array on stdout, in addition to the normal human-readable display on stderr:
+
+```bash
+design-token-lint --json > violations.json
+```
+
+```json
+[
+  { "filePath": "src/App.tsx", "line": 12, "className": "p-4", "reason": "Numeric spacing \"p-4\" — use a semantic spacing token or arbitrary value" }
+]
+```
+
+## GitHub Actions Annotations
+
+Pass `--format github` (or just run in GitHub Actions — `GITHUB_ACTIONS` is auto-detected) to print each violation as a `::error` workflow command instead of the human display:
+
+```
+::error file=src/App.tsx,line=12::p-4 — Numeric spacing "p-4" — use a semantic spacing token or arbitrary value
+```
+
+GitHub renders these as inline annotations on the offending line in the PR diff and the Checks tab. `--json` takes priority over `--format` for what's printed to stdout if both are combined.
+
+## File Pattern Resolution
+
+When called with no arguments, the CLI resolves files in this order:
+
+1. If `config.patterns` is set, use those globs
+2. Otherwise, use the built-in defaults: `src/**/*.{tsx,jsx,astro}`, `components/**/*.{tsx,jsx,astro}`, `lib/**/*.{tsx,jsx}`, `app/**/*.{tsx,jsx}`
+
+When the opt-in [`css` config section](../configuration/index.mdx#fields-css) sets `css.patterns`, those globs are scanned *in addition to* whichever Tailwind patterns were resolved above (only when no CLI patterns were passed explicitly).
+
+When called with arguments, each argument is treated as a file path or glob. The `ignore` config still applies.
+
+### Built-in Ignore Globs
+
+Two glob patterns are always excluded from every scan, regardless of config — `**/node_modules/**` and `**/dist/**`. They're merged in ahead of the config's own [`ignore`](../configuration/index.mdx#fields-ignore) list (which defaults to `**/*.test.*`, `**/*.stories.*`), so there's no way to accidentally scan into either directory.
+
+<Note>
+
+An earlier version also always excluded `**/__inbox/**` (a personal project convention). That default was removed — files under a directory named `__inbox/` are now linted like any other file. If your project still uses that convention, add `"ignore": ["**/__inbox/**"]` to your config to restore the old behavior.
+
+</Note>
+
+These built-in globs are a property of the CLI's own glob resolution — they have no effect on `lintFile()`/`lintContent()` calls made directly through the [programmatic API](../../reference/api/index.mdx), which lint whatever content they're given without doing any file-tree traversal.
+
+## Integration with package.json
+
+Add a script for convenient invocation:
+
+```json
+{
+  "scripts": {
+    "lint:tokens": "design-token-lint"
+  }
+}
+```
+
+Then run:
+
+```bash
+pnpm lint:tokens
+```
+
+## Integration with lefthook
+
+Run on push with [lefthook](https://github.com/evilmartians/lefthook):
+
+```yaml
+# lefthook.yml
+pre-push:
+  commands:
+    design-token-lint:
+      run: npx design-token-lint
+```
+
+## Integration with CI
+
+Add a GitHub Actions step:
+
+```yaml
+- name: Lint design tokens
+  run: pnpm design-token-lint
+```
+
+Any violation will exit with code `1` and fail the workflow. Since `GITHUB_ACTIONS` is set automatically in Actions runs, output is auto-formatted as `::error` annotations (see [GitHub Actions Annotations](#github-actions-annotations)) without needing `--format github` explicitly.

@@ -46,7 +46,7 @@ zudo-design-token-lint/
 
 - `pnpm-workspace.yaml` (root only) holds `allowBuilds` (esbuild, sharp, workerd) and `minimumReleaseAgeExclude` entries needed by zfb.
 - `.npmrc` at the workspace root controls install-affecting settings for the whole workspace.
-- `claudeResources` in `doc/src/config/settings.ts` points to `../.claude` — the repo root `.claude/` directory, one level above `doc/`.
+- `claudeResources` in `doc/zfb.config.ts`'s `zudoDoc({...})` call points to `../.claude` — the repo root `.claude/` directory, one level above `doc/`.
 
 ## Commands (Root — Lint Package)
 
@@ -83,7 +83,7 @@ Keep the public documentation (`doc/src/content/docs/reference/api/`, plus its `
 
 ## Deployment
 
-The doc site is hosted on **Cloudflare Workers** (static assets) at base `/` — no subpath prefix (`settings.base` in `doc/src/config/settings.ts` is `"/"`).
+The doc site is hosted on **Cloudflare Workers** (static assets) at base `/` — no subpath prefix (`zudoDoc({...})`'s `base` field in `doc/zfb.config.ts` defaults to `"/"`).
 
 - **Live URL**: `https://zudo-design-token-lint.takazudomodular.com/`
 - **Production**: push to `main` → `doc-deploy.yml` → `wrangler deploy`

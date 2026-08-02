@@ -1,0 +1,182 @@
+---
+title: v1.1.0-next.3
+description: Prerelease — config extends/presets, structured prohibited entries + a default sizing-scale ban, suggestions, opt-in CSS/SCSS scanning, ignore hygiene flags, and an extractor/CLI hardening sweep.
+sidebar_position: 9994
+category: changelog
+---
+
+An audit-driven sweep across the extractor, config, and CLI, plus three sizable new opt-in features: config `extends`/presets, opt-in CSS/SCSS declaration scanning, and ignore-hygiene enforcement.
+
+<Warning>
+
+**Behavior changes to check before upgrading:**
+
+- The default config now bans the **numeric sizing scale** (`w-{n}`, `h-{n}`, `size-{n}`, etc.) — see [Migrating: sizing-scale ban](#behavior-changes-migrating-sizing-scale-ban) below.
+- `**/__inbox/**` is no longer excluded by default — see [Migrating: `__inbox` is no longer auto-ignored](#behavior-changes-migrating-__inbox-is-no-longer-auto-ignored) below.
+- An exact `prohibited`/`allowed` entry with a leading `-`, a variant prefix, or a `!` (e.g. `"-mt-px"`, `"hover:p-2"`, `"p-4!"`) now actually matches that literal class — previously it silently matched nothing, so any such entry starts having an effect for the first time.
+
+</Warning>
+
+## Behavior Changes
+
+### Migrating: sizing-scale ban
+
+The built-in default config (and the new `"default"` [preset](#features-extends-presets)) now prohibits the numeric sizing scale: `w-{n}`, `h-{n}`, `size-{n}`, `min-w-{n}`, `max-w-{n}`, `min-h-{n}`, `max-h-{n}`, `basis-{n}` (e.g. `w-4`, `h-8`, `size-6`). Each violation carries a sizing-specific message and `category: "sizing"`. Fraction utilities (`w-1/2`), arbitrary values (`w-[32px]`), and zero (`w-0`) are unaffected and still pass.
+
+Projects that use raw numeric sizing utilities will see new violations after upgrading. To adapt:
+
+```json
+// Option A — allowlist the specific classes you still need
+{
+  "allowed": ["w-4", "h-8"]
+}
+```
+
+```json
+// Option B — supply your own `prohibited` list that omits the sizing patterns
+// (a plain/explicit `prohibited` list replaces the default outright)
+{
+  "prohibited": [
+    "p-{n}", "m-{n}", "gap-{n}",
+    "bg-{color}-{shade}", "text-{color}-{shade}", "border-{color}-{shade}"
+  ]
+}
+```
+
+### Migrating: `__inbox` is no longer auto-ignored
+
+`**/__inbox/**` has been removed from the CLI's built-in default ignore globs (it was a personal project convention, not a general one). Files under a directory literally named `__inbox/` are now linted like any other file, where they were previously always skipped. `**/node_modules/**` and `**/dist/**` remain excluded by default.
+
+If your project relies on the old behavior:
+
+```json
+{
+  "ignore": ["**/__inbox/**"]
+}
+```
+
+### Exact `prohibited`/`allowed` entries now match their literal form
+
+`checkClassWithConfig`'s exact-match branch (used for entries with no `{n}`/`{color}`/`{shade}` placeholder) now fires when *either* the normalized candidate *or* the verbatim class string equals the entry — mirroring how `allowed` already worked. Previously, an entry containing a leading `-` (e.g. `"-mt-px"`), a variant prefix (e.g. `"hover:p-2"`), or a `!` important modifier (e.g. `"p-4!"`) was silently never matched by anything, because the normalized form the linter compared against always strips those characters first. A plain entry like `"p-2"` is unaffected — it still matches `p-2` and every one of its variant/negative/important forms via the existing normalized-form path.
+
+## Features
+
+### `extends` / presets
+
+Config can now inherit `prohibited`/`allowed` patterns from a named, registered preset instead of duplicating the full default list:
+
+```json
+{
+  "extends": ["default", "z-index"],
+  "prohibitedAdd": ["custom-{n}"]
+}
+```
+
+Two presets ship built-in: `"default"` (this package's existing `prohibited`/`allowed` lists) and the new opt-in `"z-index"` preset (bans `z-{n}`, allows `z-0`). Layers merge in array order; presets never auto-compose with `"default"` on your behalf. `prohibitedAdd`/`allowedAdd` append extra entries on top of whichever base resolved (an explicit `prohibited`/`allowed` list, the `extends`-merged result, or the built-in default) without re-listing everything. An unknown preset name throws a `ConfigError`. Fully backward compatible — a config with no `extends` behaves exactly as before.
+
+### Structured `prohibited` entries + `Violation.category`
+
+A `prohibited`/`prohibitedAdd` entry can now be an object instead of a plain string:
+
+```json
+{
+  "prohibited": [
+    "p-{n}",
+    { "pattern": "w-{n}", "reason": "Numeric width \"{CLASS}\" — use a semantic sizing token or arbitrary value", "category": "sizing" }
+  ]
+}
+```
+
+`reason` overrides the default violation message (supports the `{CLASS}` placeholder); `category` is copied onto the resulting `Violation.category` when the rule matches. Both are optional and additive — plain string entries are unaffected and never produce a `category`. `compilePattern` gained a matching options-bag second argument (`{ suggestionSuffix?, reason?, category? }`) alongside the legacy bare-string form.
+
+### `suggestions` — did-you-mean hints
+
+A new `suggestions: Record<string, string>` config field maps a banned class's normalized base form to a project-specific replacement token, appended to the violation message:
+
+```json
+{
+  "suggestions": { "p-4": "p-hsp-xs", "bg-gray-100": "bg-surface" }
+}
+```
+
+```text
+Numeric spacing "p-4" — use a semantic spacing token or arbitrary value — did you mean "p-hsp-xs"?
+```
+
+Resolves against the normalized base class, so every variant (`hover:p-4`, `-p-4`, `p-4!`, ...) picks up the same hint. Message-only — does not drive an autofix.
+
+### CSS/SCSS declaration scanning (opt-in)
+
+A new `css` config section scans plain CSS/SCSS declaration values, independent of the Tailwind class path:
+
+```json
+{
+  "css": {
+    "zIndex": true,
+    "colorLiterals": true,
+    "patterns": ["src/**/*.css", "src/**/*.scss"]
+  }
+}
+```
+
+`zIndex` flags a bare integer `z-index` value (allows `var(--z-*)`, a `calc()` containing a `var()`, and the standard CSS keywords). `colorLiterals` flags `#hex`, `rgb()`/`rgba()`, `hsl()`/`hsla()`, and `oklch()`/`oklab()` values (allows `var(...)`, `transparent`, `currentColor`, and keyword-only values). Entirely absent by default, and every sub-flag is itself default-off — the whole feature has zero effect unless you opt in. Declaration extraction is line/regex-based (no PostCSS/AST), comment- and string-aware, with the same `design-token-lint-ignore` comment support as the Tailwind path. v1 has documented false negatives for custom-property/SCSS-variable definitions and SCSS maps — see [Known Limitations](../reference/limitations/index.mdx).
+
+### Ignore hygiene: `requireIgnoreReason` / `reportUnusedIgnores`
+
+Two opt-in booleans (both default `false`) keep ignore comments from becoming a silent, undocumented escape hatch:
+
+```json
+{
+  "requireIgnoreReason": true,
+  "reportUnusedIgnores": true
+}
+```
+
+`requireIgnoreReason` reports a bare (reason-less) `design-token-lint-ignore` that shields a real violation, with the stable reason `suppressed without documented reason`, instead of suppressing it silently — a reason-carrying ignore stays silent. `reportUnusedIgnores` reports an ignore comment that suppressed nothing (the ESLint `reportUnusedDisableDirectives` equivalent), anchored at the comment's own line. Both apply to the Tailwind class path and the new CSS declaration path. With both flags off, behavior is byte-identical to before.
+
+### Same-line trailing ignore comments
+
+A `design-token-lint-ignore` comment placed as a trailing comment (not alone on its line) now also suppresses violations on that same line, in addition to the line that follows — previously only next-line suppression was recognized:
+
+```tsx
+<div className="p-4"> {/* design-token-lint-ignore */}
+<div className="m-8">
+```
+
+Both `p-4` and `m-8` above are suppressed. See [Ignore Syntax](../guide/ignore-syntax/index.mdx#same-line-trailing-ignore) for the full behavior.
+
+### Ignore/CSS metadata API
+
+`extractClassesWithMeta()` (Tailwind) and `extractCssDeclarations()`/`extractCssDeclarationsWithMeta()`/`checkDeclaration()` (CSS) are now part of the public API — see the [Programmatic API reference](../reference/api/index.mdx) for the full shapes.
+
+## Bug Fixes
+
+- Commented-out JSX (`//`, `/* */`, `{/* */}`) is no longer misread as live source — the extractor now tracks per-line comment spans (8e5b3f5)
+- A stray quote inside a comment (e.g. `cn(a /* don't */, 'p-4')`) could previously corrupt balanced-delimiter scanning for `cn()`/`class:list`; comments are now blanked out before scanning (8e5b3f5)
+- A multiline `className`/`class` attribute's closing line is now reprocessed instead of skipped, fixing a swallowed sibling class (e.g. a `gap-4` right after the closing quote) (f47c3d6)
+- A `classFunction` call nested inside a single-line `class:list` array is no longer double-reported (f47c3d6)
+- Classes inside a multiline `className`/`cn()`/`class:list` construct are now attributed to their actual source line instead of all collapsing onto the opening line, so `--format github` annotations point at the right line (f47c3d6)
+- `class:list` array parsing now uses paired-quote matching, rejecting a mismatched-quote token like `["p-4']` (f47c3d6)
+- `glob()` now passes `nodir: true`, fixing an `EISDIR` crash when a pattern matched a directory; a per-file read failure is now reported as a clean one-line message and exit code `2` instead of an uncaught stack trace (b5fcac4)
+- `--format=github` (equals form) and a bare `--` end-of-flags terminator are now parsed correctly (b5fcac4)
+- `"patterns": []` in config now fails fast with a message naming the field, instead of falling through to the generic "no files matched" error (b5fcac4)
+- Removed a redundant `err instanceof ConfigError` check in the config-load catch (`ConfigError` already extends `Error`) (b5fcac4)
+- The `semanticPrefixes` spacing bypass and the `value === '0'` zero bypass are unaffected by this round, but the previously-dead `value === '1px'` branch was removed — `p-1px` and friends were already passing on their own merits (non-numeric values never match the `{n}` pattern), not via that branch (0acf823)
+- The opt-in `css` `colorLiterals` rule no longer reports a hex-length `url()` fragment reference (e.g. `url(#fff)`, `url(#123456)`) as a raw color literal — `url(...)` spans are blanked before the hex scan (63350c2)
+- `cn()`/`class:list` string-literal scanning is now backslash-escape aware: an escaped quote inside one argument (e.g. `cn('it\'s', 'p-4')`) no longer desyncs parsing and silently drops a sibling argument's violation (5f8ba7a)
+
+## Testing & CI
+
+- Ignore-glob coverage (previously zero): config `ignore`, `DEFAULT_CONFIG.ignore`, and `DEFAULT_IGNORE_PATTERNS` (`node_modules`, `dist`) each exercised end-to-end (3d77990)
+- A second golden fixture exercises the default-config path (no config file), including the new sizing-ban defaults; `pnpm golden:update` regenerates both fixtures (3d77990)
+- `vitest.config.ts` now defines separate `unit`/`subprocess` projects so `vitest run --project unit` runs dist-free (3d77990)
+- New `src/test-utils.ts` shared helpers replaced 36 duplicated temp-directory setup/teardown blocks across `cli.test.ts`/`config.test.ts` (3d77990)
+- `ci.yml`'s test job now runs a Node 20.x/22.x/24.x matrix — Vitest 4 requires Node ≥20, so the matrix tracks the tooling-supported versions while the published runtime keeps its `engines: ">=18"` floor (3d77990, 63350c2)
+- Total test count grew from 408 (start of this round) to 665 across the full sweep
+
+## Docs
+
+- EN guide/API docs updated for every feature above: `extends`/presets, structured `prohibited` entries + `category`, `suggestions`, the `css` config section, and the ignore hygiene flags
+- Fixed intra-doc anchor links that assumed flat (GitHub-style) heading slugs instead of this site's hierarchical, parent-section-prefixed slugs
+- Corrected the 0/1px spacing bypass documentation (the zero bypass applies to *any* numeric spacing/sizing rule, not just the handful of `0`-suffixed classes in `allowed`) and a few other accuracy fixes across the configuration, examples, methodology, and limitations pages
+- README brought back in sync with the doc site for all of the above
