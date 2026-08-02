@@ -15,6 +15,9 @@ export const DEFAULT_CODE = `<div className="p-4 bg-gray-200">
   <p className="mt-2 text-gray-600">
     Some content here
   </p>
+  {/* semanticPrefixes: ["hgap-"] flips the numeric-tail one to a violation
+      but leaves the token one passing — try removing it from Configuration */}
+  <span className="p-hgap-sm p-hgap-2">Semantic prefix demo</span>
 </div>`;
 
 export const DEFAULT_CONFIG = JSON.stringify(
@@ -42,6 +45,7 @@ export const DEFAULT_CONFIG = JSON.stringify(
       "border-{color}-{shade}",
     ],
     allowed: ["p-0", "m-0", "gap-0"],
+    semanticPrefixes: ["hgap-"],
   },
   null,
   2,
