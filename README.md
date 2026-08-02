@@ -83,23 +83,23 @@ Create a `.design-token-lint.json` (or `design-token-lint.config.json`) in your 
 
 ### Config Fields
 
-| Field                 | Type                            | Description                                                                                                                                                                                                                                                        |
-| --------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `prohibited`          | `(string \| ProhibitedEntry)[]` | Patterns to flag. Placeholders: `{n}` (number), `{color}` (Tailwind color name), `{shade}` (50-950). An entry may be a plain string or a structured `{pattern, reason?, category?}` object — see [Structured `prohibited` Entries](#structured-prohibited-entries) |
-| `allowed`             | `string[]`                      | Exceptions that are always allowed, even if they match a prohibited pattern                                                                                                                                                                                        |
-| `ignore`              | `string[]`                      | File glob patterns to skip entirely (default: `["**/*.test.*", "**/*.stories.*"]`) — the CLI additionally always excludes `**/node_modules/**` and `**/dist/**`                                                                                                    |
-| `patterns`            | `string[]`                      | File glob patterns to scan (overrides CLI defaults when no args given)                                                                                                                                                                                             |
-| `suggestionSuffix`    | `string`                        | Custom suffix for violation messages (replaces the default suggestion text)                                                                                                                                                                                        |
-| `suggestions`         | `Record<string, string>`        | Map from a banned class's normalized base form to your project's replacement token, appended as a "did you mean" hint — see [`suggestions`](#suggestions)                                                                                                          |
-| `semanticPrefixes`    | `string[]`                      | Value prefixes that bypass spacing rules (default: `["hgap-", "vgap-"]`)                                                                                                                                                                                           |
-| `classAttributes`     | `string[]`                      | HTML/JSX attribute names the extractor scans for class names (default: `["className", "class"]`)                                                                                                                                                                   |
-| `classFunctions`      | `string[]`                      | Utility function names the extractor scans for class name arguments (default: `["cn", "clsx", "classNames", "twMerge"]`)                                                                                                                                           |
-| `extends`             | `string \| string[]`            | Named preset(s) to inherit `prohibited`/`allowed` patterns from — see [`extends`](#extends)                                                                                                                                                                        |
-| `prohibitedAdd`       | `(string \| ProhibitedEntry)[]` | Patterns appended to the resolved `prohibited` list (inherited or default)                                                                                                                                                                                         |
-| `allowedAdd`          | `string[]`                      | Patterns appended to the resolved `allowed` list (inherited or default)                                                                                                                                                                                            |
-| `css`                 | `object`                        | Opt-in CSS/SCSS declaration scanning: `{ zIndex?, colorLiterals?, patterns? }` (all default-OFF) — see [CSS/SCSS Scanning](#cssscss-scanning-opt-in)                                                                                                               |
-| `requireIgnoreReason` | `boolean`                       | Report a bare (reason-less) `design-token-lint-ignore` that shields a real violation, instead of suppressing it silently (default `false`)                                                                                                                         |
-| `reportUnusedIgnores` | `boolean`                       | Report a `design-token-lint-ignore` comment that suppressed nothing (default `false`)                                                                                                                                                                              |
+| Field                 | Type                            | Description                                                                                                                                                                                                                                                              |
+| --------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `prohibited`          | `(string \| ProhibitedEntry)[]` | Patterns to flag. Placeholders: `{n}` (number), `{color}` (Tailwind color name), `{shade}` (50-950). An entry may be a plain string or a structured `{pattern, reason?, category?}` object — see [Structured `prohibited` Entries](#structured-prohibited-entries)       |
+| `allowed`             | `string[]`                      | Exceptions that are always allowed, even if they match a prohibited pattern                                                                                                                                                                                              |
+| `ignore`              | `string[]`                      | File glob patterns to skip entirely (default: `["**/*.test.*", "**/*.stories.*"]`) — the CLI additionally always excludes `**/node_modules/**` and `**/dist/**`                                                                                                          |
+| `patterns`            | `string[]`                      | File glob patterns to scan (overrides CLI defaults when no args given)                                                                                                                                                                                                   |
+| `suggestionSuffix`    | `string`                        | Custom suffix for violation messages (replaces the default suggestion text)                                                                                                                                                                                              |
+| `suggestions`         | `Record<string, string>`        | Map from a banned class's normalized base form to your project's replacement token, appended as a "did you mean" hint — see [`suggestions`](#suggestions)                                                                                                                |
+| `semanticPrefixes`    | `string[]`                      | Namespace prefixes for your semantic-token vocabulary — a value under a listed namespace has the namespace stripped and its remaining tail re-tested against the same rule (default: `["hgap-", "vgap-", "hsp-", "vsp-"]`) — see [`semanticPrefixes`](#semanticprefixes) |
+| `classAttributes`     | `string[]`                      | HTML/JSX attribute names the extractor scans for class names (default: `["className", "class"]`)                                                                                                                                                                         |
+| `classFunctions`      | `string[]`                      | Utility function names the extractor scans for class name arguments (default: `["cn", "clsx", "classNames", "twMerge"]`)                                                                                                                                                 |
+| `extends`             | `string \| string[]`            | Named preset(s) to inherit `prohibited`/`allowed` patterns from — see [`extends`](#extends)                                                                                                                                                                              |
+| `prohibitedAdd`       | `(string \| ProhibitedEntry)[]` | Patterns appended to the resolved `prohibited` list (inherited or default)                                                                                                                                                                                               |
+| `allowedAdd`          | `string[]`                      | Patterns appended to the resolved `allowed` list (inherited or default)                                                                                                                                                                                                  |
+| `css`                 | `object`                        | Opt-in CSS/SCSS declaration scanning: `{ zIndex?, colorLiterals?, patterns? }` (all default-OFF) — see [CSS/SCSS Scanning](#cssscss-scanning-opt-in)                                                                                                                     |
+| `requireIgnoreReason` | `boolean`                       | Report a bare (reason-less) `design-token-lint-ignore` that shields a real violation, instead of suppressing it silently (default `false`)                                                                                                                               |
+| `reportUnusedIgnores` | `boolean`                       | Report a `design-token-lint-ignore` comment that suppressed nothing (default `false`)                                                                                                                                                                                    |
 
 All fields fall back to built-in defaults if omitted. See the [Configuration doc page](https://zudo-design-token-lint.takazudomodular.com/docs/guide/configuration/) for the full reference.
 
@@ -160,7 +160,9 @@ Appends `— did you mean "p-hsp-xs"?` to the violation message for `p-4` (and e
 
 #### `semanticPrefixes`
 
-Value prefixes that mark a spacing value as an already-semantic token, bypassing the numeric-spacing check regardless of whether the value happens to look numeric. Override the default to match your project's naming convention:
+Namespace prefixes for your semantic-token vocabulary. A value that starts with a listed namespace has that namespace stripped, and the **remaining tail is re-tested** against the same rule — it is not an automatic pass.
+
+**Default**: `["hgap-", "vgap-", "hsp-", "vsp-"]`
 
 ```json
 {
@@ -168,9 +170,38 @@ Value prefixes that mark a spacing value as an already-semantic token, bypassing
 }
 ```
 
-With this override, `p-hsp-sm` and `gap-vsp-md` are explicitly declared as semantic tokens instead of the default `hgap-`/`vgap-` prefixes. Set to `[]` to remove the prefix allowlist entirely.
+> **Counter-intuitive direction**: for a `-`-suffixed, namespace-style entry (the only style used by the default and every example here), `semanticPrefixes` is a namespace _declaration_, not an allowlist. **Adding** such an entry can **add** violations — it exposes the numeric tail hiding behind a semantic-looking name (`p-hgap-2` is flagged) while a true semantic token (`p-hgap-sm`) still passes. It never removes a violation. (A dash-less entry is a separate, legacy case — see point 3 below.)
 
-> **Note**: The built-in prohibited patterns only flag purely numeric values (`p-4`, `m-8`, ...), so an alphabetic suffix like `hgap-sm` already fails that check regardless of this setting — `semanticPrefixes` mainly matters as an explicit declaration of your semantic-token vocabulary, or if you add a custom prohibited pattern with looser value matching.
+How the strip works:
+
+1. An entry matches when the value starts with it (the trailing `-` is optional in config — `"hgap"` and `"hgap-"` behave the same).
+2. It's a **namespace match** when the entry ends in `-`, or is immediately followed by `-` in the value. Every entry in the default list ends in `-`, so it's always a namespace match. When more than one entry matches as a namespace, the **longest** one wins, independent of array order.
+3. An entry that matches but **not** as a namespace — a dash-less entry like `"1"` matching mid-token inside `p-12`, or an exact match leaving nothing after it like `"2"` against `p-2` — makes the class pass **unconditionally, with no tail re-test**. This is the original 1.x allowlist behavior, preserved unchanged for backward compatibility; it never applies to a `-`-suffixed entry like the built-in defaults.
+4. The matched namespace (and its trailing `-`) is stripped, leaving a **tail**, judged exactly like a plain value would be for this rule: empty or `"0"` passes, a tail matching the rule's numeric pattern is flagged, anything else (`sm`, `2xs`, ...) passes.
+5. The strip happens exactly once — `p-hgap-vgap-2` strips only the outer `hgap-`, leaving tail `vgap-2` (not numeric), so it passes.
+6. Matching is case-sensitive.
+
+This applies to every rule whose value placeholder is the exact `{n}` form — every spacing rule, the numeric sizing scale, the opt-in `z-{n}` preset, and any custom `{n}` rule — since the mechanism belongs to the `{n}` placeholder, not to a specific rule family.
+
+| Class        | `semanticPrefixes` | Result                                         |
+| ------------ | ------------------ | ---------------------------------------------- |
+| `p-hgap-sm`  | `["hgap-"]`        | pass — non-numeric tail                        |
+| `p-hgap-2`   | `["hgap-"]`        | **flagged** — numeric tail                     |
+| `p-hgap-0`   | `["hgap-"]`        | pass — zero tail                               |
+| `p-hgap-2xs` | `["hgap-"]`        | pass — digit-leading token, not purely numeric |
+| `w-hsp-3`    | `["hsp-"]`         | **flagged**, `category: "sizing"`              |
+
+A flagged namespace match appends a parenthetical to the violation message, before any `suggestions` hint:
+
+```text
+Numeric spacing "p-hgap-2" — use a semantic spacing token or arbitrary value (numeric tail after the "hgap-" semantic prefix)
+```
+
+`semanticPrefixes` has **replace** semantics — like an explicit `prohibited`/`allowed`, it is not merged with `extends`/presets or appended to the default. Setting `"semanticPrefixes": ["hsp-"]` yields exactly `["hsp-"]`, dropping `hgap-`/`vgap-`/`vsp-`. Set to `[]` to remove the namespace list entirely.
+
+Escape hatches for a newly-flagged class, in order of preference: (1) rename the token so it isn't a numeric scale in disguise; (2) add the exact class to `allowed`; (3) drop that namespace from `semanticPrefixes` (restores exact 1.x behavior for it, since a non-numeric tail always passes whether or not the entry is listed); (4) use an arbitrary value (`p-[8px]`).
+
+> **Changed in v2.0.0**: in 1.x this option had no observable effect on any built-in rule — an alphabetic tail like `hgap-sm` already failed the numeric check with or without it ([#108](https://github.com/Takazudo/zudo-design-token-lint/issues/108)). v2 makes it real by re-testing the tail after the strip. **Newly flagged**: exactly the shape `<rule prefix>-<namespace>-<number>`, e.g. `p-hgap-2`, `gap-vgap-4`, `w-hsp-3`, `px-hgap-2.5` — nothing else. **Newly passing**: nothing; the change is strictly additive. The default itself also grew, from `["hgap-", "vgap-"]` to `["hgap-", "vgap-", "hsp-", "vsp-"]` — pin the old list explicitly (`"semanticPrefixes": ["hgap-", "vgap-"]`) if you rely on the previous default and have a numeric-tail `hsp-`/`vsp-` value anywhere.
 
 #### `suggestionSuffix`
 
@@ -201,7 +232,7 @@ This turns `Numeric spacing "p-4" — use a semantic spacing token or arbitrary 
 
 ### Allowed (always passes)
 
-- **Semantic tokens**: `p-hgap-sm`, `gap-vgap-xs`, `m-hgap-md` (spacing with `hgap-*`/`vgap-*` suffixes)
+- **Semantic tokens**: `p-hgap-sm`, `gap-vgap-xs`, `m-hgap-md` (spacing with a non-numeric `hgap-*`/`vgap-*`/`hsp-*`/`vsp-*` tail — see [`semanticPrefixes`](#semanticprefixes); a numeric tail like `p-hgap-2` is flagged, not allowed)
 - **Design system colors**: `bg-surface`, `text-fg`, `bg-zd-black` (any non-default color name)
 - **Zero, for any numeric spacing/sizing rule**: `p-0`, `mt-0`, `px-0`, `inset-0`, `w-0`, `gap-0`, etc. — not just the handful of `0`-suffixed classes listed in `allowed`
 - **Non-numeric spacing-shaped values**: `p-1px`, `mt-1px`, etc. — these never match the numeric `{n}` pattern in the first place, so no `allowed` entry is needed

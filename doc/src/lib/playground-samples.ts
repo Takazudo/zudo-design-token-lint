@@ -15,33 +15,38 @@ export const DEFAULT_CODE = `<div className="p-4 bg-gray-200">
   <p className="mt-2 text-gray-600">
     Some content here
   </p>
+  {/* semanticPrefixes flips the numeric-tail one to a violation but leaves
+      the token one passing — set "semanticPrefixes": [] in Configuration to
+      compare (deleting the field restores the defaults, not an empty list) */}
+  <span className="p-hgap-sm p-hgap-2">Semantic prefix demo</span>
 </div>`;
 
 export const DEFAULT_CONFIG = JSON.stringify(
   {
     prohibited: [
-      "p-{n}",
-      "py-{n}",
-      "px-{n}",
-      "pt-{n}",
-      "pb-{n}",
-      "pl-{n}",
-      "pr-{n}",
-      "m-{n}",
-      "my-{n}",
-      "mx-{n}",
-      "mt-{n}",
-      "mb-{n}",
-      "ml-{n}",
-      "mr-{n}",
-      "gap-{n}",
-      "gap-x-{n}",
-      "gap-y-{n}",
-      "bg-{color}-{shade}",
-      "text-{color}-{shade}",
-      "border-{color}-{shade}",
+      'p-{n}',
+      'py-{n}',
+      'px-{n}',
+      'pt-{n}',
+      'pb-{n}',
+      'pl-{n}',
+      'pr-{n}',
+      'm-{n}',
+      'my-{n}',
+      'mx-{n}',
+      'mt-{n}',
+      'mb-{n}',
+      'ml-{n}',
+      'mr-{n}',
+      'gap-{n}',
+      'gap-x-{n}',
+      'gap-y-{n}',
+      'bg-{color}-{shade}',
+      'text-{color}-{shade}',
+      'border-{color}-{shade}',
     ],
-    allowed: ["p-0", "m-0", "gap-0"],
+    allowed: ['p-0', 'm-0', 'gap-0'],
+    semanticPrefixes: ['hgap-'],
   },
   null,
   2,

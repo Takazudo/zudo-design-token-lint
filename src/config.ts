@@ -59,7 +59,14 @@ export interface LintConfig {
   patterns?: string[];
   /** Custom suffix for suggestion messages (replaces the default "use a semantic spacing token..." text) */
   suggestionSuffix?: string;
-  /** Value prefixes that indicate a semantic spacing token and bypass spacing rules. Default: ["hgap-", "vgap-"] */
+  /**
+   * Value namespaces that mark a semantic spacing/sizing token. A value
+   * starting with a listed entry has that namespace stripped and the
+   * remaining tail re-tested against the rule's own numeric pattern — so
+   * `p-hgap-sm` still passes but `p-hgap-2` (a numeric scale wearing a
+   * semantic name) is flagged. REPLACE semantics (not merged with `extends`).
+   * Default: ["hgap-", "vgap-", "hsp-", "vsp-"]
+   */
   semanticPrefixes?: string[];
   /** HTML/JSX attributes to scan for class names. Default: ["className", "class"] */
   classAttributes?: string[];
@@ -321,7 +328,7 @@ export const DEFAULT_CONFIG: LintConfig & {
   ],
   allowed: ['p-0', 'm-0', 'gap-0', 'p-1px'],
   ignore: ['**/*.test.*', '**/*.stories.*'],
-  semanticPrefixes: ['hgap-', 'vgap-'],
+  semanticPrefixes: ['hgap-', 'vgap-', 'hsp-', 'vsp-'],
   classAttributes: ['className', 'class'],
   classFunctions: ['cn', 'clsx', 'classNames', 'twMerge'],
 };
@@ -366,7 +373,7 @@ export interface CompiledRule {
   valuePattern: RegExp;
   /** Reason template with {CLASS} as placeholder for the actual class name */
   reasonTemplate: string;
-  /** True for numeric spacing rules — enables semantic token (hgap-/vgap-) allowance */
+  /** True for exact-`{n}` rules — enables the `semanticPrefixes` namespace strip and the `0` bypass */
   isSpacingRule: boolean;
   /** Optional rule-family tag from a structured `prohibited` entry (e.g. "sizing", "z-index") */
   category?: string;
@@ -545,7 +552,7 @@ export interface CompiledConfig {
   rules: CompiledRule[];
   allowed: Set<string>;
   ignore: string[];
-  /** Value prefixes that bypass spacing rules (e.g. semantic token names) */
+  /** Value namespaces that mark a semantic token — see `LintConfig.semanticPrefixes` */
   semanticPrefixes: string[];
   /** HTML/JSX attributes to scan for class names */
   classAttributes: string[];
