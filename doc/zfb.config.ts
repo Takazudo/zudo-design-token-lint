@@ -5,6 +5,10 @@ export default defineConfig(
   zudoDoc({
     themePack: 'bauhaus',
     siteName: 'Design Token Lint',
+    // Home-hero logo: the site's own mark (theme-adaptive mask render).
+    // Without this, zudo-doc 4.x defaults to `"auto"` — a generated
+    // placeholder plate that replaced our real logo after the rescaffold.
+    logo: '/img/logo.svg',
     siteDescription: 'Forbids Tailwind classes that violate design token rules',
     siteUrl: 'https://zudo-design-token-lint.takazudomodular.com',
     locales: {
