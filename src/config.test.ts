@@ -16,8 +16,8 @@ import { join } from 'node:path';
 import { withTempDir } from './test-utils.js';
 
 describe('DEFAULT_CONFIG', () => {
-  it('has semanticPrefixes defaulting to hgap- and vgap-', () => {
-    expect(DEFAULT_CONFIG.semanticPrefixes).toEqual(['hgap-', 'vgap-']);
+  it('has semanticPrefixes defaulting to hgap-, vgap-, hsp-, and vsp- (issue #158 §1e)', () => {
+    expect(DEFAULT_CONFIG.semanticPrefixes).toEqual(['hgap-', 'vgap-', 'hsp-', 'vsp-']);
   });
 
   it('has classAttributes defaulting to className and class', () => {
@@ -249,7 +249,7 @@ describe('checkClassWithConfig', () => {
       ignore: [],
     };
     const compiled: CompiledConfig = compileConfig(custom);
-    expect(compiled.semanticPrefixes).toEqual(['hgap-', 'vgap-']);
+    expect(compiled.semanticPrefixes).toEqual(['hgap-', 'vgap-', 'hsp-', 'vsp-']);
   });
 
   it('allows empty semanticPrefixes array', () => {
