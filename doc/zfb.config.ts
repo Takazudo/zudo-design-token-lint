@@ -53,9 +53,8 @@ export default defineConfig(
     // src/content/docs(-ja) into src/content/docs-v<X.Y>(-ja) and PREPEND an
     // entry here, so the released docs stay browsable at /v/<X.Y>/ after the
     // default docs move on. "2.0" is the first snapshot taken under this
-    // practice — it pins v2.0.0, the current npm release, so its content is
-    // byte-identical to Latest until the next doc change lands. "1.0" predates
-    // the practice: it archives the pre-rescaffold docs (last stable release
+    // practice — it pins v2.0.0, the current npm release. "1.0" predates the
+    // practice: it archives the pre-rescaffold docs (last stable release
     // before the 4.x rescaffold), frozen so Wave 3/4's rewrite of
     // src/content/docs/ didn't lose them.
     //
@@ -64,6 +63,15 @@ export default defineConfig(
     // the DEFAULT docsDir on every build, and that plugin is version-unaware —
     // copying it in would commit build output and freeze a stale mirror of the
     // repo's .claude/. So snapshots carry no Claude section (same as "1.0").
+    //
+    // A snapshot is NOT a byte-copy of the docs: anything that reaches outside
+    // the content dir has to be neutralised, or the "frozen" page silently
+    // tracks HEAD. Concretely, playground/index.mdx drops the <Playground /> tag
+    // for a link to the live one — the island binds to src/lib/lint-browser.ts,
+    // an unversioned mirror of the CURRENT linter, so an archived page would
+    // report results from a linter newer than its own label. "1.0" does the same
+    // (for a different reason: its old island wiring no longer builds). Apply
+    // the same treatment to any future live-data component before snapshotting.
     //
     // `banner: 'unmaintained'` on every entry, per the versioning guide's
     // "Creating a New Version" step: a snapshot is frozen by definition, so it
