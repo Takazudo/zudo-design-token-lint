@@ -15,8 +15,9 @@ export const DEFAULT_CODE = `<div className="p-4 bg-gray-200">
   <p className="mt-2 text-gray-600">
     Some content here
   </p>
-  {/* semanticPrefixes: ["hgap-"] flips the numeric-tail one to a violation
-      but leaves the token one passing — try removing it from Configuration */}
+  {/* semanticPrefixes flips the numeric-tail one to a violation but leaves
+      the token one passing — set "semanticPrefixes": [] in Configuration to
+      compare (deleting the field restores the defaults, not an empty list) */}
   <span className="p-hgap-sm p-hgap-2">Semantic prefix demo</span>
 </div>`;
 
