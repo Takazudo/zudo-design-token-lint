@@ -16,20 +16,54 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 // --- Utilities ---
 
+/**
+ * Strip a top-level `versions: [ ... ]` array (bracket-depth aware) out of a
+ * zfb.config.ts source string before regex field extraction.
+ *
+ * Since 4.x, the host no longer has a standalone `src/config/settings.ts` —
+ * `base` / `trailingSlash` / `docsDir` / `locales` live inline in the
+ * `zudoDoc({...})` call in `zfb.config.ts`. That same call's `versions`
+ * array carries PER-VERSION entries that reuse the identical field names
+ * (`docsDir`, `locales.<lang>.dir`) for older doc snapshots. A naive regex
+ * over the whole file grabs whichever occurrence comes first, which silently
+ * picks up a versioned snapshot's `docsDir` instead of the project's actual
+ * (default) one when the project doesn't override `docsDir` at the top
+ * level. Stripping the array first keeps extraction scoped to top-level
+ * settings regardless of field order.
+ */
+function stripVersionsBlock(content) {
+  const idx = content.indexOf("versions:");
+  if (idx === -1) return content;
+  let i = content.indexOf("[", idx);
+  const colonIdx = content.indexOf(":", idx);
+  const valueStart = content.slice(colonIdx + 1).search(/\S/) + colonIdx + 1;
+  if (content[valueStart] !== "[" || i === -1 || i > valueStart + 1) {
+    // Not an array literal (e.g. `versions: false`) — nothing to strip.
+    return content;
+  }
+  let depth = 0;
+  do {
+    if (content[i] === "[") depth++;
+    else if (content[i] === "]") depth--;
+    i++;
+  } while (depth > 0 && i < content.length);
+  return content.slice(0, idx) + content.slice(i);
+}
+
 export async function parseBasePath(settingsPath) {
-  const content = await readFile(settingsPath, "utf-8");
+  const content = stripVersionsBlock(await readFile(settingsPath, "utf-8"));
   const match = content.match(/base:\s*["']([^"']*)["']/);
   return match ? match[1] : "/";
 }
 
 export async function parseTrailingSlash(settingsPath) {
-  const content = await readFile(settingsPath, "utf-8");
+  const content = stripVersionsBlock(await readFile(settingsPath, "utf-8"));
   const match = content.match(/trailingSlash:\s*(true|false)/);
   return match ? match[1] === "true" : false;
 }
 
 export async function parseContentDirs(settingsPath) {
-  const content = await readFile(settingsPath, "utf-8");
+  const content = stripVersionsBlock(await readFile(settingsPath, "utf-8"));
 
   // Extract docsDir
   const docsDirMatch = content.match(/docsDir:\s*["']([^"']*)["']/);
@@ -399,7 +433,9 @@ function entryKey(e) {
 
 async function main() {
   const rootDir = resolve(__dirname, "..");
-  const settingsPath = join(rootDir, "src", "config", "settings.ts");
+  // 4.x: settings live inline in the `zudoDoc({...})` call in zfb.config.ts —
+  // there is no standalone `src/config/settings.ts` anymore.
+  const settingsPath = join(rootDir, "zfb.config.ts");
   const basePath = await parseBasePath(settingsPath);
   const trailingSlash = await parseTrailingSlash(settingsPath);
   const distDir = join(rootDir, "dist");
