@@ -66,17 +66,6 @@ text-p7        # primary palette slot 7
 
 The exact names are up to your design system — the linter just blocks *default Tailwind colors* (`gray`, `blue`, `red`, etc.).
 
-### Sizing
-
-The same drift problem applies to dimensions, not just spacing: `w-64`, `h-96`, `size-40` are just as arbitrary as `p-5`. By default the linter also bans the numeric width/height/size scale (`w-{n}`, `h-{n}`, `size-{n}`, `min-w-{n}`, `max-w-{n}`, `min-h-{n}`, `max-h-{n}`, `basis-{n}`), pointing toward the same kind of semantic scale or an explicit arbitrary value:
-
-```
-w-[240px]   # explicit, one-off dimension
-h-avatar-lg # semantic sizing token, if your design system defines one
-```
-
-Unlike spacing/color, this project doesn't ship an opinionated sizing-token vocabulary of its own — arbitrary values (`w-[240px]`) are the pragmatic default escape hatch until your design system defines named sizing tokens.
-
 ## What Still Works
 
 The linter isn't trying to ban Tailwind. Most utilities still work:
@@ -84,18 +73,17 @@ The linter isn't trying to ban Tailwind. Most utilities still work:
 - Layout: `flex`, `grid`, `block`, `hidden`, `w-full`, `h-screen`
 - Typography: `font-bold`, `text-lg`, `leading-tight`, `tracking-wide`
 - Effects: `shadow`, `rounded`, `opacity-50`, `transition`
-- Zero, for any numeric spacing/sizing utility: `p-0`, `mt-0`, `px-0`, `inset-0`, `w-0`, `gap-0`, etc. — the linter allows a literal `0` value automatically, not just the classes listed in `allowed`
-- Non-numeric spacing-shaped values like `p-1px`, `mt-1px`: these never matched the numeric `{n}` pattern in the first place, so they pass without needing an `allowed` entry either
+- Zero and 1px spacing: `p-0`, `m-0`, `gap-0`, `p-1px`
 - Arbitrary values: `w-[28px]`, `bg-[#123]`, `p-[10px]`
 
-Only **raw numeric spacing/sizing** and **default-palette colors** are flagged.
+Only **raw numeric spacing** and **default-palette colors** are flagged.
 
 ## Escape Hatches
 
 Sometimes you genuinely need a raw value. Use one of:
 
 1. **Arbitrary values**: `p-[14px]` — explicit, searchable, reviewer-visible
-2. **Ignore comment**: `{/* design-token-lint-ignore */}` on the preceding line — see [ignore syntax](../../guide/ignore-syntax/index.mdx)
+2. **Ignore comment**: `{/* design-token-lint-ignore */}` on the preceding line — see [ignore syntax](../../guide/ignore-syntax/index.md)
 3. **Allowlist**: add the class to your config's `allowed` array
 
 Prefer arbitrary values for one-offs. Reserve allowlist for legitimate exceptions that repeat.

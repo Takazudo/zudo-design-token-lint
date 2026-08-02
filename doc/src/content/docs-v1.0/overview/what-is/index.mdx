@@ -15,11 +15,11 @@ A component with `p-4` and another with `p-6` may look similar, but they carry n
 
 Design systems define semantic tokens — `spacing-md`, `color-surface`, `text-primary` — to give these values a contract. Raw utilities bypass that contract silently.
 
-See the [methodology page](../../reference/methodology/index.mdx) for the full reasoning.
+See the [methodology page](../../reference/methodology/index.md) for the full reasoning.
 
 ## How It Works
 
-1. **Scan files** — the linter reads source files (`.tsx`, `.jsx`, `.astro`, `.vue`, `.html`, etc.) and extracts Tailwind class names using pattern matching against static `className`/`class` attributes, `cn()`, `clsx()`, and similar syntaxes. It does not evaluate dynamic binding syntax like Vue's `:class` or Svelte's `class:name` directives — see [Known Limitations](../../reference/limitations/index.mdx).
+1. **Scan files** — the linter reads source files (`.tsx`, `.jsx`, `.astro`, `.vue`, `.html`, etc.) and extracts Tailwind class names using pattern matching against `className`, `class`, `cn()`, `clsx()`, and similar syntaxes.
 
 2. **Match against rules** — each extracted class is checked against prohibited patterns defined in `.design-token-lint.json`. Patterns use placeholders:
    - `{n}` — matches any Tailwind numeric step (`p-{n}` matches `p-4`, `p-6`, `p-12`, ...)
@@ -30,10 +30,10 @@ See the [methodology page](../../reference/methodology/index.mdx) for the full r
 
 ```
 src/Button.tsx
-  L12: p-4 — Numeric spacing "p-4" — use a semantic spacing token or arbitrary value
+  L12: p-4 — Numeric spacing "p-4" — use semantic token (hgap-*/vgap-*) or arbitrary value
 
 src/Card.tsx
-  L7: bg-gray-200 — Default Tailwind color "bg-gray-200" — use a design system color token
+  L7: bg-gray-200 — Default color "bg-gray-200" — use semantic token (bg-surface/bg-muted/...)
 ```
 
 ## Key Features
@@ -51,7 +51,7 @@ TypeScript, Node.js 18+. Distributed as an npm package with a CLI binary and an 
 
 ## Integration
 
-Works with any framework that uses static Tailwind class attributes in source files — React, Astro, plain HTML, and Vue/Svelte templates for their static `class="..."` attributes. Vue's `:class`/`v-bind:class` bindings and Svelte's `class:name` directives are not correctly extracted (see [Known Limitations](../../reference/limitations/index.mdx)). Integrate with:
+Works with any framework that uses Tailwind class names in source files — React, Vue, Astro, Svelte, or plain HTML. Integrate with:
 
 - **CI/CD** — run as a step in GitHub Actions or any pipeline
 - **Git hooks** — run before push with [lefthook](https://github.com/evilmartians/lefthook) or husky

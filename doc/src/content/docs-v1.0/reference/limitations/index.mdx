@@ -7,7 +7,7 @@ category: reference
 
 `design-token-lint` uses regex-based static analysis to extract class names from source files. This approach is fast and requires no build step, but it cannot evaluate code at runtime. As a result, some dynamic patterns are not correctly analyzed.
 
-The set of attribute names and utility functions scanned is configurable via [`classAttributes` and `classFunctions`](../../guide/configuration/index.mdx) in your config file. By default, `className`, `class`, `cn`, `clsx`, `classNames`, and `twMerge` are scanned.
+The set of attribute names and utility functions scanned is configurable via [`classAttributes` and `classFunctions`](../../guide/configuration/index.md) in your config file. By default, `className`, `class`, `cn`, `clsx`, `classNames`, and `twMerge` are scanned.
 
 These are not bugs — they are inherent to static analysis.
 
@@ -35,41 +35,6 @@ Astro's `class:list` object syntax is supported — class names in quoted keys a
 ```
 
 Both `p-4` and `m-8` are extracted and linted.
-
-## Supported: Multiline Function Calls
-
-`cn()`, `clsx()`, `classNames()`, and `twMerge()` calls that span multiple lines are supported — arguments are accumulated until the parentheses balance, the same way multiline `className` values are:
-
-```tsx
-<div
-  className={cn(
-    "p-4",
-    "bg-gray-500",
-    isActive && "m-8",
-  )}
->
-```
-
-All three string arguments are extracted and linted. This also applies to `class:list={[...]}` arrays that span multiple lines.
-
-## Limitation: Vue/Svelte Dynamic Class Bindings
-
-Static `class="..."` attributes are extracted correctly in any template language, including Vue and Svelte. Dynamic binding syntax is not:
-
-```vue
-<!-- Not linted correctly — extracted as garbage tokens, no real violations reported -->
-<div :class="isActive ? 'p-4' : 'm-8'">
-<div v-bind:class="{ 'p-4': isActive }">
-```
-
-```svelte
-<!-- Not linted at all — the `class:` directive isn't recognized, nothing is extracted -->
-<div class:active={isActive} class:p-4={isBig}>
-```
-
-Vue's `:class`/`v-bind:class` bindings match the `class` attribute pattern (the leading `:` doesn't block the match), so their expression content is extracted and split into tokens — but the result is punctuation-laden garbage (`isActive`, `?`, `'p-4'`, `:`, `'m-8'`) that never matches a prohibited pattern, so violations inside it are silently missed. Svelte's `class:name` directive isn't matched at all (`class` isn't followed by `=`), so it's skipped entirely — also with no violations reported.
-
-**Workaround**: Extract the relevant classes into a static string (e.g. via a computed property or a `cn()`/`clsx()` call assigned to a variable) so the linter sees a plain string literal, or add an ignore comment to acknowledge the gap.
 
 ## Limitation: Conditional Expressions
 
@@ -127,47 +92,16 @@ The regex parser does not handle escaped quote sequences inside string literals.
 <div className={'p-4 m-8'}>
 ```
 
-## Limitation: CSS/SCSS Scanning (v1, Declaration-Based Only)
-
-The opt-in [`css` config section](../../guide/configuration/index.mdx#fields-css) scans plain CSS/SCSS declaration values (`zIndex`, `colorLiterals`) using the same line/regex-based approach as the Tailwind extractor — no PostCSS, no AST. It correctly handles `/* */` comments (including multi-line spans), string literals, `url(...)` values, and SCSS `//` line comments. The following are **known false negatives in v1** — a literal is present but not flagged, by design:
-
-```scss
-/* Not flagged — custom-property and SCSS-variable definitions are treated as
-   token-definition sites, not usage sites */
-:root {
-  --brand: #f00;
-}
-.a {
-  $brand: #f00;
-}
-
-/* Not flagged — SCSS maps and other nested/interpolated SCSS constructs */
-.a {
-  $colors: (primary: #f00, secondary: #0f0);
-}
-```
-
-Distinguishing a palette-definition zone (`:root`, `@theme`, a SCSS variable declaration) from a semantic-token *usage* site that should reference the palette instead needs zone-aware scanning — a deferred later pass, not part of v1. Values split across exotic multi-line syntax beyond a single declaration are also not guaranteed to be caught.
-
-This is declaration-value scanning only — it says nothing about Tailwind utility classes inside `<style>` blocks or CSS-in-JS template literals; those remain outside the `css` section's scope entirely (the Tailwind class extractor doesn't scan `.css`/`.scss` files, and the CSS declaration rules don't scan `.tsx`/`.jsx` files).
-
 ## Summary
 
 | Pattern | Supported |
 | --- | --- |
 | Multiline `className` | Yes |
-| Multiline `cn()`/`clsx()`/`class:list` calls | Yes |
 | Static string literals | Yes |
 | Template literals (static only) | Yes |
 | Object keys in `class:list` | Yes |
 | Custom attribute names (via `classAttributes`) | Yes — configurable |
 | Custom utility functions (via `classFunctions`) | Yes — configurable |
-| Vue/Svelte static `class="..."` attributes | Yes |
-| CSS/SCSS declaration scanning (opt-in, `css` section) | Yes — declaration-based only, see above |
 | Ternary expressions | No — silently skipped |
 | Template literals with interpolation | No — dynamic parts not linted |
 | Escaped quotes in class strings | No — may extract incorrectly |
-| Vue `:class`/`v-bind:class` bindings | No — extracted as garbage tokens |
-| Svelte `class:name` directives | No — not recognized at all |
-| CSS custom-property/SCSS-variable definitions holding a literal | No — token-definition zone awareness deferred |
-| SCSS maps and nested/interpolated constructs | No — out of scope for v1 |

@@ -5,7 +5,7 @@ sidebar_position: 1
 category: reference
 ---
 
-`@takazudo/zudo-design-token-lint` は、ビルドツール、エディタ、カスタムツールと統合するための小さな API をエクスポートしています。
+`@takazudo/zudo-design-token-lint` は、ビルドツール、エディタ、またはカスタムツールとの統合のための小さな API をエクスポートしています。
 
 ## インストール
 
@@ -17,59 +17,33 @@ pnpm add @takazudo/zudo-design-token-lint
 
 ```ts
 import {
-  // File/content linting
+  // ファイル/コンテンツのリント
   lintFile,
   lintContent,
   type LintResult,
 
-  // Single-class checking
+  // 単一クラスのチェック
   checkClass,
   checkClassWithConfig,
   type Violation,
 
-  // Config loading and compilation
+  // 設定の読み込みとコンパイル
   loadConfig,
   compileConfig,
   compilePattern,
   setConfig,
   getConfig,
   DEFAULT_CONFIG,
-  CONFIG_PRESETS,
-  DEFAULT_PRESET_NAME,
+  DEFAULT_CLASS_ATTRIBUTES,
+  DEFAULT_CLASS_FUNCTIONS,
   type LintConfig,
   type CompiledConfig,
   type CompiledRule,
-  type ConfigPreset,
-  type ProhibitedEntry,
-  type ProhibitedConfigEntry,
-  type CompilePatternOptions,
-  type CssConfig,
 
-  // Class extraction
+  // クラス抽出
   extractClasses,
-  DEFAULT_CLASS_ATTRIBUTES,
-  DEFAULT_CLASS_FUNCTIONS,
   type ExtractedClass,
   type ExtractorOptions,
-
-  // Ignore-comment metadata (used internally by requireIgnoreReason/reportUnusedIgnores,
-  // also usable directly for custom tooling)
-  extractClassesWithMeta,
-  type IgnoreKind,
-  type IgnoreRecord,
-  type ExtractWithMetaResult,
-
-  // CSS/SCSS declaration scanning (opt-in — see the `css` config field)
-  extractCssDeclarations,
-  extractCssDeclarationsWithMeta,
-  checkDeclaration,
-  type CssDeclaration,
-  type CssExtractorOptions,
-  type CssIgnoreKind,
-  type CssIgnoreRecord,
-  type CssExtractWithMetaResult,
-  type CssViolation,
-  type CompiledCssConfig,
 } from '@takazudo/zudo-design-token-lint';
 ```
 
@@ -77,7 +51,7 @@ import {
 
 ### `lintFile(filePath)`
 
-ディスクからファイルを読み込み、リント結果の配列 — 違反ごとに 1 エントリ — を返します。
+ディスクからファイルを読み込み、違反ごとに 1 エントリの配列を返します。
 
 ```ts
 const results = await lintFile('src/App.tsx');
@@ -97,11 +71,11 @@ interface LintResult {
 }
 ```
 
-各エントリは 1 つの違反を表すフラットなレコードです。ファイルに違反がなければ、返される配列は空です。
+各エントリは 1 つの違反を表すフラットなレコードです。違反がない場合は空配列が返ります。
 
 ### `lintContent(filePath, content)`
 
-文字列を直接リントします — エディタプラグインやインメモリのコンテンツに便利です。`LintResult[]`(上記と同じ形)を返します。
+文字列を直接リントします — エディタプラグインやインメモリコンテンツに便利です。`LintResult[]` を返します(上記と同じ形)。
 
 ```ts
 const results = lintContent('file.tsx', '<div className="p-4 bg-gray-500">');
@@ -115,13 +89,13 @@ const results = lintContent('file.tsx', '<div className="p-4 bg-gray-500">');
 
 ### `checkClass(className)`
 
-1 つのクラス名をアクティブな設定に対してチェックします。クラスが禁止されていれば `Violation` を、通れば `null` を返します。
+1 つのクラス名をアクティブな設定に対してチェックします。禁止されている場合は `Violation`、通る場合は `null` を返します。
 
 ```ts
 const violation = checkClass('p-4');
 if (violation) {
   console.error(violation.reason);
-  // "Numeric spacing \"p-4\" — use a semantic spacing token or arbitrary value"
+  // "Numeric spacing \"p-4\" — use semantic token (hgap-*/vgap-*) or arbitrary value"
 }
 ```
 
@@ -131,11 +105,8 @@ if (violation) {
 interface Violation {
   className: string;
   reason: string;
-  category?: string; // present only when the matched rule set a category
 }
 ```
-
-`category` はオプションで追加的なフィールドです — マッチしたルールが `category` を設定した構造化 `prohibited` エントリ(下記 `compilePattern` 参照)由来である場合にのみ値が入ります。プレーンな文字列の `prohibited` エントリは決して `category` を生成しないため、`{ className, reason }` を分割代入している既存のコードはそのまま変わらず動作します。
 
 ### `checkClassWithConfig(className, compiledConfig)`
 
@@ -162,7 +133,7 @@ const config = await loadConfig(process.cwd());
 
 ### `compileConfig(config)`
 
-プレーンな設定オブジェクトを、マッチングにすぐ使える効率的なルールセットにコンパイルします。
+プレーンな設定オブジェクトをマッチング用の効率的なルールセットにコンパイルします。
 
 ```ts
 const compiled = compileConfig({
@@ -170,36 +141,6 @@ const compiled = compileConfig({
   allowed: ['p-0'],
   ignore: [],
 });
-```
-
-#### 構造化された prohibited エントリ
-
-各 `prohibited`/`prohibitedAdd` エントリは、プレーンなパターン文字列(従来どおり)か、構造化オブジェクトのいずれかを受け付けます:
-
-```ts
-interface ProhibitedEntry {
-  pattern: string;
-  reason?: string; // full reason override — supports "{CLASS}"
-  category?: string; // rule-family tag, surfaced on Violation.category when this rule matches
-}
-
-type ProhibitedConfigEntry = string | ProhibitedEntry;
-
-const compiled = compileConfig({
-  prohibited: [
-    'p-{n}', // plain string — unchanged behavior, no category
-    {
-      pattern: 'w-{n}',
-      reason: 'Numeric width "{CLASS}" — use a semantic sizing token or arbitrary value',
-      category: 'sizing',
-    },
-  ],
-  allowed: [],
-  ignore: [],
-});
-
-checkClassWithConfig('w-4', compiled);
-// { className: 'w-4', reason: 'Numeric width "w-4" — use a semantic sizing token or arbitrary value', category: 'sizing' }
 ```
 
 ### `setConfig(compiled)` / `getConfig()`
@@ -211,7 +152,7 @@ setConfig(compiled);
 const active = getConfig();
 ```
 
-### `compilePattern(pattern, options?)`
+### `compilePattern(pattern)`
 
 単一のパターン文字列(`p-{n}` など)を `CompiledRule` にコンパイルします。
 
@@ -220,29 +161,11 @@ const rule = compilePattern('bg-{color}-{shade}');
 // { prefix: 'bg', valuePattern: /^(slate|gray|...)-(\d{2,3})$/, reasonTemplate: '...', isSpacingRule: false }
 ```
 
-第 2 引数は、素の文字列(レガシー形式。`{ suggestionSuffix }` と等価)か、`CompilePatternOptions` バッグのいずれかを受け付けます:
-
-```ts
-interface CompilePatternOptions {
-  suggestionSuffix?: string; // tweaks the shape-inferred default reason (spacing/color patterns only)
-  reason?: string; // full reason override — supports "{CLASS}"; wins over suggestionSuffix
-  category?: string; // rule-family tag carried onto CompiledRule.category and, on a match, Violation.category
-}
-
-const rule = compilePattern('w-{n}', {
-  reason: 'Numeric width "{CLASS}" — use a semantic sizing token or arbitrary value',
-  category: 'sizing',
-});
-// { prefix: 'w', valuePattern: /^\d+(\.\d+)?$/, reasonTemplate: 'Numeric width "{CLASS}" — ...', isSpacingRule: true, category: 'sizing' }
-```
-
-`prohibited`/`prohibitedAdd` の設定エントリは、オブジェクトとして同じ形を受け付けます — 下記の[構造化された prohibited エントリ](#設定の操作-compileconfig-config-構造化された-prohibited-エントリ)を参照してください。
-
 ## クラスの抽出
 
 ### `extractClasses(content, options?)`
 
-ソースファイル文字列からすべてのクラス名トークンを、その行番号とともに抽出します。
+ソースファイル文字列からすべてのクラス名トークンを行番号付きで抽出します。オプションで `ExtractorOptions` を渡すと、抽出対象の属性名や関数名をカスタマイズできます。
 
 ```ts
 const extracted = extractClasses('<div className="p-4 bg-red-500">');
@@ -252,12 +175,12 @@ const extracted = extractClasses('<div className="p-4 bg-red-500">');
 // ]
 ```
 
-スキャン対象の属性と関数をカスタマイズするための、オプションの `options` パラメータを受け付けます:
+カスタム属性や関数名を指定する場合:
 
 ```ts
-const extracted = extractClasses(content, {
-  classAttributes: ['className', 'class', 'inputClassName'],
-  classFunctions: ['cn', 'clsx', 'cva', 'tv'],
+const extracted = extractClasses('<div myClass="p-4">', {
+  classAttributes: ['className', 'class', 'myClass'],
+  classFunctions: ['cn', 'clsx', 'myMerge'],
 });
 ```
 
@@ -270,148 +193,15 @@ interface ExtractedClass {
 }
 ```
 
-デフォルトでサポートされる構文:
+省略時は `DEFAULT_CLASS_ATTRIBUTES` と `DEFAULT_CLASS_FUNCTIONS` が使用されます。
+
+サポートされる構文:
 
 - `className="..."` と `class="..."`(JSX/Astro)
-- `className='...'` と `class='...'` シングルクォートの HTML 属性(Astro/HTML でよく使われる)
-- `className={'...'}` シングルクォートのブレース
-- `className={"..."}` ダブルクォートのブレース
+- `className={'...'}` シングルクォート中括弧
 - `` className={`...`} `` テンプレートリテラル(単純なケース)
-- `class:list={["...", '...']}` Astro の class:list 配列(常にスキャン)
+- `class:list={["...", '...']}` Astro class:list 配列
 - `cn(...)`、`clsx(...)`、`classNames(...)`、`twMerge(...)` ユーティリティ呼び出し
-
-### `DEFAULT_CLASS_ATTRIBUTES`
-
-`extractClasses` がスキャンする属性名のデフォルトリストです:
-
-```ts
-const DEFAULT_CLASS_ATTRIBUTES: string[];
-// ["className", "class"]
-```
-
-### `DEFAULT_CLASS_FUNCTIONS`
-
-`extractClasses` がスキャンするユーティリティ関数名のデフォルトリストです:
-
-```ts
-const DEFAULT_CLASS_FUNCTIONS: string[];
-// ["cn", "clsx", "classNames", "twMerge"]
-```
-
-### `extractClassesWithMeta(content, options?)`
-
-`extractClasses()` と同じ抽出に加えて、ファイル内のすべての無視コメントに関する構造化メタデータを返します — [`requireIgnoreReason`/`reportUnusedIgnores`](../../guide/configuration/index.mdx#フィールド-requireignorereason-reportunusedignores) 衛生フラグが内部で使用しており、無視コメントが何を抑制したかを知る必要のあるカスタムツールから直接利用することもできます。
-
-```ts
-const { classes, ignores } = extractClassesWithMeta(
-  ['// design-token-lint-ignore', '<div className="p-4">', '<div className="m-8">'].join('\n'),
-);
-// classes: [{ className: 'm-8', line: 3 }]  — same as extractClasses(), the ignored line 2 is absent
-// ignores: [{
-//   line: 1, kind: 'next-line', reasonText: null, targetLine: 2,
-//   suppressedClasses: [{ className: 'p-4', line: 2 }]
-// }]
-```
-
-`ExtractWithMetaResult` を返します:
-
-```ts
-interface ExtractWithMetaResult {
-  classes: ExtractedClass[]; // byte-identical to extractClasses(content, options)
-  ignores: IgnoreRecord[];
-}
-
-interface IgnoreRecord {
-  line: number; // 1-based line the ignore comment itself appears on
-  kind: IgnoreKind; // 'next-line' | 'same-line' | 'file'
-  reasonText: string | null; // trailing "- reason" text after the directive, or null
-  targetLine: number; // 1-based line this record suppresses (0 for kind: 'file')
-  suppressedClasses: ExtractedClass[]; // candidate classes this ignore comment suppressed
-}
-
-type IgnoreKind = 'next-line' | 'same-line' | 'file';
-```
-
-末尾に置かれた同一行の無視(例: `<div className="p-4"> {/* design-token-lint-ignore */}`)は、同じコメントの `line` を共有する **2 つ** のレコードを生成します: 1 つは `kind: 'same-line'`(`targetLine` = 自身の行)、もう 1 つは `kind: 'next-line'`(`targetLine` = 次の行)です — これが反映する抑制のセマンティクスについては [無視構文](../../guide/ignore-syntax/index.mdx#同一行の末尾無視) を参照してください。
-
-## CSS/SCSS 宣言のチェック
-
-### `checkDeclaration(decl, config)`
-
-`extractCssDeclarations` が返す単一の `{property, value, line}` 宣言を、[オプトインの `css` ルール](../../guide/configuration/index.mdx#フィールド-css)に対してチェックします。`CssViolation` または `null` を返します。
-
-```ts
-import { extractCssDeclarations, checkDeclaration } from '@takazudo/zudo-design-token-lint';
-
-const [decl] = extractCssDeclarations('.modal {\n  z-index: 9999;\n}\n');
-const violation = checkDeclaration(decl, { zIndex: true, colorLiterals: false, patterns: [] });
-// { className: 'z-index: 9999', reason: 'Raw z-index integer "9999" — use a --z-* token', category: 'z-index' }
-```
-
-`CssViolation | null` を返します:
-
-```ts
-interface CssViolation {
-  className: string; // stable "property: value" form, e.g. "z-index: 9999"
-  reason: string;
-  category: 'z-index' | 'color';
-}
-```
-
-設定に `css` セクションがあり、ファイル拡張子が `.css`/`.scss` の場合、`lintContent`/`lintFile` は内部でこれを呼び出します — リンター自身のファイルディスパッチをバイパスするカスタムツールでのみ、直接呼び出す必要があります。
-
-## CSS/SCSS 宣言の抽出
-
-### `extractCssDeclarations(content, options?)`
-
-プレーンな CSS/SCSS ソースから `{property, value, line}` の 3 つ組を抽出します — `extractClasses()` の CSS 側の対応物です。行/正規表現ベースで、コメントと文字列を認識します(PostCSS なし、AST なし)。プロジェクトの依存関係なしアプローチに沿っています。
-
-```ts
-const declarations = extractCssDeclarations('.a {\n  z-index: 9999;\n  color: #fff;\n}\n');
-// [
-//   { property: 'z-index', value: '9999', line: 2 },
-//   { property: 'color', value: '#fff', line: 3 }
-// ]
-```
-
-`{ scss: true }` を渡すと、`//` も行コメントとして扱います(プレーン CSS では無効、SCSS では有効。`url(http://…)` を誤ってコメントとみなさないよう、括弧の深さ 0 でのみガードされます):
-
-```ts
-const declarations = extractCssDeclarations(content, { scss: true });
-```
-
-`CssDeclaration[]` を返します:
-
-```ts
-interface CssDeclaration {
-  property: string; // as written, e.g. "z-index", "--brand" (not lowercased)
-  value: string; // comments stripped, whitespace trimmed
-  line: number; // 1-based line the property starts on
-}
-```
-
-v1 は厳密に宣言ベースです — 文書化された偽陰性(カスタムプロパティ/SCSS 変数の定義、SCSS マップ)については [既知の制限事項](../limitations/index.mdx#制限事項-css-scss-スキャン-v1、宣言ベースのみ) を参照してください。
-
-### `extractCssDeclarationsWithMeta(content, options?)`
-
-`extractClassesWithMeta()` の CSS 側の対応物です — 同じ宣言に加えて、無視コメントのメタデータ(`CssIgnoreRecord[]`)を返します。`.css`/`.scss` ファイルに対する `requireIgnoreReason`/`reportUnusedIgnores` が内部で使用します。
-
-```ts
-interface CssExtractWithMetaResult {
-  declarations: CssDeclaration[];
-  ignores: CssIgnoreRecord[];
-}
-
-interface CssIgnoreRecord {
-  line: number;
-  kind: CssIgnoreKind; // 'next-line' | 'same-line' | 'file'
-  reasonText: string | null;
-  targetLine: number;
-  suppressedDeclarations: CssDeclaration[];
-}
-
-type CssIgnoreKind = 'next-line' | 'same-line' | 'file';
-```
 
 ## 型
 
@@ -419,84 +209,17 @@ type CssIgnoreKind = 'next-line' | 'same-line' | 'file';
 
 ```ts
 interface LintConfig {
-  prohibited?: ProhibitedConfigEntry[];
-  allowed?: string[];
+  prohibited: string[];
+  allowed: string[];
   ignore: string[];
   patterns?: string[];
   suggestionSuffix?: string;
-  suggestions?: Record<string, string>;
-  semanticPrefixes?: string[];
   classAttributes?: string[];
   classFunctions?: string[];
-  extends?: string | string[];
-  prohibitedAdd?: ProhibitedConfigEntry[];
-  allowedAdd?: string[];
-  css?: CssConfig;
-  requireIgnoreReason?: boolean;
-  reportUnusedIgnores?: boolean;
 }
 ```
-
-各フィールドの役割については [設定](../../guide/configuration/index.mdx) を、`ProhibitedConfigEntry` の形については上記の[構造化された prohibited エントリ](#設定の操作-compileconfig-config-構造化された-prohibited-エントリ)を参照してください。
-
-### `CssConfig`
-
-オプションの `css` フィールドの形です — 各フラグの完全な挙動については [`css` 設定セクション](../../guide/configuration/index.mdx#フィールド-css) を参照してください。
-
-```ts
-interface CssConfig {
-  zIndex?: boolean; // default false
-  colorLiterals?: boolean; // default false
-  patterns?: string[]; // CSS/SCSS globs the CLI scans, in addition to the Tailwind `patterns`
-}
-```
-
-### `ConfigPreset`
-
-`extends` フィールド経由で使用できる、名前付きで登録済みのプリセットです — 下記の `CONFIG_PRESETS` を参照してください。
-
-```ts
-interface ConfigPreset {
-  prohibited: ProhibitedConfigEntry[];
-  allowed?: string[];
-}
-```
-
-### `ProhibitedEntry` / `ProhibitedConfigEntry`
-
-```ts
-interface ProhibitedEntry {
-  pattern: string;
-  reason?: string;
-  category?: string;
-}
-
-type ProhibitedConfigEntry = string | ProhibitedEntry;
-```
-
-### `CompilePatternOptions`
-
-```ts
-interface CompilePatternOptions {
-  suggestionSuffix?: string;
-  reason?: string;
-  category?: string;
-}
-```
-
-### `CONFIG_PRESETS` / `DEFAULT_PRESET_NAME`
-
-```ts
-const DEFAULT_PRESET_NAME: string; // "default"
-const CONFIG_PRESETS: Record<string, ConfigPreset>;
-// { default: { prohibited: [...], allowed: [...] }, "z-index": { prohibited: [...], allowed: ["z-0"] } }
-```
-
-`CONFIG_PRESETS` は `extends` が参照するレジストリです。組み込みの `"z-index"` プリセット(オプトインで、`DEFAULT_CONFIG` には含まれません)は `z-{n}` クラスを z-index 固有の理由でフラグします — デフォルトの上に重ねるには `extends: ["default", "z-index"]` を使用してください。
 
 ### `ExtractorOptions`
-
-スキャンする属性と関数をカスタマイズするために `extractClasses()` に渡すオプションです。
 
 ```ts
 interface ExtractorOptions {
@@ -505,7 +228,17 @@ interface ExtractorOptions {
 }
 ```
 
-どちらのフィールドもオプションです。省略時は、それぞれ `DEFAULT_CLASS_ATTRIBUTES` と `DEFAULT_CLASS_FUNCTIONS` が使用されます。
+### `DEFAULT_CLASS_ATTRIBUTES` / `DEFAULT_CLASS_FUNCTIONS`
+
+抽出に使用するデフォルトの属性名と関数名の定数です。
+
+```ts
+const DEFAULT_CLASS_ATTRIBUTES: string[];
+// ['className', 'class']
+
+const DEFAULT_CLASS_FUNCTIONS: string[];
+// ['cn', 'clsx', 'classNames', 'twMerge']
+```
 
 ### `LintResult`
 
@@ -524,20 +257,8 @@ interface LintResult {
 interface Violation {
   className: string;
   reason: string;
-  category?: string;
 }
 ```
-
-`category` はオプションで追加的です — マッチしたルールの `prohibited` エントリが `category` を設定した構造化オブジェクトだった場合にのみ存在します(例: デフォルトの sizing ルールは `category: "sizing"` を、`"z-index"` プリセットは `category: "z-index"` を使用します)。
-
-### 無視メタデータと CSS の型
-
-完全な定義は、それらを返す関数のそばに記載されています:
-
-- `IgnoreKind`、`IgnoreRecord`、`ExtractWithMetaResult` — 上記の [`extractClassesWithMeta`](#クラスの抽出-extractclasseswithmeta-content-options) を参照。
-- `CssDeclaration`、`CssExtractorOptions` — 上記の [`extractCssDeclarations`](#css-scss-宣言の抽出-extractcssdeclarations-content-options) を参照。
-- `CssIgnoreKind`、`CssIgnoreRecord`、`CssExtractWithMetaResult` — 上記の [`extractCssDeclarationsWithMeta`](#css-scss-宣言の抽出-extractcssdeclarationswithmeta-content-options) を参照。
-- `CssViolation`、`CompiledCssConfig` — 上記の [`checkDeclaration`](#css-scss-宣言のチェック-checkdeclaration-decl-config) を参照。
 
 ## 例: カスタムリンタースクリプト
 

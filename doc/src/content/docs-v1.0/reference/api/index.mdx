@@ -34,16 +34,9 @@ import {
   setConfig,
   getConfig,
   DEFAULT_CONFIG,
-  CONFIG_PRESETS,
-  DEFAULT_PRESET_NAME,
   type LintConfig,
   type CompiledConfig,
   type CompiledRule,
-  type ConfigPreset,
-  type ProhibitedEntry,
-  type ProhibitedConfigEntry,
-  type CompilePatternOptions,
-  type CssConfig,
 
   // Class extraction
   extractClasses,
@@ -51,25 +44,6 @@ import {
   DEFAULT_CLASS_FUNCTIONS,
   type ExtractedClass,
   type ExtractorOptions,
-
-  // Ignore-comment metadata (used internally by requireIgnoreReason/reportUnusedIgnores,
-  // also usable directly for custom tooling)
-  extractClassesWithMeta,
-  type IgnoreKind,
-  type IgnoreRecord,
-  type ExtractWithMetaResult,
-
-  // CSS/SCSS declaration scanning (opt-in — see the `css` config field)
-  extractCssDeclarations,
-  extractCssDeclarationsWithMeta,
-  checkDeclaration,
-  type CssDeclaration,
-  type CssExtractorOptions,
-  type CssIgnoreKind,
-  type CssIgnoreRecord,
-  type CssExtractWithMetaResult,
-  type CssViolation,
-  type CompiledCssConfig,
 } from '@takazudo/zudo-design-token-lint';
 ```
 
@@ -121,7 +95,7 @@ Check one class name against the active config. Returns a `Violation` if the cla
 const violation = checkClass('p-4');
 if (violation) {
   console.error(violation.reason);
-  // "Numeric spacing \"p-4\" — use a semantic spacing token or arbitrary value"
+  // "Numeric spacing \"p-4\" — use semantic token (hgap-*/vgap-*) or arbitrary value"
 }
 ```
 
@@ -131,11 +105,8 @@ Returns `Violation | null`:
 interface Violation {
   className: string;
   reason: string;
-  category?: string; // present only when the matched rule set a category
 }
 ```
-
-`category` is an optional, additive field — it's only populated when the matching rule came from a structured `prohibited` entry (see `compilePattern` below) that set a `category`. Plain string `prohibited` entries never produce a `category`, so existing code destructuring `{ className, reason }` keeps working unchanged.
 
 ### `checkClassWithConfig(className, compiledConfig)`
 
@@ -172,36 +143,6 @@ const compiled = compileConfig({
 });
 ```
 
-#### Structured prohibited entries
-
-Each `prohibited`/`prohibitedAdd` entry accepts either a plain pattern string (unchanged) or a structured object:
-
-```ts
-interface ProhibitedEntry {
-  pattern: string;
-  reason?: string; // full reason override — supports "{CLASS}"
-  category?: string; // rule-family tag, surfaced on Violation.category when this rule matches
-}
-
-type ProhibitedConfigEntry = string | ProhibitedEntry;
-
-const compiled = compileConfig({
-  prohibited: [
-    'p-{n}', // plain string — unchanged behavior, no category
-    {
-      pattern: 'w-{n}',
-      reason: 'Numeric width "{CLASS}" — use a semantic sizing token or arbitrary value',
-      category: 'sizing',
-    },
-  ],
-  allowed: [],
-  ignore: [],
-});
-
-checkClassWithConfig('w-4', compiled);
-// { className: 'w-4', reason: 'Numeric width "w-4" — use a semantic sizing token or arbitrary value', category: 'sizing' }
-```
-
 ### `setConfig(compiled)` / `getConfig()`
 
 Set or get the global compiled config used by `checkClass()` and `lintFile()`.
@@ -211,7 +152,7 @@ setConfig(compiled);
 const active = getConfig();
 ```
 
-### `compilePattern(pattern, options?)`
+### `compilePattern(pattern)`
 
 Compile a single pattern string (like `p-{n}`) into a `CompiledRule`.
 
@@ -219,24 +160,6 @@ Compile a single pattern string (like `p-{n}`) into a `CompiledRule`.
 const rule = compilePattern('bg-{color}-{shade}');
 // { prefix: 'bg', valuePattern: /^(slate|gray|...)-(\d{2,3})$/, reasonTemplate: '...', isSpacingRule: false }
 ```
-
-The second argument accepts either a bare string (legacy shape, equivalent to `{ suggestionSuffix }`) or a `CompilePatternOptions` bag:
-
-```ts
-interface CompilePatternOptions {
-  suggestionSuffix?: string; // tweaks the shape-inferred default reason (spacing/color patterns only)
-  reason?: string; // full reason override — supports "{CLASS}"; wins over suggestionSuffix
-  category?: string; // rule-family tag carried onto CompiledRule.category and, on a match, Violation.category
-}
-
-const rule = compilePattern('w-{n}', {
-  reason: 'Numeric width "{CLASS}" — use a semantic sizing token or arbitrary value',
-  category: 'sizing',
-});
-// { prefix: 'w', valuePattern: /^\d+(\.\d+)?$/, reasonTemplate: 'Numeric width "{CLASS}" — ...', isSpacingRule: true, category: 'sizing' }
-```
-
-`prohibited`/`prohibitedAdd` config entries accept the same shape as an object — see [Structured prohibited entries](#working-with-config-compileconfig-config-structured-prohibited-entries) below.
 
 ## Extracting Classes
 
@@ -273,9 +196,7 @@ interface ExtractedClass {
 Supported syntaxes by default:
 
 - `className="..."` and `class="..."` (JSX/Astro)
-- `className='...'` and `class='...'` single-quote HTML attribute (common in Astro/HTML)
 - `className={'...'}` single-quote brace
-- `className={"..."}` double-quote brace
 - `` className={`...`} `` template literals (simple cases)
 - `class:list={["...", '...']}` Astro class:list arrays (always scanned)
 - `cn(...)`, `clsx(...)`, `classNames(...)`, `twMerge(...)` utility calls
@@ -298,201 +219,21 @@ const DEFAULT_CLASS_FUNCTIONS: string[];
 // ["cn", "clsx", "classNames", "twMerge"]
 ```
 
-### `extractClassesWithMeta(content, options?)`
-
-Same extraction as `extractClasses()`, plus structured metadata about every ignore comment in the file — used internally by the [`requireIgnoreReason`/`reportUnusedIgnores`](../../guide/configuration/index.mdx#fields-requireignorereason-reportunusedignores) hygiene flags, and available directly for custom tooling that needs to know what an ignore comment suppressed.
-
-```ts
-const { classes, ignores } = extractClassesWithMeta(
-  ['// design-token-lint-ignore', '<div className="p-4">', '<div className="m-8">'].join('\n'),
-);
-// classes: [{ className: 'm-8', line: 3 }]  — same as extractClasses(), the ignored line 2 is absent
-// ignores: [{
-//   line: 1, kind: 'next-line', reasonText: null, targetLine: 2,
-//   suppressedClasses: [{ className: 'p-4', line: 2 }]
-// }]
-```
-
-Returns `ExtractWithMetaResult`:
-
-```ts
-interface ExtractWithMetaResult {
-  classes: ExtractedClass[]; // byte-identical to extractClasses(content, options)
-  ignores: IgnoreRecord[];
-}
-
-interface IgnoreRecord {
-  line: number; // 1-based line the ignore comment itself appears on
-  kind: IgnoreKind; // 'next-line' | 'same-line' | 'file'
-  reasonText: string | null; // trailing "- reason" text after the directive, or null
-  targetLine: number; // 1-based line this record suppresses (0 for kind: 'file')
-  suppressedClasses: ExtractedClass[]; // candidate classes this ignore comment suppressed
-}
-
-type IgnoreKind = 'next-line' | 'same-line' | 'file';
-```
-
-A trailing same-line ignore (e.g. `<div className="p-4"> {/* design-token-lint-ignore */}`) produces **two** records sharing the same comment `line`: one `kind: 'same-line'` (`targetLine` = its own line) and one `kind: 'next-line'` (`targetLine` = the line after) — see [Ignore Syntax](../../guide/ignore-syntax/index.mdx#same-line-trailing-ignore) for the suppression semantics this reflects.
-
-## Checking a CSS/SCSS Declaration
-
-### `checkDeclaration(decl, config)`
-
-Check a single `{property, value, line}` declaration (from `extractCssDeclarations`) against the [opt-in `css` rules](../../guide/configuration/index.mdx#fields-css). Returns a `CssViolation` or `null`.
-
-```ts
-import { extractCssDeclarations, checkDeclaration } from '@takazudo/zudo-design-token-lint';
-
-const [decl] = extractCssDeclarations('.modal {\n  z-index: 9999;\n}\n');
-const violation = checkDeclaration(decl, { zIndex: true, colorLiterals: false, patterns: [] });
-// { className: 'z-index: 9999', reason: 'Raw z-index integer "9999" — use a --z-* token', category: 'z-index' }
-```
-
-Returns `CssViolation | null`:
-
-```ts
-interface CssViolation {
-  className: string; // stable "property: value" form, e.g. "z-index: 9999"
-  reason: string;
-  category: 'z-index' | 'color';
-}
-```
-
-`lintContent`/`lintFile` call this internally when the config has a `css` section and the file extension is `.css`/`.scss` — you only need to call it directly for custom tooling that bypasses the linter's own file dispatch.
-
-## Extracting CSS/SCSS Declarations
-
-### `extractCssDeclarations(content, options?)`
-
-Extract `{property, value, line}` triples from plain CSS/SCSS source — the CSS-side counterpart to `extractClasses()`. Line/regex-based, comment- and string-aware (no PostCSS, no AST), matching the project's no-dependency approach.
-
-```ts
-const declarations = extractCssDeclarations('.a {\n  z-index: 9999;\n  color: #fff;\n}\n');
-// [
-//   { property: 'z-index', value: '9999', line: 2 },
-//   { property: 'color', value: '#fff', line: 3 }
-// ]
-```
-
-Pass `{ scss: true }` to also treat `//` as a line comment (valid in SCSS, not in plain CSS; guarded to paren-depth 0 so `url(http://…)` is never mistaken for one):
-
-```ts
-const declarations = extractCssDeclarations(content, { scss: true });
-```
-
-Returns `CssDeclaration[]`:
-
-```ts
-interface CssDeclaration {
-  property: string; // as written, e.g. "z-index", "--brand" (not lowercased)
-  value: string; // comments stripped, whitespace trimmed
-  line: number; // 1-based line the property starts on
-}
-```
-
-v1 is strictly declaration-based — see [Known Limitations](../limitations/index.mdx#limitation-css-scss-scanning-v1-declaration-based-only) for the documented false negatives (custom-property/SCSS-variable definitions, SCSS maps).
-
-### `extractCssDeclarationsWithMeta(content, options?)`
-
-The CSS-side counterpart to `extractClassesWithMeta()` — same declarations, plus ignore-comment metadata (`CssIgnoreRecord[]`), used internally by `requireIgnoreReason`/`reportUnusedIgnores` for `.css`/`.scss` files.
-
-```ts
-interface CssExtractWithMetaResult {
-  declarations: CssDeclaration[];
-  ignores: CssIgnoreRecord[];
-}
-
-interface CssIgnoreRecord {
-  line: number;
-  kind: CssIgnoreKind; // 'next-line' | 'same-line' | 'file'
-  reasonText: string | null;
-  targetLine: number;
-  suppressedDeclarations: CssDeclaration[];
-}
-
-type CssIgnoreKind = 'next-line' | 'same-line' | 'file';
-```
-
 ## Types
 
 ### `LintConfig`
 
 ```ts
 interface LintConfig {
-  prohibited?: ProhibitedConfigEntry[];
-  allowed?: string[];
+  prohibited: string[];
+  allowed: string[];
   ignore: string[];
   patterns?: string[];
   suggestionSuffix?: string;
-  suggestions?: Record<string, string>;
-  semanticPrefixes?: string[];
   classAttributes?: string[];
   classFunctions?: string[];
-  extends?: string | string[];
-  prohibitedAdd?: ProhibitedConfigEntry[];
-  allowedAdd?: string[];
-  css?: CssConfig;
-  requireIgnoreReason?: boolean;
-  reportUnusedIgnores?: boolean;
 }
 ```
-
-See [Configuration](../../guide/configuration/index.mdx) for what each field does, and [Structured prohibited entries](#working-with-config-compileconfig-config-structured-prohibited-entries) above for the `ProhibitedConfigEntry` shape.
-
-### `CssConfig`
-
-The optional `css` field's shape — see the [`css` configuration section](../../guide/configuration/index.mdx#fields-css) for the full behavior of each flag.
-
-```ts
-interface CssConfig {
-  zIndex?: boolean; // default false
-  colorLiterals?: boolean; // default false
-  patterns?: string[]; // CSS/SCSS globs the CLI scans, in addition to the Tailwind `patterns`
-}
-```
-
-### `ConfigPreset`
-
-A named, registered preset usable via the `extends` field — see `CONFIG_PRESETS` below.
-
-```ts
-interface ConfigPreset {
-  prohibited: ProhibitedConfigEntry[];
-  allowed?: string[];
-}
-```
-
-### `ProhibitedEntry` / `ProhibitedConfigEntry`
-
-```ts
-interface ProhibitedEntry {
-  pattern: string;
-  reason?: string;
-  category?: string;
-}
-
-type ProhibitedConfigEntry = string | ProhibitedEntry;
-```
-
-### `CompilePatternOptions`
-
-```ts
-interface CompilePatternOptions {
-  suggestionSuffix?: string;
-  reason?: string;
-  category?: string;
-}
-```
-
-### `CONFIG_PRESETS` / `DEFAULT_PRESET_NAME`
-
-```ts
-const DEFAULT_PRESET_NAME: string; // "default"
-const CONFIG_PRESETS: Record<string, ConfigPreset>;
-// { default: { prohibited: [...], allowed: [...] }, "z-index": { prohibited: [...], allowed: ["z-0"] } }
-```
-
-`CONFIG_PRESETS` is the registry consulted by `extends`. The built-in `"z-index"` preset (opt-in, not part of `DEFAULT_CONFIG`) flags `z-{n}` classes with a z-index-specific reason — use `extends: ["default", "z-index"]` to layer it on top of the defaults.
 
 ### `ExtractorOptions`
 
@@ -524,20 +265,8 @@ interface LintResult {
 interface Violation {
   className: string;
   reason: string;
-  category?: string;
 }
 ```
-
-`category` is optional and additive — only present when the matched rule's `prohibited` entry was a structured object setting `category` (e.g. the default sizing rules use `category: "sizing"`, the `"z-index"` preset uses `category: "z-index"`).
-
-### Ignore-metadata and CSS types
-
-Full definitions are given alongside the function that returns them:
-
-- `IgnoreKind`, `IgnoreRecord`, `ExtractWithMetaResult` — see [`extractClassesWithMeta`](#extracting-classes-extractclasseswithmeta-content-options) above.
-- `CssDeclaration`, `CssExtractorOptions` — see [`extractCssDeclarations`](#extracting-css-scss-declarations-extractcssdeclarations-content-options) above.
-- `CssIgnoreKind`, `CssIgnoreRecord`, `CssExtractWithMetaResult` — see [`extractCssDeclarationsWithMeta`](#extracting-css-scss-declarations-extractcssdeclarationswithmeta-content-options) above.
-- `CssViolation`, `CompiledCssConfig` — see [`checkDeclaration`](#checking-a-css-scss-declaration-checkdeclaration-decl-config) above.
 
 ## Example: Custom Linter Script
 

@@ -37,9 +37,9 @@ Tailwind には数百のユーティリティクラスとデフォルトカラ�
 `hgap-*`(水平)と `vgap-*`(垂直)サフィックスを使用:
 
 ```
-p-hgap-sm   # small horizontal padding
-m-vgap-lg   # large vertical margin
-gap-hgap-md # medium gap
+p-hgap-sm   # 小さな水平パディング
+m-vgap-lg   # 大きな垂直マージン
+gap-hgap-md # 中程度のギャップ
 ```
 
 スケール名(`2xs`、`xs`、`sm`、`md`、`lg`、`xl`、`2xl`、...)は Tailwind の設定で定義され、実際のピクセル値にマップされます。
@@ -49,33 +49,22 @@ gap-hgap-md # medium gap
 色相ではなく役割を表すセマンティックな名前を使用:
 
 ```
-bg-surface     # any surface (cards, panels)
-bg-surface-alt # alternate surface tint
-text-fg        # primary foreground
-text-muted     # de-emphasized text
-border-muted   # subtle borders
-bg-accent      # primary action color
+bg-surface     # あらゆるサーフェス(カード、パネル)
+bg-surface-alt # 代替サーフェスの濃淡
+text-fg        # 基本前景
+text-muted     # 控えめなテキスト
+border-muted   # 微妙なボーダー
+bg-accent      # プライマリアクションカラー
 ```
 
 またはプロジェクトスコープのトークンを使用:
 
 ```
-bg-zd-black    # project-specific palette
-text-p7        # primary palette slot 7
+bg-zd-black    # プロジェクト固有のパレット
+text-p7        # プライマリパレットのスロット 7
 ```
 
 正確な名前はデザインシステム次第です — リンターは*デフォルトの Tailwind カラー*(`gray`、`blue`、`red` など)をブロックするだけです。
-
-### サイズ
-
-同じドリフトの問題は、間隔だけでなく寸法にも当てはまります: `w-64`、`h-96`、`size-40` は `p-5` と同じくらい恣意的です。デフォルトでは、リンターは数値の幅/高さ/サイズのスケール(`w-{n}`、`h-{n}`、`size-{n}`、`min-w-{n}`、`max-w-{n}`、`min-h-{n}`、`max-h-{n}`、`basis-{n}`)も禁止し、同じ種類のセマンティックなスケール、または明示的な任意値へと導きます:
-
-```
-w-[240px]   # explicit, one-off dimension
-h-avatar-lg # semantic sizing token, if your design system defines one
-```
-
-間隔/カラーとは異なり、このプロジェクトは独自の意見を持つサイズトークンの語彙を同梱しません — デザインシステムが名前付きのサイズトークンを定義するまでは、任意値(`w-[240px]`)が現実的なデフォルトのエスケープハッチです。
 
 ## 引き続き動くもの
 
@@ -84,18 +73,17 @@ h-avatar-lg # semantic sizing token, if your design system defines one
 - レイアウト: `flex`、`grid`、`block`、`hidden`、`w-full`、`h-screen`
 - タイポグラフィ: `font-bold`、`text-lg`、`leading-tight`、`tracking-wide`
 - エフェクト: `shadow`、`rounded`、`opacity-50`、`transition`
-- ゼロ、あらゆる数値間隔/サイズユーティリティに対して: `p-0`、`mt-0`、`px-0`、`inset-0`、`w-0`、`gap-0` など — リンターはリテラルの `0` 値を自動的に許可します。`allowed` に列挙されたクラスだけではありません
-- `p-1px`、`mt-1px` のような数値でない間隔形状の値: これらはそもそも数値の `{n}` パターンに一致しないため、`allowed` エントリを必要とせずに通ります
+- ゼロおよび 1px の間隔: `p-0`、`m-0`、`gap-0`、`p-1px`
 - 任意値: `w-[28px]`、`bg-[#123]`、`p-[10px]`
 
-**生の数値間隔/サイズ**と**デフォルトパレットの色**のみがフラグされます。
+**生の数値間隔**と**デフォルトパレットの色**のみがフラグされます。
 
 ## エスケープハッチ
 
 本当に生の値が必要な場合があります。次のいずれかを使用します:
 
 1. **任意値**: `p-[14px]` — 明示的で検索可能、レビュアーに見える
-2. **無視コメント**: 前の行に `{/* design-token-lint-ignore */}` — [無視構文](../../guide/ignore-syntax/index.mdx)を参照
+2. **無視コメント**: 前の行に `{/* design-token-lint-ignore */}` — [無視構文](../../guide/ignore-syntax/index.md)を参照
 3. **許可リスト**: クラスを設定の `allowed` 配列に追加
 
 一度限りのものには任意値を優先してください。繰り返される正当な例外には許可リストを予約してください。

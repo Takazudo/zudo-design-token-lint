@@ -27,8 +27,8 @@ category: guide
     "src/**/*.{tsx,jsx,astro}",
     "components/**/*.{tsx,jsx,astro}"
   ],
-  "classAttributes": ["className", "class", "inputClassName", "wrapperClass"],
-  "classFunctions": ["cn", "clsx", "classNames", "twMerge", "cva", "tv"]
+  "classAttributes": ["className", "class", "inputClass"],
+  "classFunctions": ["cn", "clsx", "myMerge"]
 }
 ```
 
@@ -36,21 +36,13 @@ category: guide
 
 | フィールド | 型 | 説明 |
 |---|---|---|
-| `prohibited` | `(string \| ProhibitedEntry)[]` | 違反としてフラグを立てるパターン — プレーンな文字列、または構造化された `{pattern, reason?, category?}` オブジェクト |
+| `prohibited` | `string[]` | 違反としてフラグを立てるパターン |
 | `allowed` | `string[]` | 禁止パターンに一致しても常に通す例外 |
 | `ignore` | `string[]` | 完全にスキップするファイル glob パターン |
-| `patterns` | `string[]` | スキャン対象のファイル glob パターン(CLI 引数がない場合に使用) |
-| `suggestionSuffix` | `string` | 違反メッセージのカスタムサフィックス(デフォルトの提案テキストを置き換える) |
-| `suggestions` | `Record<string, string>` | 禁止クラスの正規化ベース形式から、プロジェクトのセマンティックな置き換えトークンへのマップ。違反メッセージに "did you mean" のヒントとして付加される |
-| `semanticPrefixes` | `string[]` | 間隔ルールをバイパスする値のプレフィックス(デフォルト: `["hgap-", "vgap-"]`) |
-| `classAttributes` | `string[]` | エクストラクターがクラス名を探す HTML/JSX 属性名 |
-| `classFunctions` | `string[]` | エクストラクターがクラス名引数を探すユーティリティ関数名 |
-| `extends` | `string \| string[]` | `prohibited`/`allowed` パターンを継承する名前付きプリセット |
-| `prohibitedAdd` | `(string \| ProhibitedEntry)[]` | 解決済みの `prohibited` リスト(継承またはデフォルト)に追加されるパターン — `prohibited` と同じプレーン文字列/構造化オブジェクトの形を受け付ける |
-| `allowedAdd` | `string[]` | 解決済みの `allowed` リスト(継承またはデフォルト)に追加されるパターン |
-| `css` | `object` | オプトインの CSS/SCSS 宣言スキャン: `{ zIndex?, colorLiterals?, patterns? }`(すべてデフォルト OFF) |
-| `requireIgnoreReason` | `boolean` | 実際の違反を隠す、素の(理由なしの)`design-token-lint-ignore` を、黙って抑制する代わりに報告する(デフォルト `false`) |
-| `reportUnusedIgnores` | `boolean` | 何も抑制しなかった `design-token-lint-ignore` コメントを報告する(デフォルト `false`) |
+| `patterns` | `string[]` | スキャン対象の glob パターン(CLI 引数がない場合に使用) |
+| `suggestionSuffix` | `string` | 違反メッセージのカスタムサフィックス(デフォルトの提案テキストを置き換えます) |
+| `classAttributes` | `string[]` | クラス名を抽出する属性名。省略時は `DEFAULT_CLASS_ATTRIBUTES`(`className`、`class`)を使用 |
+| `classFunctions` | `string[]` | クラス名を抽出するユーティリティ関数名。省略時は `DEFAULT_CLASS_FUNCTIONS`(`cn`、`clsx`、`classNames`、`twMerge`)を使用 |
 
 すべてのフィールドはオプションで、省略時は組み込みのデフォルトにフォールバックします。
 
@@ -68,107 +60,9 @@ category: guide
 - `bg-{color}-{shade}` は `bg-red-500`、`bg-blue-300` に一致
 - `gap-x-{n}` は `gap-x-2`、`gap-x-6` に一致
 
-#### 構造化エントリ
-
-プレーンな文字列の代わりに、エントリをオブジェクトにすることで、デフォルトの違反メッセージを上書きし、ルールにカテゴリのタグを付けられます:
-
-```json
-{
-  "prohibited": [
-    "p-{n}",
-    {
-      "pattern": "w-{n}",
-      "reason": "Numeric width \"{CLASS}\" — use a semantic sizing token or arbitrary value",
-      "category": "sizing"
-    }
-  ]
-}
-```
-
-- **`pattern`**(必須)— プレーンな文字列エントリと同じプレースホルダー構文。
-- **`reason`**(オプション)— 違反メッセージを丸ごと置き換えます。`{CLASS}` プレースホルダー(実際のクラス名に置換される)をサポートします。省略時は、プレーンな文字列エントリと同様に、パターン形状から推論されたデフォルトメッセージが使用されます。
-- **`category`**(オプション)— 自由形式のタグ(例: `"sizing"`、`"z-index"`)で、このルールが一致したときに得られる `Violation.category` にコピーされます。これにより、ツールが違反をルールファミリごとにグループ化・フィルタリングできます。プレーンな文字列エントリは決して `category` を生成しません。
-
-プレーンな文字列エントリは、常に `reason`/`category` のオーバーライドなしの `{ pattern: theString }` と等価です — 同じ `prohibited` 配列内で文字列とオブジェクトのエントリを混在させても問題ありません。
-
 ### `allowed`
 
-禁止パターンとの照合より前にチェックされる許可リストです。各エントリは次のいずれかの形式を取れます:
-
-- **ベア/正規化形式** — そこから作られるすべてのバリアント、負の値、important 修飾子の形式も許可します。マッチングでは、比較前にバリアントプレフィックス(最後の `:` まで)、`!` important 修飾子、先頭の `-` 負号、`/N` 不透明度サフィックスが取り除かれます:
-  - ベアな `p-4` は `hover:p-4`、`-p-4`、`p-4!`、`sm:-p-4!` もカバーします。
-  - ベアな `bg-red-500` は、その不透明度形式(例: `bg-red-500/50`、`hover:bg-red-500/50`)もカバーします。
-- **完全一致/そのままの形式**(例: `hover:p-2`、`-mt-4`、`bg-red-500/50`)— その特定の文字列のみを許可します。違反メッセージからそのままコピーしたクラスを、ベア形式や他のすべてのバリアントを開放することなく、その 1 つのバリアントだけ許可したい場合に便利です。
-
-`p-0`、`m-0` のようなエスケープハッチはよくあるエントリです — もっとも、ゼロは `allowed` に関係なく *あらゆる* 間隔/サイズルールで自動的に通るため([自動的に通るもの](#自動的に通るクラス)を参照)、これらは厳密には必須ではなく、防御的・明示的な意味合いです。
-
-### `extends`
-
-完全なデフォルトリストを複製する代わりに、1 つ以上の組み込みプリセットから `prohibited`/`allowed` パターンを継承します。プリセット名、または名前の配列を取ります:
-
-```json
-{
-  "extends": ["default"]
-}
-```
-
-現在、登録済みのプリセットは 2 つあります:
-
-- **`default`** — 下記の [組み込みのデフォルト](#組み込みのデフォルト) で説明する組み込みの `prohibited`/`allowed` リスト。
-- **`z-index`** — オプトインの数値 z-index 禁止: `z-{n}`(例: `z-10`、`z-50`)を z-index 固有のメッセージでフラグし、`z-0` を許可します。`default` には含まれません — 有効にするには明示的に列挙してください:
-
-  ```json
-  {
-    "extends": ["default", "z-index"]
-  }
-  ```
-
-`extends` が配列の場合、レイヤーは指定された順にマージされます。プリセットが `default` と勝手に自動合成されることは決してありません — デフォルトに加えて別のプリセットが欲しい場合は、両方を明示的に列挙してください: `"extends": ["default", "some-other-preset"]`。`"extends": ["z-index"]` だけでは、デフォルトルールを一切含まず、z-index ルールのみが有効になります。
-
-未知のプリセット名は設定エラーです(CLI は明確なメッセージとともに終了します)。
-
-<Note>
-
-`extends` は `prohibited`/`allowed` をコピーする定型作業を置き換えるだけです — `ignore`、`patterns`、`semanticPrefixes`、`classAttributes`、`classFunctions` には触れません。これらのフィールドは `extends` に関係なく、それぞれ独立したデフォルトを保持します。
-
-</Note>
-
-#### `prohibitedAdd` / `allowedAdd`
-
-`prohibited`/`allowed` が解決された内容 — `extends` 経由で継承したプリセットリスト、あるいは `extends` もプレーンな `prohibited`/`allowed` も設定されていない場合は組み込みデフォルト — の上に、追加のエントリを付け足します。プロジェクト固有のルールや例外を少数追加したいだけのときは、`prohibited`/`allowed` を丸ごと上書きする代わりにこれらを使ってください:
-
-```json
-{
-  "extends": ["default"],
-  "prohibitedAdd": ["z-{n}"],
-  "allowedAdd": ["z-0"]
-}
-```
-
-これは、約 70 個の組み込み `prohibited` パターンを再列挙することなく、すべてのデフォルトルールを保持したまま、`z-{n}` の間隔スタイルのルールと `z-0` の例外を追加します。
-
-<Note>
-
-この `z-{n}`/`z-0` の組み合わせは、いまや組み込みの [`z-index` プリセット](#フィールド-extends)として提供されています — `"extends": ["default", "z-index"]` が z-index 固有の違反メッセージで同じことを行います。`prohibitedAdd`/`allowedAdd` は、登録済みプリセットでカバーされないプロジェクト固有のルールに対して、引き続き適切な手段です。
-
-</Note>
-
-プレーンな `prohibited`/`allowed`(存在する場合)は **置換** セマンティクスを保ちます — `extends` に対して完全に勝り、`prohibitedAdd`/`allowedAdd` はその明示的なリストの上にさらに追加します:
-
-```json
-{
-  "prohibited": ["hidden"],
-  "prohibitedAdd": ["block"]
-}
-```
-
-この例は、あらゆるデフォルト/プリセットパターンを無視し、ちょうど `hidden` と `block` を禁止します。
-
-<Note>
-
-このフィールドが存在する前は、デフォルトに 1 つルールを追加して採用するには、すべての `prohibited` エントリを設定にそのままコピーする必要がありました — 上流に新しいデフォルトが追加されるにつれ、静かに同期がずれていくリストです。`extends` + `prohibitedAdd`/`allowedAdd` はその重複を完全に回避します。実際のビフォー/アフターは、本パッケージ自身の[ドッグフーディング設定](https://github.com/Takazudo/zudo-design-token-lint/blob/main/.design-token-lint.json)を参照してください。
-
-</Note>
+完全一致の許可リスト。この配列にあるクラスは禁止パターンに関係なく常に通ります。`p-0`、`m-0`、`p-1px` のようなエスケープハッチに便利です。
 
 ### `ignore`
 
@@ -184,286 +78,60 @@ category: guide
 }
 ```
 
-**デフォルト**: `["**/*.test.*", "**/*.stories.*"]`。
-
-<Note>
-
-CLI は `ignore` が解決した内容に加えて、常に `**/node_modules/**` と `**/dist/**` を除外します — 詳細(古い `**/__inbox/**` デフォルトの削除を含む)は [組み込み無視 glob](../cli/index.mdx#ファイルパターン解決-組み込み無視-glob) を参照してください。この上乗せは CLI 自身の glob 解決にのみ適用され、直接の `lintFile()`/`lintContent()` 呼び出しには適用されません。
-
-</Note>
-
 ### `patterns`
 
-CLI が明示的なファイル引数なしで呼び出されたときにスキャンするファイル glob パターン。省略時、CLI はデフォルトセット(`src/**`、`components/**`、`lib/**`、`app/**`)を使用します。
+CLI が明示的なファイル引数なしで呼び出されたときにスキャンするファイル glob パターン。省略時はデフォルトセット(`src/**`、`components/**`、`lib/**`、`app/**`)を使用します。
 
 ### `suggestionSuffix`
 
-`—` セパレーターの後で違反メッセージに付加される文字列で、デフォルトの提案テキストを置き換えます。プロジェクト固有のトークン命名規則を開発者に案内するために使用します。
+違反メッセージの `—` セパレーターの後に付加される文字列で、デフォルトの提案テキストを置き換えます。プロジェクト固有のトークン命名規則を開発者に案内するために使用します。
 
 **デフォルトメッセージ(`suggestionSuffix` なし):**
-
 - 間隔: `Numeric spacing "p-4" — use a semantic spacing token or arbitrary value`
 - カラー: `Default Tailwind color "bg-gray-500" — use a design system color token`
 
 **`suggestionSuffix` を設定した場合:**
-
 ```json
 {
   "suggestionSuffix": "use hgap-*/vgap-* or zd-* tokens"
 }
 ```
-
 - 間隔: `Numeric spacing "p-4" — use hgap-*/vgap-* or zd-* tokens`
 - カラー: `Default Tailwind color "bg-gray-500" — use hgap-*/vgap-* or zd-* tokens`
 
-### `suggestions`
-
-禁止クラスから、そのプロジェクトのセマンティックな置き換えトークンへの、プロジェクトレベルのマッピングです。違反の正規化ベースクラス(`allowed` エントリが使うのと同じ、バリアント/負値/important/不透明度を取り除いた形)がここにエントリを持つ場合、マップされた値が違反メッセージに `— did you mean "<value>"?` として付加されます。
-
-```json
-{
-  "suggestions": {
-    "p-4": "p-hsp-xs",
-    "bg-gray-100": "bg-surface"
-  }
-}
-```
-
-この設定では、`p-4` は次を生成します:
-
-```text
-Numeric spacing "p-4" — use a semantic spacing token or arbitrary value — did you mean "p-hsp-xs"?
-```
-
-`suggestions` にエントリのないクラスは、通常のメッセージのまま変わらずフラグされます。
-
-<Note>
-
-キーは **正規化ベースクラス** で照合されるため、単一の `"p-4"` エントリは、そこから作られるすべてのバリアント/負値/important 形式(`hover:p-4`、`-p-4`、`p-4!`、`sm:-p-4!` など)に対しても解決されます — `allowed` が使うのと同じ正規化です(上記の [`allowed`](#フィールド-allowed) を参照)。
-
-</Note>
-
-これは [`suggestionSuffix`](#フィールド-suggestionsuffix) と組み合わさります: サフィックスはベースの理由テンプレートをカスタマイズし続け、提案はその後に付加されます。
-
-```json
-{
-  "suggestionSuffix": "use hsp-*/vsp-* tokens",
-  "suggestions": { "p-4": "p-hsp-xs" }
-}
-```
-
-```text
-Numeric spacing "p-4" — use hsp-*/vsp-* tokens — did you mean "p-hsp-xs"?
-```
-
-<Note>
-
-これはメッセージのみのガイダンスです — オートフィックスを駆動せず、列/位置の追跡にも参照されません。`suggestions` の値が文字列でない場合(数値や配列など)は設定エラーで、CLI はフィールド名を示す明確なメッセージとともに終了します。
-
-</Note>
-
-### `semanticPrefixes`
-
-間隔の値を、すでにセマンティックなトークンとしてマークする値のプレフィックスです — これらのプレフィックスのいずれかで始まる値は、そもそも数値に見えるかどうかに関係なく、数値間隔チェックをバイパスします。
-
-**デフォルト**: `["hgap-", "vgap-"]`
-
-プロジェクトの命名規則に合わせてオーバーライドできます:
-
-```json
-{
-  "semanticPrefixes": ["hsp-", "vsp-"]
-}
-```
-
-このオーバーライドにより、`p-hsp-sm` や `gap-vsp-md` は明示的にセマンティックトークンとして宣言されます。プレフィックスの許可リストを完全に取り除くには `[]` を設定します。
-
-<Note>
-
-組み込みの禁止パターンは純粋に数値の値(`p-4`、`m-8` など)のみをフラグします。そのため `hgap-sm` や `hsp-sm` のようなアルファベットのサフィックスは、この設定に関係なくそもそもそのチェックに失敗しません。`semanticPrefixes` は主に、プロジェクトのセマンティックトークン語彙を明示的に宣言する手段として、あるいは値のマッチングがより緩いカスタム禁止パターンを追加する場合に意味を持ちます。
-
-</Note>
-
 ### `classAttributes`
 
-エクストラクターがクラス名を探す属性名の配列。このリストにある JSX/HTML 属性はクラス属性として扱われ、その文字列値が抽出されてリントされます。
-
-**デフォルト**: `["className", "class"]`
-
-コンポーネントライブラリが非標準の prop 名でクラス名を受け取る場合に使用します:
+クラス名を抽出する HTML 属性名の配列。デフォルトは `className` と `class` です。プロジェクト独自の属性名を追加する場合に指定します。
 
 ```json
 {
-  "classAttributes": ["className", "class", "inputClassName", "wrapperClass"]
+  "classAttributes": ["className", "class", "inputClass", "overlayClass"]
 }
 ```
 
-これは、Headless UI、Radix UI、あるいは複数の prop でクラス名を渡すカスタムコンポーネントライブラリなどに便利です。
+省略時はデフォルト(`DEFAULT_CLASS_ATTRIBUTES`)が使用されます。
 
-> **注記**: `class:list`(Astro のディレクティブ構文)は、この設定に関係なく常にスキャンされます。
+> **注記**: Astro の `class:list` は `classAttributes` の設定に関わらず常に抽出されます。
 
 ### `classFunctions`
 
-エクストラクターがクラス名引数を探すユーティリティ関数名の配列。これらの関数への呼び出しが抽出され、その文字列引数がリントされます。
-
-**デフォルト**: `["cn", "clsx", "classNames", "twMerge"]`
-
-プロジェクトで追加のクラスマージユーティリティをサポートするために使用します:
+クラス名を抽出するユーティリティ関数名の配列。デフォルトは `cn`、`clsx`、`classNames`、`twMerge` です。プロジェクト独自のクラスマージ関数を追加する場合に指定します。
 
 ```json
 {
-  "classFunctions": ["cn", "clsx", "classNames", "twMerge", "cva", "tv", "twJoin"]
+  "classFunctions": ["cn", "clsx", "myMerge", "customTw"]
 }
 ```
 
-これは、`class-variance-authority`(`cva`)、`tailwind-variants`(`tv`)、あるいは `tailwind-merge` の `twJoin` のような追加ユーティリティを使う場合に便利です。
-
-### css
-
-プレーンな **CSS/SCSS 宣言値** のオプトインスキャン — Tailwind クラス属性を超えた拡張です。このセクション全体は **デフォルトでは存在せず**、その中の各ルールも **デフォルトで OFF** です。そのため、`css` セクションを追加し、かつルールを ON にするまで、何も変わりません。
-
-```json
-{
-  "css": {
-    "zIndex": true,
-    "colorLiterals": true,
-    "patterns": ["src/**/*.css", "src/**/*.scss"]
-  }
-}
-```
-
-| フィールド | 型 | 説明 |
-|---|---|---|
-| `zIndex` | `boolean` | 素の整数 `z-index` 値をフラグする(デフォルト `false`) |
-| `colorLiterals` | `boolean` | あらゆる宣言値の中の生のカラーリテラルをフラグする(デフォルト `false`) |
-| `patterns` | `string[]` | CLI が `.css`/`.scss` ファイルをスキャンする glob。Tailwind の `patterns` に **加えて** 適用される |
-
-`css.patterns` は、CLI が明示的なファイル引数なしで実行されたとき、通常の `patterns` とともにスキャンされます。CSS **のみ** をスキャンするには、トップレベルの `"patterns": []` を設定し、CSS glob を `css.patterns` に列挙してください。
-
-違反は Tailwind の違反と同じフラットな形で報告され、問題の宣言が `className` フィールドに安定した `property: value` 形式(例: `z-index: 9999`)で入ります。
-
-#### `zIndex`
-
-生の整数 `z-index` 値を禁止し、[セマンティックな z-index 階層システム](https://zudo-css-wisdom.takazudomodular.com/)を強制します。z-index 戦略の許可/禁止テーブルをミラーします:
-
-| 許可 | 禁止 |
-|---|---|
-| `z-index: var(--z-modal);` | `z-index: 100;` |
-| `z-index: calc(var(--z-modal) + 1);` | `z-index: 9999;` |
-| `z-index: auto;` / `inherit;` / `initial;` / `unset;` / `revert;` / `revert-layer;` | `z-index: -1;` |
-| `/* design-token-lint-ignore */` エスケープハッチ付きの生の整数 | エスケープコメントのない素の生の整数 |
-
-`calc()` は `var()` 参照を含む場合にのみ許可としてカウントされます。`calc(100 + 1)`(生の算術)は依然としてフラグされます。末尾の `!important` は生の整数を免除しません。
-
-#### `colorLiterals`
-
-宣言値に埋め込まれた生のカラーリテラルを禁止します:
-
-| 許可 | 禁止 |
-|---|---|
-| `color: var(--fg);` | `background: #ffe4e4;` |
-| `color: transparent;` / `currentColor;` | `color: rgb(1, 2, 3);` |
-| キーワードのみの値(`red`、`inherit`、`none`) | `color: hsl(0 95% 92%);` |
-| — | `color: oklch(45% 0.18 27);` / `oklab(...)` |
-
-フラグされる形式は `#hex`(3/4/6/8 桁)、`rgb()`/`rgba()`、`hsl()`/`hsla()`、`oklch()`/`oklab()` です。名前付きカラーやその他のキーワードのみの値は許可されます — このルールはリテラル値を対象とし、すべての色を対象とするわけではありません。
-
-#### エスケープハッチ
-
-Tailwind クラスルールと同じ `design-token-lint-ignore` コメントを使います。CSS ではこれは **次の行** を抑制します(末尾コメントとして置いた場合は自身の行を抑制します):
-
-```css
-/* Legacy third-party widget — remove once migrated, tracked at #123. */
-/* design-token-lint-ignore */
-.legacy-widget {
-  z-index: 9999;
-}
-```
-
-コメントは **すぐ次の行にある宣言** を抑制するため、セレクタの上ではなく、`z-index:` / カラー宣言のすぐ上に置いてください。末尾の理由(`/* design-token-lint-ignore - why */`)は許容されます。`design-token-lint-ignore-file` はファイル全体を抑制します。
-
-#### スコープと既知の制限事項(v1)
-
-CSS スキャン v1 は厳密に **宣言ベース** で、行/正規表現駆動です(PostCSS なし、AST なし — Tailwind エクストラクターと一貫)。`/* */` コメント(複数行にまたがるものを含む)、文字列リテラル、`url(...)` 値、SCSS の `//` 行コメントを正しく扱います。以下は **既知の偽陰性** です — リテラルを埋め込んでいるが、設計上 v1 では **フラグされない** 値です:
-
-- リテラルを保持する **カスタムプロパティ定義**(`--brand: #f00;`)。パレット定義ゾーン(`:root`、`@theme`)と、パレットを参照すべきセマンティックトークンとを区別するにはゾーン認識が必要で、これは後回しにされた後続パスです。
-- **SCSS 変数宣言**(`$brand: #f00;`)— カスタムプロパティと同じ理由。
-- **SCSS マップ** やその他のネスト/補間された SCSS 構造。
-- **単一宣言を超える複雑な複数行構文にまたがって分割された値**。
-
-ゾーン認識スキャン(パレット定義ゾーンでのみリテラルを許可する)は、このバージョンのスコープ外です。
-
-### `requireIgnoreReason` / `reportUnusedIgnores`
-
-どちらも **デフォルト `false`** の 2 つのオプトインフラグで、[無視コメント](../ignore-syntax/index.mdx)が黙って文書化されないエスケープハッチになるのを防ぎます:
-
-```json
-{
-  "requireIgnoreReason": true,
-  "reportUnusedIgnores": true
-}
-```
-
-どちらのフラグも、[無視構文](../ignore-syntax/index.mdx)ガイドで説明されているのと同じ `design-token-lint-ignore` / `design-token-lint-ignore-file` コメントを読み取ります — 新しいコメント形式を覚える必要はありません。これらは、無視コメントが尊重されるあらゆる場所に適用されます: Tailwind クラス属性/ユーティリティ呼び出し、**および** [`css`](#フィールド-css) 宣言スキャンのパス。
-
-#### `requireIgnoreReason`
-
-通常、`design-token-lint-ignore` コメントは、理由の有無に関わらず、それがカバーするクラス/宣言を抑制します。`requireIgnoreReason: true` の場合、**実際の違反** を隠す **素の** 無視(末尾の理由テキストなし)は、黙って消える代わりに報告されます:
-
-```tsx
-// design-token-lint-ignore
-<div className="p-4">
-```
-
-```text
-L2: p-4 — suppressed without documented reason
-```
-
-`-`、`–`、`—`、`:` のいずれかのセパレーターの後に理由を追加すると、同じ無視は以前とまったく同じように黙って抑制します:
-
-```tsx
-// design-token-lint-ignore - vendor requires literal p-4
-<div className="p-4">
-```
-
-実際の違反を隠さない無視は、このフラグの影響を受けません(下記の `reportUnusedIgnores` を参照)。また、`design-token-lint-ignore-file` はこのバージョンではこのフラグの対象外です — 素のファイルレベル無視がこの検出をトリガーすることはありません。
-
-<Note>
-
-報告される理由文字列 — `suppressed without documented reason` — は、設計上、安定しており grep 可能です。基礎となる違反によって変わることはありません。
-
-</Note>
-
-#### `reportUnusedIgnores`
-
-ESLint の `reportUnusedDisableDirectives` に相当します。`reportUnusedIgnores: true` の場合、**何も** 抑制しなかった `design-token-lint-ignore` コメント — カバーするすべてのクラス/宣言がすでに通っていた — 自体が、コメント自身の行にアンカーされて報告されます:
-
-```tsx
-// design-token-lint-ignore
-<div className="flex">
-```
-
-```text
-L1: design-token-lint-ignore — Unused design-token-lint-ignore comment — suppressed no violation
-```
-
-この検出の `className` はリテラル文字列 `"design-token-lint-ignore"` です(名指しすべき違反クラスがない — コメント自体が問題です)。そのため、`--json` と `--format github` の出力は、他のすべての検出と同じフラットな `LintResult` の形を保ちます。少なくとも 1 つの実際の違反を抑制する無視コメントは、たとえ他のすでにクリーンな行もカバーしていたとしても、未使用として報告されることはありません — そして、理由付きの無視も素のものと同じくここでは報告対象になります。このフラグは、コメントが文書化されているかどうかではなく、何かをしたかどうかに関するものだからです。
+省略時はデフォルト(`DEFAULT_CLASS_FUNCTIONS`)が使用されます。
 
 ## 組み込みのデフォルト
 
-設定ファイルが存在しない場合、リンターは以下のデフォルトを使用します。この同じ `prohibited`/`allowed` のペアは、[`extends`](#フィールド-extends) で使用する `default` プリセットとしても登録されています:
+設定ファイルが存在しない場合、リンターは以下のデフォルトを使用します:
 
 - **Prohibited**: すべての標準的な間隔ユーティリティ(`p-*`、`m-*`、`gap-*`、`inset-*`、`scroll-*`)の数値版、およびすべてのカラーユーティリティ(`bg-*`、`text-*`、`border-*`、`ring-*` など)のデフォルト Tailwind カラーとシェードの組み合わせ
-- **論理・v4 カラーユーティリティ**: `border-s-*`、`border-e-*`、`ring-offset-*`、`inset-ring-*`、`inset-shadow-*`、`text-shadow-*` のデフォルト Tailwind カラーとシェードの組み合わせ
-- **数値サイズスケール**: `w-{n}`、`h-{n}`、`size-{n}`、`min-w-{n}`、`max-w-{n}`、`min-h-{n}`、`max-h-{n}`、`basis-{n}` — それぞれサイズ固有のメッセージとともにフラグされ、得られる `Violation` に `category: "sizing"` が付きます([構造化エントリ](#フィールド-prohibited-構造化エントリ)を参照)。分数ユーティリティ(`w-1/2`)、任意値(`w-[32px]`)、ゼロ(`w-0`)は引き続き通ります — 下記の [自動的に通るもの](#自動的に通るクラス) を参照。
-- **Allowed**: `p-0`、`m-0`、`gap-0`、`p-1px` — `p-1px` はここでは実質的に不活性です(理由は下記の [自動的に通るもの](#自動的に通るクラス) を参照)。「ゼロ相当」のエスケープハッチの文書化として、主にリストに残っています。
+- **Allowed**: `p-0`、`m-0`、`gap-0`、`p-1px`
 - **Ignore**: `**/*.test.*`、`**/*.stories.*`
-
-<Note>
-
-**挙動の変更(`next` チャンネル)**: 数値サイズスケールの禁止は新しく追加されました — 従来のデフォルトに依存し、生の数値 `w-*`/`h-*`/`size-*`/その他のクラスを使っていたプロジェクトは、アップグレード後に新しい違反を目にします。クラスごとに `allowed` でオプトアウトする(例: `"allowed": ["w-4"]`)か、これらを省いた独自の `prohibited`/`extends` の組み合わせを提供して、これらのルールだけを外してください。
-
-</Note>
 
 完全なデフォルトリストは[パッケージの README](https://github.com/Takazudo/zudo-design-token-lint/blob/main/README.md)を参照してください。
 
@@ -475,5 +143,3 @@ L1: design-token-lint-ignore — Unused design-token-lint-ignore comment — sup
 - **デフォルト以外のカラー**: `bg-surface`、`text-fg`、`bg-zd-black`(標準 Tailwind パレット名ではないカラー名)
 - **任意値**: `w-[28px]`、`bg-[#123]`、`p-[10px]`
 - **間隔・色以外のユーティリティ**: `flex`、`grid`、`hidden`、`w-full`、`font-bold` など
-- **ゼロ、*あらゆる* 数値間隔/サイズルールに対して**: `p-0`、`mt-0`、`px-0`、`inset-0`、`w-0`、`gap-0`、`top-0` など、すべて通ります — `allowed` にたまたま列挙された、ごく一部の `0` サフィックス付きクラスだけではありません。リンターには専用のランタイムチェック(「このルールの数値は `0` に等しいか?」)があり、`allowed` の内容に関係なく、すべての `{n}` 形状の間隔/サイズパターンに対して発火します。
-- **数値でない間隔形状の値**: `p-1px`、`mt-1px`、`inset-1px` なども通ります — ただし、上記のゼロの場合とは異なる、より単純な理由によります。`{n}` プレースホルダーは純粋な数値(`^\d+(\.\d+)?$`)にのみ一致し、`1px` のように文字を含む値はそもそもそのパターンを満たしません。したがって、デフォルトの `allowed` リストにある `p-1px` は不活性です — そのエントリの有無に関わらず通ります。

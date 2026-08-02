@@ -10,41 +10,23 @@ category: guide
 ## 基本的な使い方
 
 ```bash
-# Scan default patterns (from config.patterns or built-in defaults)
+# デフォルトパターンをスキャン(config.patterns または組み込みデフォルト)
 design-token-lint
 
-# Scan specific files or globs
+# 特定のファイルまたは glob をスキャン
 design-token-lint "src/**/*.tsx" "pages/**/*.tsx"
 
-# Scan a single file
+# 単一ファイルをスキャン
 design-token-lint src/App.tsx
 ```
-
-## オプション
-
-| オプション | 説明 |
-|---|---|
-| `-h`, `--help` | ヘルプメッセージを表示して終了 |
-| `-V`, `--version` | パッケージのバージョンを表示して終了 |
-| `--json` | 結果を JSON 配列として stdout に出力(人間が読める表示は引き続き stderr へ) |
-| `--format <fmt>` | 違反の出力フォーマット: `human`(デフォルト)または `github` |
-
-```bash
-design-token-lint --help
-design-token-lint --version
-design-token-lint --json
-design-token-lint --format github
-```
-
-`-` で始まるが上記のいずれでもない未知のオプションは、glob パターンとして黙って扱われるのではなく、エラーかつ終了コード `2` として拒否されます。
 
 ## 終了コード
 
 | コード | 意味 |
 |---|---|
-| `0` | 違反なし |
+| `0` | 違反なし(またはマッチしたファイルなし) |
 | `1` | 違反あり |
-| `2` | 設定されたパターンにマッチするファイルがない、または設定/予期しないエラーが発生した |
+| `2` | 予期しないエラー(ファイルシステム障害など) |
 
 CI で違反があった場合にビルドを失敗させるには終了コード `1` を利用します:
 
@@ -53,52 +35,21 @@ CI で違反があった場合にビルドを失敗させるには終了コー�
 - run: pnpm design-token-lint
 ```
 
-## 環境変数
-
-| 変数 | 説明 |
-|---|---|
-| `TOKEN_LINT_ALLOW_EMPTY` | `1`、`true`、`yes`、`on`(大文字小文字を区別しない)に設定すると、マッチしたファイルがない場合に終了コード `2` の代わりに `0` で終了します。初回実行時/ブートストラップ時のエスケープハッチとして便利です。 |
-| `GITHUB_ACTIONS` | GitHub Actions によって自動的に設定されます。真値の場合、`--format` が明示的に渡されていない限り `--format github` を自動選択します(フラグが渡された場合は常にそちらが優先されます)。 |
-
 ## 出力フォーマット
 
-デフォルト(`human` フォーマット)では、違反はファイルごとにグループ化されます。各行は行番号、違反クラス、理由を表示します:
+違反はファイルごとにグループ化されます。各行は行番号、違反クラス、理由を表示します:
 
 ```
 Scanning 1 file(s)...
 
 src/App.tsx
-  L12: p-4 — Numeric spacing "p-4" — use a semantic spacing token or arbitrary value
-  L12: bg-gray-500 — Default Tailwind color "bg-gray-500" — use a design system color token
+  L12: p-4 — Numeric spacing "p-4" — use semantic token (hgap-*/vgap-*) or arbitrary value
+  L12: bg-gray-500 — Default Tailwind color "bg-gray-500" — use design system token (zd-*, p0-p15, semantic)
 
 Found 2 violation(s) in 1 file(s).
 ```
 
-すべての出力は stderr に送られるため、stdout をパイプするスクリプトに干渉しません — 例外は `--json`(JSON 配列を stdout に出力)と `--format github`(`::error` アノテーションを stdout に出力)です。
-
-## JSON 出力
-
-`--json` を渡すと、通常の stderr への人間可読表示に加えて、結果が JSON 配列として stdout に出力されます:
-
-```bash
-design-token-lint --json > violations.json
-```
-
-```json
-[
-  { "filePath": "src/App.tsx", "line": 12, "className": "p-4", "reason": "Numeric spacing \"p-4\" — use a semantic spacing token or arbitrary value" }
-]
-```
-
-## GitHub Actions アノテーション
-
-`--format github` を渡す(または GitHub Actions 上でそのまま実行する — `GITHUB_ACTIONS` は自動検出されます)と、人間可読表示の代わりに各違反が `::error` ワークフローコマンドとして出力されます:
-
-```
-::error file=src/App.tsx,line=12::p-4 — Numeric spacing "p-4" — use a semantic spacing token or arbitrary value
-```
-
-GitHub はこれらを PR の差分表示と Checks タブ上のインラインアノテーションとしてレンダリングします。`--json` と `--format` を組み合わせた場合、stdout に何が出力されるかは `--json` が優先されます。
+すべての出力は stderr に送られるため、stdout をパイプするスクリプトに干渉しません。
 
 ## ファイルパターン解決
 
@@ -107,21 +58,7 @@ GitHub はこれらを PR の差分表示と Checks タブ上のインライン�
 1. `config.patterns` が設定されていればそれを使用
 2. それ以外は組み込みデフォルトを使用: `src/**/*.{tsx,jsx,astro}`、`components/**/*.{tsx,jsx,astro}`、`lib/**/*.{tsx,jsx}`、`app/**/*.{tsx,jsx}`
 
-オプトインの [`css` 設定セクション](../configuration/index.mdx#フィールド-css)が `css.patterns` を設定している場合、それらの glob は上で解決された Tailwind パターンに *加えて* スキャンされます(CLI パターンが明示的に渡されなかった場合のみ)。
-
 引数ありで呼び出された場合、各引数はファイルパスまたは glob として扱われます。`ignore` の設定は引き続き適用されます。
-
-### 組み込み無視 glob
-
-2 つの glob パターンは、設定に関係なく、あらゆるスキャンから常に除外されます — `**/node_modules/**` と `**/dist/**` です。これらは、設定自身の [`ignore`](../configuration/index.mdx#フィールド-ignore) リスト(デフォルトは `**/*.test.*`、`**/*.stories.*`)より前にマージされるため、いずれのディレクトリにも誤ってスキャンが入り込む余地はありません。
-
-<Note>
-
-以前のバージョンは `**/__inbox/**`(個人的なプロジェクトの慣習)も常に除外していました。そのデフォルトは削除されました — `__inbox/` という名前のディレクトリ配下のファイルは、いまや他のファイルと同じようにリントされます。プロジェクトでまだその慣習を使っている場合は、`"ignore": ["**/__inbox/**"]` を設定に追加して古い挙動を復元してください。
-
-</Note>
-
-これらの組み込み glob は CLI 自身の glob 解決の性質です — [プログラマティック API](../../reference/api/index.mdx) を通じて直接行われる `lintFile()`/`lintContent()` 呼び出しには影響しません。これらの呼び出しは、ファイルツリーの走査を一切行わず、与えられた内容をそのままリントします。
 
 ## package.json との統合
 
@@ -162,4 +99,4 @@ GitHub Actions ステップを追加:
   run: pnpm design-token-lint
 ```
 
-違反があればコード `1` で終了し、ワークフローが失敗します。Actions の実行では `GITHUB_ACTIONS` が自動的に設定されるため、明示的に `--format github` を指定しなくても `::error` アノテーション形式(「[GitHub Actions アノテーション](#github-actions-アノテーション)」参照)で自動出力されます。
+違反があればコード `1` で終了し、ワークフローが失敗します。

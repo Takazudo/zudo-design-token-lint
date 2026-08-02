@@ -92,7 +92,7 @@ Config for this token system:
     "text-{color}-{shade}",
     "border-{color}-{shade}"
   ],
-  "allowed": ["p-0", "m-0", "gap-0"],
+  "allowed": ["p-0", "m-0", "gap-0", "p-px"],
   "patterns": ["src/**/*.{tsx,jsx,astro}"],
   "ignore": ["**/*.test.*", "**/*.stories.*"],
   "suggestionSuffix": "use semantic token (hsp-*/vsp-*) or arbitrary value"
@@ -132,7 +132,7 @@ export function ArticleCard({ title, excerpt, tag }: Props) {
 }
 ```
 
-The linter flags: `p-4`, `bg-gray-100`, `text-gray-900`, `mb-2`, `text-gray-600`, `mb-4`, `gap-2`, `px-3`, `py-1`, `bg-blue-600`. (`text-xs` is left alone by this config — a `text-{n}` pattern only matches numeric values, so it can never match a non-numeric size keyword like `xs`; catching `text-xs` would require an exact-match entry such as `"text-xs"` in `prohibited`.)
+The linter flags: `p-4`, `bg-gray-100`, `text-gray-900`, `mb-2`, `text-gray-600`, `mb-4`, `gap-2`, `px-3`, `py-1`, `bg-blue-600`, `text-xs` (if numeric text sizes are prohibited).
 
 ### After — semantic tokens
 
@@ -181,7 +181,7 @@ A project where Tailwind defaults are fully replaced by semantic tokens:
     "border-{color}-{shade}",
     "ring-{color}-{shade}"
   ],
-  "allowed": ["p-0", "m-0", "gap-0"],
+  "allowed": ["p-0", "m-0", "gap-0", "p-px"],
   "ignore": [
     "**/*.test.*",
     "**/*.stories.*",
@@ -353,4 +353,4 @@ When integrating a third-party component that requires raw Tailwind:
 <VendorCalendar className="p-4 bg-gray-50" />
 ```
 
-See [ignore syntax](../ignore-syntax/index.mdx) for all comment forms.
+See [ignore syntax](../ignore-syntax/index.md) for all comment forms.
