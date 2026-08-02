@@ -1,0 +1,9 @@
+# Known-broken links caused by an upstream @takazudo/zudo-doc limitation,
+# not by this project's content. The package's `/docs/versions` page
+# hardcodes the entry-doc slug as the flat `docs/getting-started`, but this
+# project's actual entry doc is nested at `docs/overview/getting-started`.
+# Filed upstream: https://github.com/zudolab/zudo-doc/issues/3195
+# Remove these lines once that issue ships a fix (or a config hook) and this
+# project adopts it.
+dist/docs/versions/index.html:1003:/docs/getting-started
+dist/ja/docs/versions/index.html:1003:/ja/docs/getting-started
