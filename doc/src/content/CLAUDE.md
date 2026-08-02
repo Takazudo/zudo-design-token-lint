@@ -52,10 +52,22 @@ category: guide
 | `description` | string | No | Subtitle displayed below the title; also used for SEO |
 | `sidebar_position` | number | No | Sort order within the category (lower = higher). Always set for predictable ordering |
 | `sidebar_label` | string | No | Custom sidebar text (overrides `title`) |
-| `category` | string | No | Groups pages in the sidebar; must match a `categoryMatch` in `src/config/settings.ts` |
+| `category` | string | No | Groups pages in the sidebar; must match a `categoryMatch` in `headerNav` (`zfb.config.ts`, `zudoDoc({...})` call) |
 | `tags` | string[] | No | Optional tag list |
+| `search_exclude` | boolean | No | Excludes the page from the generated search index |
+| `pagination_next` | string \| null | No | Overrides the auto-computed "next page" pager link (doc id, or `null` to suppress) |
+| `pagination_prev` | string \| null | No | Overrides the auto-computed "previous page" pager link (doc id, or `null` to suppress) |
 | `draft` | boolean | No | Excluded from production builds when `true` |
+| `unlisted` | boolean | No | Builds the page but omits it from sidebar/search/sitemap (direct-link-only) |
+| `hide_sidebar` | boolean | No | Hides the sidebar on this page (e.g. the Playground page, which needs the full width) |
+| `hide_toc` | boolean | No | Hides the table-of-contents rail on this page |
+| `wide` | boolean | No | Widens the content column beyond the default prose measure |
+| `doc_history` | boolean | No | Per-page override for the site-wide `docHistory` setting |
+| `standalone` | boolean | No | Renders without the doc-page chrome (header nav / sidebar / footer) |
+| `slug` | string | No | Overrides the URL slug derived from the filename |
 | `generated` | boolean | No | Build-time generated content — skip bilingual requirement |
+| `category_no_page` | boolean | No | On a category `index.mdx`: makes it a non-linked sidebar header, excluded from routes/sitemap/search — the frontmatter form of the (now-removed) `_category_.json` sidecar. Frontmatter wins over any sidecar |
+| `category_sort_order` | `"asc"` \| `"desc"` | No | On a category `index.mdx`: sort direction for the category's children |
 
 ## Content Rules
 

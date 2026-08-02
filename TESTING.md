@@ -94,9 +94,9 @@ and rotted links — not logic bugs.
 
 ### Core gate: L3 build + HTML-validate + link check (T1)
 
-`.github/workflows/doc-preview.yml` runs on every PR targeting `main` and
-mirrors the **local `b4push` gate** (`doc/scripts/run-b4push.sh`) step for
-step:
+`.github/workflows/doc-preview.yml` runs on every PR targeting `main` or a
+`base/**` sweep branch, and mirrors the **local `b4push` gate**
+(`doc/scripts/run-b4push.sh`) step for step:
 
 | #   | `b4push` step               | `doc-preview.yml` job      |
 | --- | --------------------------- | -------------------------- |
@@ -108,7 +108,6 @@ step:
 | 6   | Build (`zfb build`)         | Build Site                 |
 | 7   | HTML validation             | HTML validate              |
 | 8   | Link check                  | Build Site (`check:links`) |
-| 9   | Z-index token drift check   | (part of Type Check job)   |
 
 `b4push` is the **T4 local convenience lane** (bounded, run before pushing);
 `doc-preview.yml` is the **T1 enforced gate** that actually blocks a PR.
@@ -121,12 +120,11 @@ extra test layer.
 - **Extra zfb/zudo-doc-specific gates layered onto the generic SSG core.**
   The archetype's minimum viable suite is build + html-validate + link-check;
   this repo also runs a **template drift check** (detects the doc app
-  drifting from the `create-zudo-doc` scaffold), a **pin parity check** and
+  drifting from the `create-zudo-doc` scaffold) and a **pin parity check** +
   **wrangler pin check** (keep `@takazudo/zfb`/zudo-doc and the pinned
   `wrangler` version in lockstep — a stale pin would silently break local
-  `zfb dev`/`preview`), and a **z-index token drift check** (generated CSS
-  block vs. the token source of truth). These are specific to this repo's
-  zfb/zudo-doc toolchain, not part of the generic archetype.
+  `zfb dev`/`preview`). These are specific to this repo's zfb/zudo-doc
+  toolchain, not part of the generic archetype.
 - **The full link check runs on every PR, not deferred to `main`.** The
   archetype suggests running the exhaustive link crawl on `main` and keeping
   PRs cheaper; here `check:links` runs unconditionally in the `build-site`
