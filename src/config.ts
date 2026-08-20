@@ -137,8 +137,12 @@ export interface LintConfig {
  * existing Tailwind `patterns`).
  */
 export interface CssConfig {
-  /** Flag bare integer `z-index` values (allow `var(--z-*)`, `calc(var(...) …)`, keywords). Default false. */
-  zIndex?: boolean;
+  /**
+   * Flag raw integer and token-less `calc(...)` `z-index` values (allow
+   * `var(--z-*)`, `calc(var(...) …)`, keywords). The object form enables the
+   * rule and exempts exactly the listed integer values. Default false.
+   */
+  zIndex?: boolean | { allowed: number[] };
   /** Flag raw color literals (`#hex`, `rgb()/rgba()`, `hsl()/hsla()`, `oklch()/oklab()`). Default false. */
   colorLiterals?: boolean;
   /** File globs the CLI scans for CSS/SCSS declaration violations. */
@@ -625,6 +629,7 @@ function resolvePatternLists(config: LintConfig): {
 
 export function compileConfig(config: LintConfig): CompiledConfig {
   const { prohibited, allowed } = resolvePatternLists(config);
+  const compiledCss = config.css !== undefined ? compileCssConfig(config.css) : undefined;
   return {
     rules: prohibited.map((p) =>
       typeof p === 'string'
@@ -645,15 +650,7 @@ export function compileConfig(config: LintConfig): CompiledConfig {
     suggestions: new Map(Object.entries(config.suggestions ?? {})),
     // Only present when the config actually had a `css` section — an absent
     // section leaves this undefined so the linter skips CSS entirely.
-    ...(config.css
-      ? {
-          css: {
-            zIndex: config.css.zIndex ?? false,
-            colorLiterals: config.css.colorLiterals ?? false,
-            patterns: config.css.patterns ?? [],
-          },
-        }
-      : {}),
+    ...(compiledCss ? { css: compiledCss } : {}),
     requireIgnoreReason: config.requireIgnoreReason ?? false,
     reportUnusedIgnores: config.reportUnusedIgnores ?? false,
   };
@@ -758,24 +755,80 @@ function validateConfigFields(parsed: Record<string, unknown>, filename: string)
 }
 
 /**
- * Validate the optional `css` section: it must be an object (not an array),
- * with optional boolean `zIndex`/`colorLiterals` and an optional string-array
- * `patterns`. Throws ConfigError naming the offending field, matching the
- * validation style of the rest of the config.
+ * Validate the source CSS config for programmatic callers and compile its
+ * concrete flags. JSON-loaded configs are validated earlier with the same
+ * rules, but compileConfig is a public API and must enforce the contract too.
  */
-function validateCssField(value: unknown, filename: string): void {
+function compileCssConfig(css: CssConfig): CompiledCssConfig {
+  validateCssField(css, undefined);
+
+  const zIndex = css.zIndex;
+  if (zIndex && typeof zIndex === 'object') {
+    return {
+      zIndex: true,
+      zIndexAllowed: new Set(zIndex.allowed),
+      colorLiterals: css.colorLiterals ?? false,
+      patterns: css.patterns ?? [],
+    };
+  }
+
+  return {
+    zIndex: zIndex ?? false,
+    colorLiterals: css.colorLiterals ?? false,
+    patterns: css.patterns ?? [],
+  };
+}
+
+/**
+ * Validate the optional `css` section: it must be an object (not an array),
+ * with a boolean or exact `{allowed: number[]}` object for `zIndex`, an
+ * optional boolean `colorLiterals`, and an optional string-array `patterns`.
+ * Throws ConfigError naming the offending field, matching the validation
+ * style of the rest of the config.
+ */
+function validateCssField(value: unknown, filename?: string): void {
+  const label = filename ? `Invalid config ${filename}:` : 'Invalid css config:';
   if (value === undefined) return;
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new ConfigError(`Invalid config ${filename}: "css" must be an object`);
+    throw new ConfigError(`${label} "css" must be an object`);
   }
   const css = value as Record<string, unknown>;
-  for (const flag of ['zIndex', 'colorLiterals'] as const) {
-    if (css[flag] !== undefined && typeof css[flag] !== 'boolean') {
-      throw new ConfigError(`Invalid config ${filename}: "css.${flag}" must be a boolean`);
+  if (css.zIndex !== undefined) {
+    if (typeof css.zIndex === 'boolean') {
+      // Boolean form is the backwards-compatible shape.
+    } else if (typeof css.zIndex !== 'object' || css.zIndex === null || Array.isArray(css.zIndex)) {
+      throw new ConfigError(
+        `${label} "css.zIndex" must be a boolean or an object with an "allowed" integer array`,
+      );
+    } else {
+      const options = css.zIndex as Record<string, unknown>;
+      const unknown = Object.keys(options).filter((key) => key !== 'allowed');
+      if (unknown.length > 0) {
+        throw new ConfigError(
+          `${label} "css.zIndex" only accepts the "allowed" field (unknown field${unknown.length > 1 ? 's' : ''}: ${unknown.join(', ')})`,
+        );
+      }
+      if (!Object.prototype.hasOwnProperty.call(options, 'allowed')) {
+        throw new ConfigError(`${label} "css.zIndex.allowed" is required`);
+      }
+      if (!Array.isArray(options.allowed)) {
+        throw new ConfigError(`${label} "css.zIndex.allowed" must be an array of integers`);
+      }
+      const invalidIndex = options.allowed.findIndex(
+        (entry) => typeof entry !== 'number' || !Number.isInteger(entry),
+      );
+      if (invalidIndex !== -1) {
+        throw new ConfigError(
+          `${label} "css.zIndex.allowed" must contain only integers (invalid entry at index ${invalidIndex})`,
+        );
+      }
     }
   }
+  if (css.colorLiterals !== undefined && typeof css.colorLiterals !== 'boolean') {
+    throw new ConfigError(`${label} "css.colorLiterals" must be a boolean`);
+  }
   if (css.patterns !== undefined && !isStringArray(css.patterns)) {
-    throw new ConfigError(`Invalid config ${filename}: "css.patterns" must be an array of strings`);
+    throw new ConfigError(`${label} "css.patterns" must be an array of strings`);
   }
 }
 

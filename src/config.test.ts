@@ -971,6 +971,34 @@ describe('css config (issue #131)', () => {
     });
   });
 
+  it('compileConfig enables object-form zIndex and deduplicates its allowed values', () => {
+    const compiled = compileConfig({
+      ...DEFAULT_CONFIG,
+      css: { zIndex: { allowed: [0, -1, 0] } },
+    });
+    expect(compiled.css).toEqual({
+      zIndex: true,
+      zIndexAllowed: new Set([0, -1]),
+      colorLiterals: false,
+      patterns: [],
+    });
+  });
+
+  it('compileConfig rejects an invalid programmatic zIndex options object', () => {
+    expect(() =>
+      compileConfig({
+        ...DEFAULT_CONFIG,
+        css: { zIndex: { allowed: [0, 1.5] } },
+      }),
+    ).toThrow(/css\.zIndex\.allowed.*integers/);
+    expect(() =>
+      compileConfig({
+        ...DEFAULT_CONFIG,
+        css: { zIndex: { allowed: [0], extra: true } as never },
+      }),
+    ).toThrow(/only accepts the "allowed" field/);
+  });
+
   it('loadConfig passes the css section through', async () => {
     await withTempDir(async (dir) => {
       await writeFile(
@@ -999,8 +1027,34 @@ describe('css config (issue #131)', () => {
         join(dir, '.design-token-lint.json'),
         JSON.stringify({ ignore: [], css: { zIndex: 'yes' } }),
       );
-      await expect(loadConfig(dir)).rejects.toThrow(/"css.zIndex" must be a boolean/);
+      await expect(loadConfig(dir)).rejects.toThrow(/"css.zIndex" must be a boolean or/);
     }, 'dtl-test-css-zbad-');
+  });
+
+  it('loadConfig accepts object-form css.zIndex with an integer allowlist', async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ ignore: [], css: { zIndex: { allowed: [0, -1, 0] } } }),
+      );
+      const config = await loadConfig(dir);
+      expect(config.css).toEqual({ zIndex: { allowed: [0, -1, 0] } });
+      expect(compileConfig(config).css?.zIndexAllowed).toEqual(new Set([0, -1]));
+    }, 'dtl-test-css-zallowed-');
+  });
+
+  it.each([
+    [{ zIndex: {} }, /"css.zIndex.allowed" is required/],
+    [{ zIndex: { allowed: [0, 1.25] } }, /"css.zIndex.allowed" must contain only integers/],
+    [{ zIndex: { allowed: [0], typo: true } }, /only accepts the "allowed" field/],
+  ])('loadConfig rejects malformed object-form css.zIndex: %o', async (zIndex, message) => {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ ignore: [], css: zIndex }),
+      );
+      await expect(loadConfig(dir)).rejects.toThrow(message);
+    }, 'dtl-test-css-zshape-');
   });
 
   it('loadConfig rejects a non-array css.patterns', async () => {

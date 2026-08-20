@@ -142,6 +142,20 @@ describe('lintContent — CSS/SCSS dispatch (issue #131)', () => {
     expect(lintContent('a.css', css)).toEqual([]);
   });
 
+  it('treats object-form zIndex as enabled and allows only its raw integer exemptions', () => {
+    setConfig(compileConfig({ ...DEFAULT_CONFIG, css: { zIndex: { allowed: [0] } } }));
+    const css = `.a {
+  z-index: 0;
+  z-index: 1;
+  z-index: calc(70 + 1);
+}`;
+    const results = lintContent('a.css', css);
+    expect(results.map((result) => result.className)).toEqual([
+      'z-index: 1',
+      'z-index: calc(70 + 1)',
+    ]);
+  });
+
   it('honors an escape-hatch ignore comment on a raw z-index', () => {
     setConfig(compileConfig({ ...DEFAULT_CONFIG, css: { zIndex: true } }));
     const css = `.a {

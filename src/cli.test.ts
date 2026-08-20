@@ -1020,6 +1020,35 @@ describe('runMain — CSS scanning wiring (issue #131)', () => {
     // Only the css z-index violation (colorLiterals off, tailwind patterns empty).
     expect(results.map((r) => r.className)).toEqual(['z-index: 9999']);
   });
+
+  it('applies object-form zIndex allowances from JSON config', async () => {
+    writeFileSync(
+      join(tmpDir, '.design-token-lint.json'),
+      JSON.stringify({
+        patterns: [],
+        css: { zIndex: { allowed: [0] }, patterns: ['src/**/*.css'] },
+      }),
+    );
+    writeFileSync(
+      join(tmpDir, 'src', 'styles.css'),
+      `.a {
+  z-index: 0;
+  z-index: 1;
+  z-index: calc(70 + 1);
+}`,
+    );
+    const io = makeIO();
+    const code = await runMain({
+      args: ['--json'],
+      env: {},
+      cwd: tmpDir,
+      stdout: io.write.stdout,
+      stderr: io.write.stderr,
+    });
+    expect(code).toBe(1);
+    const results = JSON.parse(io.stdout[0]) as { className: string }[];
+    expect(results.map((r) => r.className)).toEqual(['z-index: 1', 'z-index: calc(70 + 1)']);
+  });
 });
 
 describe('runMain — ignore-glob coverage (issue #133)', () => {
