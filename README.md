@@ -97,7 +97,7 @@ Create a `.design-token-lint.json` (or `design-token-lint.config.json`) in your 
 | `extends`             | `string \| string[]`            | Named preset(s) to inherit `prohibited`/`allowed` patterns from — see [`extends`](#extends)                                                                                                                                                                              |
 | `prohibitedAdd`       | `(string \| ProhibitedEntry)[]` | Patterns appended to the resolved `prohibited` list (inherited or default)                                                                                                                                                                                               |
 | `allowedAdd`          | `string[]`                      | Patterns appended to the resolved `allowed` list (inherited or default)                                                                                                                                                                                                  |
-| `css`                 | `object`                        | Opt-in CSS/SCSS declaration scanning: `{ zIndex?, colorLiterals?, patterns? }` (all default-OFF) — see [CSS/SCSS Scanning](#cssscss-scanning-opt-in)                                                                                                                     |
+| `css`                 | `object`                        | Opt-in CSS/SCSS declaration scanning: `{ zIndex?: boolean \| { allowed: number[] }, colorLiterals?, patterns? }` (all default-OFF) — see [CSS/SCSS Scanning](#cssscss-scanning-opt-in)                                                                                   |
 | `requireIgnoreReason` | `boolean`                       | Report a bare (reason-less) `design-token-lint-ignore` that shields a real violation, instead of suppressing it silently (default `false`)                                                                                                                               |
 | `reportUnusedIgnores` | `boolean`                       | Report a `design-token-lint-ignore` comment that suppressed nothing (default `false`)                                                                                                                                                                                    |
 
@@ -281,14 +281,14 @@ Beyond Tailwind classes, an opt-in `css` config section scans plain CSS/SCSS dec
 ```json
 {
   "css": {
-    "zIndex": true,
+    "zIndex": { "allowed": [0] },
     "colorLiterals": true,
     "patterns": ["src/**/*.css", "src/**/*.scss"]
   }
 }
 ```
 
-Both rules are default-`false`; the whole section is absent by default, so nothing changes until you add it. `zIndex` flags a bare integer (`z-index: 9999;`) while allowing `var(--z-*)`, a `calc()` containing a `var()`, and the standard CSS keywords. `colorLiterals` flags `#hex`, `rgb()`/`rgba()`, `hsl()`/`hsla()`, and `oklch()`/`oklab()` values while allowing `var(...)`, `transparent`, `currentColor`, and other keyword-only values. The same `design-token-lint-ignore` comments work here too. See the [Configuration doc page](https://zudo-design-token-lint.takazudomodular.com/docs/guide/configuration/#fields-css) for the full rule tables and documented v1 false negatives (e.g. custom-property/SCSS-variable definitions holding a literal).
+Both rules are default-`false`; the whole section is absent by default, so nothing changes until you add it. `zIndex: true` flags raw integers (`z-index: 9999;`) and token-less calculations (`calc(70 + 1)`), while allowing `var(--z-*)`, a `calc()` containing a `var()`, and the standard CSS keywords. The object form, `zIndex: { "allowed": [0] }`, enables the rule while exempting the listed integer values; negative integers are valid and duplicates are deduplicated. `colorLiterals` flags `#hex`, `rgb()`/`rgba()`, `hsl()`/`hsla()`, and `oklch()`/`oklab()` values while allowing `var(...)`, `transparent`, `currentColor`, and other keyword-only values. The same `design-token-lint-ignore` comments work here too. See the [Configuration doc page](https://zudo-design-token-lint.takazudomodular.com/docs/guide/configuration/#fields-css) for the full rule tables and documented v1 false negatives (e.g. custom-property/SCSS-variable definitions holding a literal).
 
 ## Programmatic API
 
@@ -328,16 +328,15 @@ The extractor handles:
 - `className='...'` and `class='...'` (single-quote HTML attribute, common in Astro/HTML)
 - `className={'...'}` and `class={'...'}` (single-quote brace)
 - `className={"..."}` and `class={"..."}` (double-quote brace)
-- ``className={`...`}`` (template literals, simple cases)
+- ``className={`...`}`` and multiline `{...}` attribute expressions (static strings and template segments)
 - `class:list={["...", '...']}` (Astro)
 - `cn(...)`, `clsx(...)`, `classNames(...)`, `twMerge(...)` utility calls
 
 ## Known Limitations
 
-This linter uses static analysis (regex-based extraction), which has inherent limitations:
+This linter uses static analysis with bounded source scanning and regex-based rule matching, which has inherent limitations:
 
-- **Conditional expressions**: Ternaries like `isActive ? "p-4" : "m-8"` are not extracted — classes inside ternaries are silently skipped
-- **Template interpolation**: ``className={`p-${size}`}`` extracts the literal string `p-${size}`, which matches no rules, so dynamic classes are never linted
+- **Dynamic class construction**: Balanced `{...}` attribute expressions are scanned across lines, including arrays, `.join(...)`, conditionals, nested delimiters, and configured class-function calls. Literal strings in each branch are linted, but runtime-generated names such as `p-${size}` cannot be evaluated; literal class text inside an interpolation expression is still checked
 - **Escaped quotes**: `className="p-4 \"m-8\""` may extract incorrectly due to unhandled escape sequences
 - **CSS/SCSS scanning (opt-in `css` section)**: v1 is declaration-based only — a literal color/z-index value inside a custom-property/SCSS-variable definition (`--brand: #f00;`, `$brand: #f00;`) or an SCSS map is not flagged, by design
 

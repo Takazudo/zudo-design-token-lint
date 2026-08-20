@@ -4,6 +4,12 @@ import type { CssDeclaration } from './css-extractor.js';
 
 const BOTH: CompiledCssConfig = { zIndex: true, colorLiterals: true, patterns: [] };
 const Z_ONLY: CompiledCssConfig = { zIndex: true, colorLiterals: false, patterns: [] };
+const Z_WITH_ZERO_ALLOWED: CompiledCssConfig = {
+  zIndex: true,
+  zIndexAllowed: new Set([0]),
+  colorLiterals: false,
+  patterns: [],
+};
 const COLOR_ONLY: CompiledCssConfig = { zIndex: false, colorLiterals: true, patterns: [] };
 const OFF: CompiledCssConfig = { zIndex: false, colorLiterals: false, patterns: [] };
 
@@ -26,6 +32,24 @@ describe('checkDeclaration — zIndex rule', () => {
 
   it('flags a bare integer with !important', () => {
     expect(checkDeclaration(decl('z-index', '9999 !important'), Z_ONLY)).not.toBeNull();
+  });
+
+  it.each(['calc(70 + 1)', 'CALC(70 + 1)', 'calc ( 70 + 1 ) !important'])(
+    'flags token-less z-index calculations: %s',
+    (value) => {
+      const violation = checkDeclaration(decl('z-index', value), Z_ONLY);
+      expect(violation).not.toBeNull();
+      expect(violation!.reason).toContain('Token-less z-index calculation');
+    },
+  );
+
+  it('allows an explicitly configured raw integer, including normalized !important form', () => {
+    expect(checkDeclaration(decl('z-index', ' 0  ! important '), Z_WITH_ZERO_ALLOWED)).toBeNull();
+    expect(checkDeclaration(decl('z-index', '-1'), Z_WITH_ZERO_ALLOWED)).not.toBeNull();
+  });
+
+  it('keeps legacy compiled config construction without an allowlist compatible', () => {
+    expect(checkDeclaration(decl('z-index', '0'), Z_ONLY)).not.toBeNull();
   });
 
   it('passes z-index: var(--z-toast)', () => {

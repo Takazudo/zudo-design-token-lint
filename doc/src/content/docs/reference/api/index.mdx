@@ -282,7 +282,7 @@ Supported syntaxes by default:
 - `className='...'` and `class='...'` single-quote HTML attribute (common in Astro/HTML)
 - `className={'...'}` single-quote brace
 - `className={"..."}` double-quote brace
-- `` className={`...`} `` template literals (simple cases)
+- `` className={`...`} `` template literals and multiline `{...}` attribute expressions (static strings and template segments)
 - `class:list={["...", '...']}` Astro class:list arrays (always scanned)
 - `cn(...)`, `clsx(...)`, `classNames(...)`, `twMerge(...)` utility calls
 
@@ -353,6 +353,8 @@ const [decl] = extractCssDeclarations('.modal {\n  z-index: 9999;\n}\n');
 const violation = checkDeclaration(decl, { zIndex: true, colorLiterals: false, patterns: [] });
 // { className: 'z-index: 9999', reason: 'Raw z-index integer "9999" — use a --z-* token', category: 'z-index' }
 ```
+
+The legacy compiled shape above remains valid. Configs compiled from `css.zIndex: { allowed: [0] }` keep `zIndex: true` and add an optional `zIndexAllowed: ReadonlySet<number>` for the explicit raw-integer exemptions; `zIndex: true` itself has no exceptions.
 
 Returns `CssViolation | null`:
 
@@ -451,11 +453,13 @@ The optional `css` field's shape — see the [`css` configuration section](../..
 
 ```ts
 interface CssConfig {
-  zIndex?: boolean; // default false
+  zIndex?: boolean | { allowed: number[] }; // default false; object form enables and allows listed integers
   colorLiterals?: boolean; // default false
   patterns?: string[]; // CSS/SCSS globs the CLI scans, in addition to the Tailwind `patterns`
 }
 ```
+
+`CompiledCssConfig` keeps `zIndex` as a boolean for compatibility and may carry the compiled `zIndexAllowed?: ReadonlySet<number>` when the object form was used.
 
 ### `ConfigPreset`
 

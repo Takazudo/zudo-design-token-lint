@@ -391,7 +391,7 @@ Opt-in scanning of plain **CSS/SCSS declaration values** — an extension beyond
 ```json
 {
   "css": {
-    "zIndex": true,
+    "zIndex": { "allowed": [0] },
     "colorLiterals": true,
     "patterns": ["src/**/*.css", "src/**/*.scss"]
   }
@@ -400,7 +400,7 @@ Opt-in scanning of plain **CSS/SCSS declaration values** — an extension beyond
 
 | Field | Type | Description |
 |---|---|---|
-| `zIndex` | `boolean` | Flag bare integer `z-index` values (default `false`) |
+| `zIndex` | `boolean \| { allowed: number[] }` | Flag raw integer and token-less `calc()` `z-index` values (default `false`). The object form enables the rule and allows the listed raw integers. |
 | `colorLiterals` | `boolean` | Flag raw color literals in any declaration value (default `false`) |
 | `patterns` | `string[]` | File globs the CLI scans for `.css`/`.scss` files, **in addition to** the Tailwind `patterns` |
 
@@ -410,7 +410,17 @@ Violations are reported in the same flat shape as Tailwind violations, with the 
 
 #### `zIndex`
 
-Forbids raw integer `z-index` values, enforcing the [semantic z-index tier system](https://zudo-css-wisdom.takazudomodular.com/). Mirrors the allow/forbid table from the z-index strategy:
+Forbids raw integer `z-index` values, enforcing the [semantic z-index tier system](https://zudo-css-wisdom.takazudomodular.com/). Mirrors the allow/forbid table from the z-index strategy. `zIndex: true` rejects every raw integer, including `0`; use the object form when a project has explicit exceptions:
+
+```json
+{
+  "css": {
+    "zIndex": { "allowed": [0, -1] }
+  }
+}
+```
+
+`allowed` must be an array of integers. Negative integers are valid, and duplicate entries are harmless (they are deduplicated when compiled). Unknown fields and fractional/non-numeric entries are configuration errors. The object form implies that the rule is enabled; `false` and an omitted `zIndex` keep it disabled.
 
 | Allowed | Forbidden |
 |---|---|
@@ -419,7 +429,7 @@ Forbids raw integer `z-index` values, enforcing the [semantic z-index tier syste
 | `z-index: auto;` / `inherit;` / `initial;` / `unset;` / `revert;` / `revert-layer;` | `z-index: -1;` |
 | Raw integer with a `/* design-token-lint-ignore */` escape hatch | Bare raw integer with no escape comment |
 
-A `calc()` counts as allowed only when it contains a `var()` reference; `calc(100 + 1)` (raw arithmetic) is still flagged. A trailing `!important` does not exempt a raw integer.
+A `calc()` counts as allowed only when it contains a `var()` reference; `calc(100 + 1)` (raw arithmetic) is still flagged. A trailing `!important` does not exempt a raw integer, but whitespace and `!important` are normalized before checking the numeric allowlist.
 
 #### `colorLiterals`
 

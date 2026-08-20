@@ -75,6 +75,8 @@ function parseLintConfig(configStr: string): LintConfig {
     throw new Error('"suggestions" must be an object');
   if (parsed.semanticPrefixes && !Array.isArray(parsed.semanticPrefixes))
     throw new Error('"semanticPrefixes" must be an array');
+  if (parsed.css !== undefined && (typeof parsed.css !== 'object' || parsed.css === null || Array.isArray(parsed.css)))
+    throw new Error('"css" must be an object');
   return {
     prohibited: parsed.prohibited ?? [],
     allowed: parsed.allowed ?? [],
@@ -82,6 +84,7 @@ function parseLintConfig(configStr: string): LintConfig {
     suggestionSuffix: parsed.suggestionSuffix,
     suggestions: parsed.suggestions,
     semanticPrefixes: parsed.semanticPrefixes,
+    css: parsed.css,
   };
 }
 

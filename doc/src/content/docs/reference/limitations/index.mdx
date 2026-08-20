@@ -5,7 +5,7 @@ sidebar_position: 4
 category: reference
 ---
 
-`design-token-lint` uses regex-based static analysis to extract class names from source files. This approach is fast and requires no build step, but it cannot evaluate code at runtime. As a result, some dynamic patterns are not correctly analyzed.
+`design-token-lint` uses bounded static source scanning and regex-based matching to extract class names from source files. This approach is fast and requires no build step, but it cannot evaluate code at runtime. As a result, some dynamic patterns are not correctly analyzed.
 
 The set of attribute names and utility functions scanned is configurable via [`classAttributes` and `classFunctions`](../../guide/configuration/index.mdx) in your config file. By default, `className`, `class`, `cn`, `clsx`, `classNames`, and `twMerge` are scanned.
 
@@ -71,44 +71,42 @@ Vue's `:class`/`v-bind:class` bindings match the `class` attribute pattern (the 
 
 **Workaround**: Extract the relevant classes into a static string (e.g. via a computed property or a `cn()`/`clsx()` call assigned to a variable) so the linter sees a plain string literal, or add an ignore comment to acknowledge the gap.
 
-## Limitation: Conditional Expressions
+## Multiline Attribute Expressions
 
-Ternary expressions inside `className` are not extracted:
+Configured class attributes with balanced `{...}` expressions are scanned across physical lines. The scanner follows nested arrays, `.join(...)` calls, conditionals, nested delimiters, and configured class-function calls, while preserving the physical line of each literal:
 
 ```tsx
-// Not linted — classes inside ternaries are silently skipped
-<div className={isActive ? "p-4" : "m-8"}>
+export const B = () => (
+  <div
+    className={[
+      'flex items-center',
+      'z-40',
+    ].join(' ')}
+  />
+);
+
+export const C = ({ active }: { active: boolean }) => (
+  <div
+    className={`
+      flex items-center
+      ${active ? 'z-40' : ''}
+    `}
+  />
+);
 ```
 
-The extractor looks for string literals directly assigned to `className` or `class`. The ternary syntax is not matched, so no classes are extracted — and no violations are reported.
+Both `z-40` literals are linted at their source line. Literal strings in conditional branches are checked even when the expression spans multiple lines. The scanner remains bounded to 50 physical lines for malformed/unclosed expressions; input beyond that cap is left unscanned rather than parsed as unrelated source.
 
-This means the linter will silently miss prohibited classes inside ternaries rather than producing false positives. There is no workaround for making the linter check inside ternaries. If you need to ensure these classes are linted, extract them into static variables:
+## Dynamic Template Segments
 
-```tsx
-// These static strings are linted
-const activeClass = "p-hgap-sm";
-const inactiveClass = "m-vgap-md";
-<div className={isActive ? activeClass : inactiveClass}>
-```
-
-## Limitation: Template Interpolation
-
-Template literals with dynamic expressions produce garbled class names that never match any linting rules:
+Runtime-generated class names cannot be evaluated statically:
 
 ```tsx
-// Not linted — `p-${size}` is extracted as a literal string, matches no rules
+// The runtime value is unknown, so no complete class name can be checked.
 <div className={`p-${size} bg-${color}-500`}>
 ```
 
-The extractor captures the raw template content including `${...}` expressions. The resulting strings (`p-${size}`, `bg-${color}-500`) don't match any pattern, so violations inside them are never reported.
-
-**Workaround**: Add an ignore comment or refactor to use static class names:
-
-```tsx
-// Use ignore comment to acknowledge this is intentional
-{/* design-token-lint-ignore */}
-<div className={`p-${size}`}>
-```
+Literal class text written inside an interpolation expression is still checked, so a conditional such as ``${active ? 'z-40' : ''}`` is covered. Refactor truly dynamic names to a finite set of literal branches when they need lint coverage, or add an ignore comment to acknowledge the dynamic boundary.
 
 ## Limitation: Escaped Quotes
 
@@ -158,14 +156,13 @@ This is declaration-value scanning only — it says nothing about Tailwind utili
 | Multiline `className` | Yes |
 | Multiline `cn()`/`clsx()`/`class:list` calls | Yes |
 | Static string literals | Yes |
-| Template literals (static only) | Yes |
+| Multiline `{...}` class attributes (arrays, conditionals, nested calls) | Yes — literal segments |
 | Object keys in `class:list` | Yes |
 | Custom attribute names (via `classAttributes`) | Yes — configurable |
 | Custom utility functions (via `classFunctions`) | Yes — configurable |
 | Vue/Svelte static `class="..."` attributes | Yes |
 | CSS/SCSS declaration scanning (opt-in, `css` section) | Yes — declaration-based only, see above |
-| Ternary expressions | No — silently skipped |
-| Template literals with interpolation | No — dynamic parts not linted |
+| Runtime-generated template segments | No — complete dynamic names cannot be evaluated |
 | Escaped quotes in class strings | No — may extract incorrectly |
 | Vue `:class`/`v-bind:class` bindings | No — extracted as garbage tokens |
 | Svelte `class:name` directives | No — not recognized at all |

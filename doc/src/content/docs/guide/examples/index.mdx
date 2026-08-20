@@ -214,6 +214,22 @@ Already have a large codebase with raw Tailwind? Start with colors only, then ad
 
 Once colors are clean, add spacing patterns to `prohibited`.
 
+### CSS z-index with an explicit zero exception
+
+If a project reserves `0` for the default stacking context, use the object form to enable the CSS rule while allowing that one raw value. Other integers and token-less calculations remain violations:
+
+```json
+{
+  "patterns": [],
+  "css": {
+    "zIndex": { "allowed": [0] },
+    "patterns": ["src/**/*.css", "src/**/*.scss"]
+  }
+}
+```
+
+`allowed` accepts integers, including negative values; duplicate entries are deduplicated. Use `zIndex: true` when no raw integer should be exempted.
+
 ### Next.js project
 
 ```json
