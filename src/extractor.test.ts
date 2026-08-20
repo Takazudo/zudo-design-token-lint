@@ -53,16 +53,172 @@ describe('extractClasses', () => {
     ]);
   });
 
-  it('attr-level template literal: static tokens are flagged; ${...} tokens fall through unmatched', () => {
-    // Mirrors the cn(`p-6 ${x} m-6`) coverage below, but at the attribute
-    // level (className={`...`}) — only the fully-static form was tested here
-    // before, so an interpolated attr-level template literal was unpinned.
+  it('attr-level template literal extracts static segments without treating ${...} as a class', () => {
     const content = '<div className={`px-6 ${x}`}>';
     const result = extractClasses(content);
-    expect(result).toEqual([
-      { className: 'px-6', line: 1 },
-      { className: '${x}', line: 1 },
-    ]);
+    expect(result).toEqual([{ className: 'px-6', line: 1 }]);
+  });
+
+  describe('multiline configured class attribute expressions', () => {
+    it('extracts the multiline array/join source repro with exact lines', () => {
+      const content = `export const B = () => (
+  <div
+    className={[
+      'flex items-center',
+      'z-40',
+    ].join(' ')}
+  />
+);`;
+      expect(extractClasses(content)).toEqual([
+        { className: 'flex', line: 4 },
+        { className: 'items-center', line: 4 },
+        { className: 'z-40', line: 5 },
+      ]);
+    });
+
+    it('extracts template static text and both conditional interpolation branches', () => {
+      const content = `export const C = ({ active }: { active: boolean }) => (
+  <div
+    className={\`
+      flex items-center
+      \${active ? 'z-40' : 'hidden'}
+    \`}
+  />
+);`;
+      expect(extractClasses(content)).toEqual([
+        { className: 'flex', line: 4 },
+        { className: 'items-center', line: 4 },
+        { className: 'z-40', line: 5 },
+        { className: 'hidden', line: 5 },
+      ]);
+    });
+
+    it('handles nested delimiters, calls, escaped quotes/backticks, and comments', () => {
+      const content = `<div className={[
+  'it\\\'s-flex',
+  nested({ value: "m-8" }),
+  ok ? \`gap-2 \${flag ? 'z-40' : "hidden"}\` : 'grid',
+  // 'not-a-class'
+  'before//after',
+  /* "also-not-a-class" */
+  \`escaped-\\\`tick flex\`,
+].join(' ')} />`;
+      expect(extractClasses(content)).toEqual([
+        { className: "it\\'s-flex", line: 2 },
+        { className: 'm-8', line: 3 },
+        { className: 'gap-2', line: 4 },
+        { className: 'z-40', line: 4 },
+        { className: 'hidden', line: 4 },
+        { className: 'grid', line: 4 },
+        { className: 'before//after', line: 6 },
+        { className: 'escaped-\\`tick', line: 8 },
+        { className: 'flex', line: 8 },
+      ]);
+    });
+
+    it('handles CRLF and resumes with another attribute after the closing brace', () => {
+      const content = `<div\r\n  className={[\r\n    'p-4',\r\n    'm-8',\r\n  ]} data-state="open" class="flex">`;
+      expect(extractClasses(content)).toEqual([
+        { className: 'p-4', line: 3 },
+        { className: 'm-8', line: 4 },
+        { className: 'flex', line: 5 },
+      ]);
+    });
+
+    it('honors custom classAttributes for multiline expressions', () => {
+      const content = `<Box styles={[
+  'p-4',
+  active ? 'z-40' : 'hidden',
+]} />`;
+      expect(extractClasses(content, { classAttributes: ['styles'] })).toEqual([
+        { className: 'p-4', line: 2 },
+        { className: 'z-40', line: 3 },
+        { className: 'hidden', line: 3 },
+      ]);
+      expect(extractClasses(content)).toEqual([]);
+    });
+
+    it('does not duplicate a configured function nested in the expression', () => {
+      const content = `<div className={cn(
+  'p-4',
+  active && clsx('z-40', 'hidden'),
+)} />`;
+      expect(extractClasses(content)).toEqual([
+        { className: 'p-4', line: 2 },
+        { className: 'z-40', line: 3 },
+        { className: 'hidden', line: 3 },
+      ]);
+    });
+
+    it('applies line/file ignores and attributes multiline suppressed candidates in metadata', () => {
+      const lineIgnored = `// design-token-lint-ignore - intentional
+<div className={[
+  'p-4',
+  'z-40',
+]} />
+<div class="flex">`;
+      expect(extractClassesWithMeta(lineIgnored)).toEqual({
+        classes: [{ className: 'flex', line: 6 }],
+        ignores: [
+          {
+            line: 1,
+            kind: 'next-line',
+            reasonText: 'intentional',
+            targetLine: 2,
+            suppressedClasses: [
+              { className: 'p-4', line: 3 },
+              { className: 'z-40', line: 4 },
+            ],
+          },
+        ],
+      });
+
+      const fileIgnored = `/* design-token-lint-ignore-file */
+<div className={[
+  'p-4',
+  'z-40',
+]} />`;
+      expect(extractClasses(fileIgnored)).toEqual([]);
+      expect(extractClassesWithMeta(fileIgnored).ignores[0].suppressedClasses).toEqual([
+        { className: 'p-4', line: 3 },
+        { className: 'z-40', line: 4 },
+      ]);
+    });
+
+    it('suppresses only the directed literal line inside an expression', () => {
+      const content = `<div className={[
+  'flex',
+  // design-token-lint-ignore
+  'p-4',
+  'z-40',
+]} />`;
+      expect(extractClasses(content)).toEqual([
+        { className: 'flex', line: 2 },
+        { className: 'z-40', line: 5 },
+      ]);
+    });
+
+    it('returns no candidates for an under-cap expression left unclosed at EOF', () => {
+      const content = `<div className={[
+  'p-4',
+  nested('z-40'),
+const unrelated = 'not-a-class';`;
+      expect(() => extractClasses(content)).not.toThrow();
+      expect(extractClasses(content)).toEqual([]);
+    });
+
+    it('bounds malformed expressions at 50 continuation lines without swallowing later strings', () => {
+      const literalLines = Array.from({ length: 55 }, (_, i) => `  'p-${i}',`);
+      const content = `<div className={[\n${literalLines.join('\n')}\nconst unrelated = 'not-a-class';\n<div class="flex">`;
+      expect(() => extractClasses(content)).not.toThrow();
+      const result = extractClasses(content);
+      expect(result).toHaveLength(51);
+      expect(result[0]).toEqual({ className: 'p-0', line: 2 });
+      expect(result[49]).toEqual({ className: 'p-49', line: 51 });
+      expect(result[50]).toEqual({ className: 'flex', line: 58 });
+      expect(result.some((item) => item.className === 'p-50')).toBe(false);
+      expect(result.some((item) => item.className === 'not-a-class')).toBe(false);
+    });
   });
 
   it('extracts from class:list (Astro)', () => {
