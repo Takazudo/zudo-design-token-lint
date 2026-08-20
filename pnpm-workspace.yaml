@@ -3,9 +3,9 @@ packages:
 
 # ── zfb doc-app install policy (read only from the workspace ROOT by pnpm) ──
 # The doc site at doc/ is a zfb host-app. zfb + its platform binary, sharp, and
-# workerd need their build scripts to run; minimumReleaseAgeExclude lets the
-# pinned pre-release zfb/zudo-doc versions install despite a global minimum
-# release-age policy. Copied from the reference repo's pnpm-workspace.yaml.
+# workerd need their build scripts to run; minimumReleaseAgeExclude preserves
+# the documented toolchain exceptions despite a global minimum release-age
+# policy. Copied from the reference repo's pnpm-workspace.yaml.
 allowBuilds:
   esbuild: true
   sharp: true
@@ -21,6 +21,3 @@ minimumReleaseAgeExclude:
   - '@takazudo/zfb-win32-x64-msvc@1.1.1'
   - '@takazudo/zfb@1.1.1'
   - '@takazudo/zdtp@0.4.9'
-  - '@takazudo/zudo-doc-history-server@4.5.0'
-  - '@takazudo/zudo-doc@4.5.0'
-  - create-zudo-doc@4.5.0

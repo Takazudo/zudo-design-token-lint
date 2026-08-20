@@ -1,6 +1,6 @@
-# Known-broken links caused by upstream @takazudo/zudo-doc limitations, not by
-# this project's content. Every entry must name the upstream issue and be
-# removable once that issue ships a fix.
+# Known-broken links that cannot be fixed in this project may be recorded here,
+# with an explanation and an upstream issue when applicable. Keep exceptions
+# narrow and removable; the checker still inspects every versioned (/v/) link.
 #
 # Entry forms:
 #   file:line:href   pins one occurrence (precise, but breaks if lines shift)
@@ -8,17 +8,6 @@
 #
 # ---------------------------------------------------------------------------
 # CURRENTLY EMPTY — the link check passes with no exceptions.
-#
-# It previously held 8 `href=` entries for zudolab/zudo-doc#3196 (the version
-# switcher offers a snapshot link for a page that exists only in newer docs
-# instead of greying it out). All of them pointed into /v/1.0/, and the 1.0
-# snapshot has been removed, so those links are no longer emitted at all.
-#
-# #3196 is NOT fixed upstream — it is only dormant, because the single
-# remaining snapshot (2.0) has every page Latest has. It will resurface the
-# moment a doc page is added to Latest without re-snapshotting, or another
-# snapshot is added. When it does, prefer the `href=` form: pinning one entry
-# per occurrence rots on the next content edit that shifts a line number.
 #
 # Keep this file even while empty — check-links.js is invoked with
 # --allowlist=.check-links-allowlist in package.json, and the header above is
