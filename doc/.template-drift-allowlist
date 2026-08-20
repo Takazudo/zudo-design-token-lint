@@ -5,7 +5,7 @@
 # Format: one repo-relative path per line (no leading slash).
 # Blank lines and `#` comments are ignored.
 #
-# Re-baselined against create-zudo-doc 4.5.0 (the version pinned in
+# Re-baselined against create-zudo-doc 5.8.0 (the version pinned in
 # doc/package.json's devDependencies) after the 4.x doc-site rescaffold
 # (issue #150). The drift check (scripts/check-template-drift.sh) only walks
 # node_modules/create-zudo-doc/templates/{base,features}; top-level identity
@@ -46,3 +46,15 @@ pages/[locale]/docs/[[...slug]].tsx
 # the full rationale; not reproduced here to avoid a second copy drifting
 # from the first.
 src/styles/global.css
+
+# The project uses branded generated favicon assets rather than the generic
+# create-zudo-doc files. The SVG template is intentionally absent because the
+# detailed source mark is unreadable at favicon sizes.
+public/favicon-16x16.png
+public/favicon-32x32.png
+public/favicon.ico
+public/favicon.svg
+
+# This repo's link checker includes stricter versioned-route and allowlist
+# behavior than the generic scaffolded checker.
+scripts/check-links.js
