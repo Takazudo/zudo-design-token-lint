@@ -48,7 +48,7 @@ category: guide
 | `extends` | `string \| string[]` | `prohibited`/`allowed` パターンを継承する名前付きプリセット |
 | `prohibitedAdd` | `(string \| ProhibitedEntry)[]` | 解決済みの `prohibited` リスト(継承またはデフォルト)に追加されるパターン — `prohibited` と同じプレーン文字列/構造化オブジェクトの形を受け付ける |
 | `allowedAdd` | `string[]` | 解決済みの `allowed` リスト(継承またはデフォルト)に追加されるパターン |
-| `css` | `object` | オプトインの CSS/SCSS 宣言スキャン: `{ zIndex?, colorLiterals?, patterns? }`(すべてデフォルト OFF) |
+| `css` | `object` | オプトインの CSS/SCSS 宣言スキャン: `{ zIndex?: boolean \| { allowed: number[] }, colorLiterals?, patterns? }`(すべてデフォルト OFF) |
 | `requireIgnoreReason` | `boolean` | 実際の違反を隠す、素の(理由なしの)`design-token-lint-ignore` を、黙って抑制する代わりに報告する(デフォルト `false`) |
 | `reportUnusedIgnores` | `boolean` | 何も抑制しなかった `design-token-lint-ignore` コメントを報告する(デフォルト `false`) |
 

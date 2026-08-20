@@ -48,7 +48,7 @@ Create a `.design-token-lint.json` or `design-token-lint.config.json` file at yo
 | `extends` | `string \| string[]` | Named preset(s) to inherit `prohibited`/`allowed` patterns from |
 | `prohibitedAdd` | `(string \| ProhibitedEntry)[]` | Patterns appended to the resolved `prohibited` list (inherited or default) — accepts the same plain-string/structured-object shape as `prohibited` |
 | `allowedAdd` | `string[]` | Patterns appended to the resolved `allowed` list (inherited or default) |
-| `css` | `object` | Opt-in CSS/SCSS declaration scanning: `{ zIndex?, colorLiterals?, patterns? }` (all default-OFF) |
+| `css` | `object` | Opt-in CSS/SCSS declaration scanning: `{ zIndex?: boolean \| { allowed: number[] }, colorLiterals?, patterns? }` (all default-OFF) |
 | `requireIgnoreReason` | `boolean` | Report a bare (reason-less) `design-token-lint-ignore` that shields a real violation, instead of suppressing it silently (default `false`) |
 | `reportUnusedIgnores` | `boolean` | Report a `design-token-lint-ignore` comment that suppressed nothing (default `false`) |
 
