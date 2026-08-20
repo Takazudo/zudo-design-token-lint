@@ -161,6 +161,7 @@ export function extractHtmlLinks(html) {
   let lastIndex = 0;
   let currentLine = 1;
   while ((match = regex.exec(html)) !== null) {
+    const anchor = match[0];
     const href = match[1] ?? match[2] ?? match[3];
     if (/^https?:\/\//i.test(href)) continue;
     if (/^#/.test(href)) continue;
@@ -173,7 +174,11 @@ export function extractHtmlLinks(html) {
       if (html[i] === '\n') currentLine++;
     }
     lastIndex = match.index;
-    links.push({ href, line: currentLine });
+    // Version switchers keep an href for keyboard/SSR semantics even when a
+    // destination is absent from the selected archive. Those anchors are
+    // explicitly disabled and must not be reported as active broken links.
+    const disabled = /\baria-disabled\s*=\s*(?:"true"|'true'|true)(?:\s|>|$)/i.test(anchor);
+    links.push({ href, line: currentLine, disabled });
   }
   return links;
 }
@@ -384,7 +389,8 @@ export async function checkHtmlLinks(distDir, rootDir, basePath = "/", excludePa
     const links = extractHtmlLinks(content);
     const fileDir = dirname(file);
 
-    for (const { href, line } of links) {
+    for (const { href, line, disabled } of links) {
+      if (disabled) continue;
       if (excludePatterns.some((p) => p.test(href))) continue;
 
       // Cache key: absolute links use href only; relative links include fileDir
@@ -416,7 +422,8 @@ export async function checkTrailingSlashLinks(distDir, rootDir, basePath = "/", 
     const links = extractHtmlLinks(content);
     const fileDir = dirname(file);
 
-    for (const { href, line } of links) {
+    for (const { href, line, disabled } of links) {
+      if (disabled) continue;
       if (excludePatterns.some((p) => p.test(href))) continue;
 
       // Extract path portion (strip query string and fragment)

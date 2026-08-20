@@ -6,8 +6,8 @@ export default defineConfig(
     themePack: 'bauhaus',
     siteName: 'Design Token Lint',
     // Home-hero logo: the site's own mark (theme-adaptive mask render).
-    // Without this, zudo-doc 4.x defaults to `"auto"` — a generated
-    // placeholder plate that replaced our real logo after the rescaffold.
+    // Keep this explicit so the generated fallback cannot replace the real
+    // site mark.
     logo: '/img/logo.svg',
     siteDescription: 'Forbids Tailwind classes that violate design token rules',
     siteUrl: 'https://zudo-design-token-lint.takazudomodular.com',
@@ -17,6 +17,9 @@ export default defineConfig(
         dir: 'src/content/docs-ja',
       },
     },
+    // The site's entry document is nested under the Overview category. This
+    // keeps the generated versions page's Docs links on the canonical route.
+    entryDocSlug: 'overview/getting-started',
     githubUrl: 'https://github.com/Takazudo/zudo-design-token-lint',
     metaTags: {
       description: true,
@@ -67,9 +70,9 @@ export default defineConfig(
     // gitignored build output that the claude-resources plugin regenerates into
     // the DEFAULT docsDir on every build, and that plugin is version-unaware —
     // copying it in would commit build output and freeze a stale mirror of the
-    // repo's .claude/. So snapshots carry no Claude section; public/_redirects
-    // sends the versioned Claude URLs the header nav emits to the canonical
-    // unversioned pages.
+    // repo's .claude/. So snapshots carry no Claude section; headerNav marks
+    // Claude `versioned: false`, and version switchers disable its unavailable
+    // archive destinations instead of emitting active links to them.
     //
     // A snapshot is NOT a byte-copy of the docs: anything that reaches outside
     // the content dir has to be neutralised, or the "frozen" page silently
@@ -87,21 +90,10 @@ export default defineConfig(
     // the next release lands. See the per-entry note below; that flip is the
     // one piece of this block that needs doing by hand.
     //
-    // Known upstream bug (zudo-doc@4.5.0): the `<CategoryNav>` MDX component
-    // renders unversioned links on /v/<slug>/ pages (its category-index cards
-    // point at the default docs instead of the archive) because
-    // `createCategoryNavWrapper` never threads `currentVersion` through,
-    // unlike the sidebar/header nav which do this correctly. Not fixable from
-    // this repo — filed as zudolab/zudo-doc#3194.
-    //
-    // Also upstream (zudo-doc@4.5.0): the version switcher offers a snapshot
-    // link for slugs that exist only in the latest docs, which 404s — the
-    // VersionSwitcher component supports unavailableVersions but
-    // buildInlineVersionSwitcher never computes it. With only "2.0" configured
-    // this is currently dormant (2.0 has every page Latest has except the
-    // generated /docs/claude* tree, which public/_redirects covers), but it
-    // returns as soon as a doc page is added to Latest without re-snapshotting.
-    // Not fixable host-side — filed as zudolab/zudo-doc#3196.
+    // Current zudo-doc releases carry category-nav version context and compute
+    // unavailable archive destinations for both version switchers. The
+    // generated Claude section remains latest-only, so its availability state
+    // is intentionally disabled on every archived Claude-family destination.
     versions: [
       {
         slug: '2.0',
@@ -153,7 +145,14 @@ export default defineConfig(
       { label: 'Guide', path: '/docs/guide', categoryMatch: 'guide' },
       { label: 'Reference', path: '/docs/reference', categoryMatch: 'reference' },
       { label: 'Changelog', path: '/docs/changelog', categoryMatch: 'changelog' },
-      { label: 'Claude', path: '/docs/claude', categoryMatch: 'claude' },
+      {
+        label: 'Claude',
+        path: '/docs/claude',
+        categoryMatch: 'claude',
+        // Claude resources are generated from the live repo and have no
+        // versioned snapshot; keep this target canonical on archived pages.
+        versioned: false,
+      },
     ],
     // Rendered left-to-right in the header's right-hand cluster. The version
     // switcher leads so its wide "Version: <label>" pill sits at the cluster's
