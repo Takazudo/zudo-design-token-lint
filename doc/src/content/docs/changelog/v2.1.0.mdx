@@ -1,0 +1,32 @@
+---
+title: v2.1.0
+description: Multiline JSX class extraction, stricter token-backed CSS z-index enforcement, explicit CSS allowances, and version-aware documentation navigation.
+sidebar_position: 9992
+category: changelog
+---
+
+This release closes the remaining multiline class-extraction gaps, strengthens the opt-in CSS z-index rule, and retires documentation workarounds now covered by current zudo-doc releases.
+
+## Class Extraction
+
+- Configured JSX/Astro class attributes now use balanced `{...}` scanning across physical lines. Array/join expressions, nested calls, and conditional strings inside template interpolations are extracted with their true source lines instead of being silently skipped (`eda079b`).
+- Attribute template literals emit their static class segments and scan literal strings inside `${...}` branches without reporting interpolation source as a class. Nested configured functions are deduplicated, and comment/ignore metadata remains intact (`eda079b`).
+- Malformed or unclosed attribute expressions retain the existing 50-continuation-line safety boundary rather than consuming unrelated source (`eda079b`).
+
+## CSS z-index Rules
+
+- `css.zIndex` now rejects token-less calculations such as `calc(70 + 1)`. Direct `var(...)`, `calc(...)` expressions containing `var(...)`, and standard CSS keywords remain allowed (`6abf8e6`).
+- An object form adds explicit raw-integer exceptions: `"zIndex": { "allowed": [0] }`. The existing boolean form and exported `CompiledCssConfig.zIndex: boolean` contract remain backward compatible (`6abf8e6`).
+- CLI, config validation, browser Playground parity, README, and the English/Japanese reference documentation now describe and test the same behavior (`6abf8e6`, `d71924c`).
+
+## Documentation Site
+
+- Upgraded zudo-doc integration now uses the configured nested entry document, keeps archived CategoryNav links inside their version, renders latest-only Claude navigation canonically, and disables unavailable archive switcher destinations (`3b44451`).
+- Superseded entry-page and Claude redirects were removed. Legacy `/v/:version/docs/claude*` paths now intentionally return 404 rather than serving current content under an archive label (`3b44451`).
+- Strict link checking ignores only anchors explicitly marked `aria-disabled=true`; active links and redirect targets remain fully validated with zero allowlisted exceptions (`3b44451`).
+- The v2.0 documentation snapshot remains available and is now marked unmaintained because v2.1.0 is current.
+
+## Maintenance
+
+- Refreshed the zfb/zudo-doc toolchain and aligned its template-drift policy (`b6d0c5e`, `aa01f5e`, `7356b7f`).
+- Updated the CI cache action and automated the release-time archived-doc banner transition (`609f111`, `bb5bed4`).

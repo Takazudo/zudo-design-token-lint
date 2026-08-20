@@ -102,18 +102,7 @@ export default defineConfig(
         locales: {
           ja: { dir: 'src/content/docs-v2.0-ja' },
         },
-        // FLIP TO 'unmaintained' WHEN A RELEASE AFTER 2.0.0 SHIPS. False only
-        // because 2.0.0 is currently the latest release, so an "older version"
-        // banner would be a lie. The moment 2.1/3.0 lands this snapshot really
-        // is old, and without the banner it loses its only signal that the
-        // reader is not on the current docs.
-        //
-        // /l-make-release Step 4c does this flip as part of the bump commit, so
-        // it should not need doing by hand — but a release cut any other way
-        // still does. That step locates this entry with a line-anchored grep
-        // (`^[[:space:]]*banner: false`), so keep the assignment on its own
-        // line; prose above may mention the literal freely.
-        banner: false,
+        banner: 'unmaintained',
       },
     ],
     // Hybrid repo: this doc-app lives in `doc/` (cwd at build), while zdtl's
