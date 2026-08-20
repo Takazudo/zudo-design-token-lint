@@ -48,7 +48,7 @@ category: guide
 | `extends` | `string \| string[]` | `prohibited`/`allowed` パターンを継承する名前付きプリセット |
 | `prohibitedAdd` | `(string \| ProhibitedEntry)[]` | 解決済みの `prohibited` リスト(継承またはデフォルト)に追加されるパターン — `prohibited` と同じプレーン文字列/構造化オブジェクトの形を受け付ける |
 | `allowedAdd` | `string[]` | 解決済みの `allowed` リスト(継承またはデフォルト)に追加されるパターン |
-| `css` | `object` | オプトインの CSS/SCSS 宣言スキャン: `{ zIndex?, colorLiterals?, patterns? }`(すべてデフォルト OFF) |
+| `css` | `object` | オプトインの CSS/SCSS 宣言スキャン: `{ zIndex?: boolean \| { allowed: number[] }, colorLiterals?, patterns? }`(すべてデフォルト OFF) |
 | `requireIgnoreReason` | `boolean` | 実際の違反を隠す、素の(理由なしの)`design-token-lint-ignore` を、黙って抑制する代わりに報告する(デフォルト `false`) |
 | `reportUnusedIgnores` | `boolean` | 何も抑制しなかった `design-token-lint-ignore` コメントを報告する(デフォルト `false`) |
 
@@ -391,7 +391,7 @@ Numeric spacing "p-hgap-2" — use a semantic spacing token or arbitrary value (
 ```json
 {
   "css": {
-    "zIndex": true,
+    "zIndex": { "allowed": [0] },
     "colorLiterals": true,
     "patterns": ["src/**/*.css", "src/**/*.scss"]
   }
@@ -400,7 +400,7 @@ Numeric spacing "p-hgap-2" — use a semantic spacing token or arbitrary value (
 
 | フィールド | 型 | 説明 |
 |---|---|---|
-| `zIndex` | `boolean` | 素の整数 `z-index` 値をフラグする(デフォルト `false`) |
+| `zIndex` | `boolean \| { allowed: number[] }` | 素の整数およびトークンのない `calc()` の `z-index` 値をフラグする(デフォルト `false`)。オブジェクト形式ではルールを有効にし、列挙した素の整数を許可する |
 | `colorLiterals` | `boolean` | あらゆる宣言値の中の生のカラーリテラルをフラグする(デフォルト `false`) |
 | `patterns` | `string[]` | CLI が `.css`/`.scss` ファイルをスキャンする glob。Tailwind の `patterns` に **加えて** 適用される |
 
@@ -410,7 +410,17 @@ Numeric spacing "p-hgap-2" — use a semantic spacing token or arbitrary value (
 
 #### `zIndex`
 
-生の整数 `z-index` 値を禁止し、[セマンティックな z-index 階層システム](https://zudo-css-wisdom.takazudomodular.com/)を強制します。z-index 戦略の許可/禁止テーブルをミラーします:
+生の整数 `z-index` 値を禁止し、[セマンティックな z-index 階層システム](https://zudo-css-wisdom.takazudomodular.com/)を強制します。z-index 戦略の許可/禁止テーブルをミラーします。`zIndex: true` は `0` を含むすべての素の整数を拒否します。プロジェクトに明示的な例外がある場合はオブジェクト形式を使います:
+
+```json
+{
+  "css": {
+    "zIndex": { "allowed": [0, -1] }
+  }
+}
+```
+
+`allowed` は整数の配列でなければなりません。負の整数は有効で、重複したエントリは問題ありません(コンパイル時に重複排除されます)。未知のフィールドや小数/数値以外のエントリは設定エラーです。オブジェクト形式はルールを有効にします。`false` または `zIndex` の省略時は無効のままです。
 
 | 許可 | 禁止 |
 |---|---|
@@ -419,7 +429,7 @@ Numeric spacing "p-hgap-2" — use a semantic spacing token or arbitrary value (
 | `z-index: auto;` / `inherit;` / `initial;` / `unset;` / `revert;` / `revert-layer;` | `z-index: -1;` |
 | `/* design-token-lint-ignore */` エスケープハッチ付きの生の整数 | エスケープコメントのない素の生の整数 |
 
-`calc()` は `var()` 参照を含む場合にのみ許可としてカウントされます。`calc(100 + 1)`(生の算術)は依然としてフラグされます。末尾の `!important` は生の整数を免除しません。
+`calc()` は `var()` 参照を含む場合にのみ許可としてカウントされます。`calc(100 + 1)`(生の算術)は依然としてフラグされます。末尾の `!important` は生の整数を免除しませんが、数値の許可リストをチェックする前に空白と `!important` は正規化されます。
 
 #### `colorLiterals`
 

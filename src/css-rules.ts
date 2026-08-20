@@ -3,10 +3,12 @@
  *
  * Two opt-in rule kinds, both default-OFF (see `CssConfig` in config.ts):
  *
- * - `zIndex` — flag bare integer `z-index` values. Allowed: `var(--z-*)`,
- *   `calc(...)` containing a `var()`, and the keywords
- *   `auto`/`inherit`/`initial`/`unset`/`revert`/`revert-layer`. Escape-hatched
- *   integers are handled upstream by the extractor's ignore-comment support.
+ * - `zIndex` — flag raw integer and token-less `calc(...)` `z-index` values.
+ *   Allowed: `var(--z-*)`, `calc(...)` containing a `var()`, the keywords
+ *   `auto`/`inherit`/`initial`/`unset`/`revert`/`revert-layer`, and any integer
+ *   explicitly listed by the source config's `zIndex.allowed` option.
+ *   Escape-hatched integers are handled upstream by the extractor's
+ *   ignore-comment support.
  * - `colorLiterals` — flag raw color literals in a declaration value: `#hex`,
  *   `rgb()/rgba()`, `hsl()/hsla()`, `oklch()/oklab()`. Allowed: `var(...)`,
  *   `transparent`, `currentColor`, and any keyword-only value (named colors,
@@ -24,6 +26,8 @@ import type { CssDeclaration } from './css-extractor.js';
 /** Compiled, resolved form of the config `css` section (all flags concrete). */
 export interface CompiledCssConfig {
   zIndex: boolean;
+  /** Raw integer z-index values exempted by source `zIndex: { allowed }`. */
+  zIndexAllowed?: ReadonlySet<number>;
   colorLiterals: boolean;
   /** File globs the CLI scans for CSS/SCSS (resolved separately by the CLI). */
   patterns: string[];
@@ -43,7 +47,7 @@ const Z_INDEX_KEYWORDS = new Set(['auto', 'inherit', 'initial', 'unset', 'revert
 // A bare (optionally negative) integer — the forbidden raw z-index form.
 const BARE_INTEGER = /^-?\d+$/;
 // A trailing `!important` (with optional whitespace) stripped before testing.
-const IMPORTANT_SUFFIX = /\s*!important\s*$/i;
+const IMPORTANT_SUFFIX = /\s*!\s*important\s*$/i;
 
 // Raw color literal forms. `#hex` is restricted to the valid CSS lengths
 // (3/4/6/8) with a trailing boundary so an over-long or invalid fragment like
@@ -55,17 +59,29 @@ const HEX_LITERAL = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F
 const FUNCTIONAL_COLOR = /\b(?:rgba?|hsla?|oklch|oklab)\s*\(/i;
 
 /**
- * Return true when a `z-index` value is a forbidden raw integer.
- * `var(...)`, `calc(var(...) ...)`, and keyword values all pass.
+ * Return the normalized value used for z-index matching, with `!important`
+ * and surrounding whitespace removed. Keeping this normalization in one
+ * place makes matching and the explicit allowlist agree for all spellings.
+ */
+function normalizeZIndexValue(value: string): string {
+  return value.replace(IMPORTANT_SUFFIX, '').trim();
+}
+
+/**
+ * Return true when a `z-index` value is a forbidden raw integer or a
+ * token-less `calc(...)` expression. `var(...)`, `calc(var(...) ...)`, and
+ * keyword values all pass.
  */
 function isRawZIndex(value: string): boolean {
-  const stripped = value.replace(IMPORTANT_SUFFIX, '').trim();
+  const stripped = normalizeZIndexValue(value);
   const lower = stripped.toLowerCase();
   if (Z_INDEX_KEYWORDS.has(lower)) return false;
   // Any `var(` reference is token-based — covers `var(--z-toast)` and
-  // `calc(var(--z-modal) + 1)`. A calc() with no var (raw arithmetic) has no
-  // `var(` and falls through to the bare-integer test.
+  // `calc(var(--z-modal) + 1)`.
   if (/var\s*\(/i.test(stripped)) return false;
+  // A calc() with no var is raw arithmetic, even though it is not itself a
+  // bare integer. This is intentionally syntactic rather than an evaluator.
+  if (/calc\s*\(/i.test(stripped)) return true;
   return BARE_INTEGER.test(stripped);
 }
 
@@ -112,10 +128,27 @@ export function checkDeclaration(
   const property = decl.property.toLowerCase();
   const displayValue = oneLine(decl.value);
 
+  const normalizedZIndex = normalizeZIndexValue(decl.value);
+  const rawZIndexNumber = BARE_INTEGER.test(normalizedZIndex)
+    ? Number(normalizedZIndex)
+    : undefined;
+
+  if (
+    config.zIndex &&
+    property === 'z-index' &&
+    rawZIndexNumber !== undefined &&
+    config.zIndexAllowed?.has(rawZIndexNumber)
+  ) {
+    return null;
+  }
+
   if (config.zIndex && property === 'z-index' && isRawZIndex(decl.value)) {
+    const reasonPrefix = BARE_INTEGER.test(normalizedZIndex)
+      ? 'Raw z-index integer'
+      : 'Token-less z-index calculation';
     return {
       className: `${decl.property}: ${displayValue}`,
-      reason: `Raw z-index integer "${displayValue}" — use a --z-* token`,
+      reason: `${reasonPrefix} "${displayValue}" — use a --z-* token`,
       category: 'z-index',
     };
   }

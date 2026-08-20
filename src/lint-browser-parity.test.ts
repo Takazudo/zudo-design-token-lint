@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { compileConfig as rootCompileConfig, type LintConfig } from './config.js';
 import { checkClassWithConfig as rootCheckClassWithConfig } from './rules.js';
+import { checkDeclaration as rootCheckDeclaration, type CompiledCssConfig } from './css-rules.js';
 import semanticPrefixesMatrix from './__fixtures__/semantic-prefixes-matrix.json';
 
 /**
@@ -32,6 +33,12 @@ interface MirrorCompiledConfig {
   ignore: string[];
   suggestions: Map<string, string>;
   semanticPrefixes: string[];
+  css?: {
+    zIndex: boolean;
+    zIndexAllowed?: ReadonlySet<number>;
+    colorLiterals: boolean;
+    patterns: string[];
+  };
 }
 
 interface MirrorModule {
@@ -42,6 +49,10 @@ interface MirrorModule {
     semanticPrefixes?: string[];
   }): MirrorCompiledConfig;
   checkClassWithConfig(className: string, config: MirrorCompiledConfig): MirrorViolation | null;
+  checkDeclaration(
+    decl: { property: string; value: string; line: number },
+    config: NonNullable<MirrorCompiledConfig['css']>,
+  ): { className: string; reason: string; category: 'z-index' | 'color' } | null;
 }
 
 let mirror: MirrorModule;
@@ -105,4 +116,43 @@ describe('root/mirror parity — semanticPrefixes v2 (issue #160)', () => {
       }
     },
   );
+});
+
+describe('root/mirror parity — CSS zIndex config (issue #178)', () => {
+  it('compiles object-form zIndex and checks token-less calc values identically', () => {
+    const sourceConfig: LintConfig = {
+      prohibited: [],
+      allowed: [],
+      ignore: [],
+      css: { zIndex: { allowed: [0, -1, 0] } },
+    };
+    const rootConfig = rootCompileConfig(sourceConfig);
+    const mirrorConfig = mirror.compileConfig(sourceConfig);
+    expect(mirrorConfig.css).toEqual(rootConfig.css);
+
+    const decl = { property: 'z-index', value: 'calc(70 + 1) !important', line: 1 };
+    const rootResult = rootCheckDeclaration(decl, rootConfig.css as CompiledCssConfig);
+    const mirrorResult = mirror.checkDeclaration(decl, mirrorConfig.css!);
+    expect(mirrorResult).toEqual(rootResult);
+  });
+
+  it('preserves the legacy compiled config shape when no allowlist is provided', () => {
+    const sourceConfig: LintConfig = {
+      prohibited: [],
+      allowed: [],
+      ignore: [],
+      css: { zIndex: true },
+    };
+    const rootConfig = rootCompileConfig(sourceConfig);
+    const mirrorConfig = mirror.compileConfig(sourceConfig);
+    expect(mirrorConfig.css).toEqual(rootConfig.css);
+    expect(
+      mirror.checkDeclaration({ property: 'z-index', value: '0', line: 1 }, mirrorConfig.css!),
+    ).toEqual(
+      rootCheckDeclaration(
+        { property: 'z-index', value: '0', line: 1 },
+        rootConfig.css as CompiledCssConfig,
+      ),
+    );
+  });
 });

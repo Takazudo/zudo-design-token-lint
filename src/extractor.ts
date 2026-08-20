@@ -4,7 +4,7 @@
  * Handles:
  * - className="..." and className={'...'} in TSX/JSX
  * - class="..." and class:list={[...]} in Astro
- * - Template literal classNames (simple cases)
+ * - String and template-literal segments in configured class attribute expressions
  * - Ignore comments: design-token-lint-ignore (line), design-token-lint-ignore-file (file)
  */
 
@@ -244,9 +244,7 @@ function extractClassesCore(
   // Build attribute patterns dynamically; skip entirely when attrs is empty
   let doubleQuoteAttr: RegExp | null = null;
   let singleQuoteAttr: RegExp | null = null;
-  let singleQuoteBrace: RegExp | null = null;
-  let doubleQuoteBrace: RegExp | null = null;
-  let templateLiteral: RegExp | null = null;
+  let braceAttributeStart: RegExp | null = null;
   let multilineDoubleStart: RegExp | null = null;
   let multilineSingleStart: RegExp | null = null;
 
@@ -256,15 +254,10 @@ function extractClassesCore(
     doubleQuoteAttr = new RegExp(`(?<![\\w-])(?:${attrAlt})\\s*=\\s*"([^"]+)"`, 'g');
     // class='...' (single-quote HTML attribute, common in Astro/HTML)
     singleQuoteAttr = new RegExp(`(?<![\\w-])(?:${attrAlt})\\s*=\\s*'([^']+)'`, 'g');
-    // className={'...'} or class={'...'}
-    singleQuoteBrace = new RegExp(`(?<![\\w-])(?:${attrAlt})\\s*=\\s*\\{\\s*'([^']+)'\\s*\\}`, 'g');
-    // className={"..."} or class={"..."}
-    doubleQuoteBrace = new RegExp(`(?<![\\w-])(?:${attrAlt})\\s*=\\s*\\{\\s*"([^"]+)"\\s*\\}`, 'g');
-    // className={`...`} template literal (simple, no expressions)
-    templateLiteral = new RegExp(
-      `(?<![\\w-])(?:${attrAlt})\\s*=\\s*\\{\\s*\`([^\`]+)\`\\s*\\}`,
-      'g',
-    );
+    // Configured JSX/Astro attribute expression. The expression body is
+    // scanned separately so nested braces and multiline string/template
+    // literals can be handled without broadening extraction to arbitrary JS.
+    braceAttributeStart = new RegExp(`(?<![\\w-])(?:${attrAlt})\\s*=\\s*\\{`, 'g');
     // Multiline: className="... without closing quote on same line
     multilineDoubleStart = new RegExp(`(?<![\\w-])(?:${attrAlt})\\s*=\\s*"([^"]*$)`);
     multilineSingleStart = new RegExp(`(?<![\\w-])(?:${attrAlt})\\s*=\\s*'([^']*$)`);
@@ -285,13 +278,39 @@ function extractClassesCore(
   }
 
   lineLoop: for (let i = 0; i < lines.length; i++) {
-    if (ignoredLines.has(i)) continue;
-
     const line = lines[i];
     const lineNum = i + 1; // 1-based
     // Comment spans on this line — matches falling inside are commented-out
     // source, not real code, and must be skipped (see getCommentSpans).
     const commentSpans = getCommentSpans(line);
+
+    // Scan configured `{...}` attributes before their inner configured
+    // functions can be visited on later physical lines. This also consumes an
+    // expression whose opening line is ignored, ensuring a nested cn()/clsx()
+    // cannot leak out of the ignored construct. A balanced scan is deliberately
+    // bounded to the same 50 continuation lines as calls and class:list.
+    if (braceAttributeStart) {
+      braceAttributeStart.lastIndex = 0;
+      let attrMatch: RegExpExecArray | null;
+      while ((attrMatch = braceAttributeStart.exec(line)) !== null) {
+        if (isInCommentSpan(commentSpans, attrMatch.index)) continue;
+        const expression = scanBalancedDelimited(lines, i, braceAttributeStart.lastIndex, '{', '}');
+        if (!ignoredLines.has(i) && (expression.balanced || expression.hitLimit)) {
+          extractFromAttributeExpression(results, expression.content, i, ignoredLines);
+        }
+
+        if (expression.endLine !== i) {
+          lines[expression.endLine] =
+            ' '.repeat(expression.endCol) + lines[expression.endLine].slice(expression.endCol);
+          i = expression.endLine - 1;
+          continue lineLoop;
+        }
+        if (!expression.balanced) continue lineLoop;
+        braceAttributeStart.lastIndex = expression.endCol;
+      }
+    }
+
+    if (ignoredLines.has(i)) continue;
 
     // Extract from double-quote class/className attributes
     if (doubleQuoteAttr) {
@@ -304,30 +323,6 @@ function extractClassesCore(
     // Extract from single-quote class/className attributes (HTML/Astro)
     if (singleQuoteAttr) {
       for (const match of line.matchAll(singleQuoteAttr)) {
-        if (isInCommentSpan(commentSpans, match.index ?? 0)) continue;
-        addClasses(results, match[1], lineNum);
-      }
-    }
-
-    // Extract from single-quote brace attributes
-    if (singleQuoteBrace) {
-      for (const match of line.matchAll(singleQuoteBrace)) {
-        if (isInCommentSpan(commentSpans, match.index ?? 0)) continue;
-        addClasses(results, match[1], lineNum);
-      }
-    }
-
-    // Extract from double-quote brace attributes
-    if (doubleQuoteBrace) {
-      for (const match of line.matchAll(doubleQuoteBrace)) {
-        if (isInCommentSpan(commentSpans, match.index ?? 0)) continue;
-        addClasses(results, match[1], lineNum);
-      }
-    }
-
-    // Extract from template literals (simple — no interpolation)
-    if (templateLiteral) {
-      for (const match of line.matchAll(templateLiteral)) {
         if (isInCommentSpan(commentSpans, match.index ?? 0)) continue;
         addClasses(results, match[1], lineNum);
       }
@@ -478,6 +473,33 @@ function groupClassesByLine(classes: ExtractedClass[]): Map<number, ExtractedCla
 }
 
 /**
+ * Return the 0-based final line of a configured braced attribute beginning on
+ * `startLine0`, including the bounded scanner's final line for malformed
+ * input. Used only to attribute candidates suppressed by an ignore on an
+ * opening line that contains no literal of its own.
+ */
+function findBracedAttributeEndLine(
+  lines: string[],
+  startLine0: number,
+  options?: ExtractorOptions,
+): number | null {
+  const attrs = options?.classAttributes ?? DEFAULT_CLASS_ATTRIBUTES;
+  if (attrs.length === 0) return null;
+  const pattern = new RegExp(
+    `(?<![\\w-])(?:${attrs.map(escapeRegExp).join('|')})\\s*=\\s*\\{`,
+    'g',
+  );
+  const line = lines[startLine0] ?? '';
+  const commentSpans = getCommentSpans(line);
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(line)) !== null) {
+    if (isInCommentSpan(commentSpans, match.index)) continue;
+    return scanBalancedDelimited(lines, startLine0, pattern.lastIndex, '{', '}').endLine;
+  }
+  return null;
+}
+
+/**
  * Extract classes plus structured metadata about every ignore comment in the
  * file: its kind (`next-line` / `same-line` / `file`), any trailing reason
  * text, and which candidate classes it actually suppressed — so a later pass
@@ -562,6 +584,17 @@ export function extractClassesWithMeta(
 
   const ignores: IgnoreRecord[] = pending.map((record) => {
     const suppressedClasses: ExtractedClass[] = [];
+    const bracedEndLine0 = findBracedAttributeEndLine(lines, record.targetLine - 1, options);
+    if (bracedEndLine0 !== null) {
+      for (let line = record.targetLine; line <= bracedEndLine0 + 1; line++) {
+        if (line !== record.targetLine && allTargetLines.has(line)) break;
+        if (isSuppressedLine(line)) {
+          suppressedClasses.push(...(candidatesByLine.get(line) ?? []));
+        }
+      }
+      return { ...record, suppressedClasses };
+    }
+
     let line = record.targetLine;
     while (isSuppressedLine(line) && (line === record.targetLine || !allTargetLines.has(line))) {
       suppressedClasses.push(...(candidatesByLine.get(line) ?? []));
@@ -603,6 +636,10 @@ interface BalancedScan {
   endLine: number;
   /** Column just past the closing delimiter on `endLine` (only meaningful when balanced). */
   endCol: number;
+  /** Whether the matching closing delimiter was reached. */
+  balanced: boolean;
+  /** Whether scanning stopped at the 50-continuation-line safety boundary. */
+  hitLimit: boolean;
 }
 
 /**
@@ -695,7 +732,7 @@ function scanBalancedDelimited(
         depth--;
         col++;
         if (depth === 0) {
-          return { content, endLine: line, endCol: col };
+          return { content, endLine: line, endCol: col, balanced: true, hitLimit: false };
         }
         content += ch;
         continue;
@@ -706,7 +743,13 @@ function scanBalancedDelimited(
     }
 
     if (line + 1 >= lines.length || linesConsumed >= maxLines) {
-      return { content, endLine: line, endCol: col };
+      return {
+        content,
+        endLine: line,
+        endCol: col,
+        balanced: false,
+        hitLimit: linesConsumed >= maxLines,
+      };
     }
     line++;
     col = 0;
@@ -714,7 +757,13 @@ function scanBalancedDelimited(
     content += '\n';
   }
 
-  return { content, endLine: Math.max(line - 1, startLine), endCol: col };
+  return {
+    content,
+    endLine: Math.max(line - 1, startLine),
+    endCol: col,
+    balanced: false,
+    hitLimit: false,
+  };
 }
 
 /**
@@ -735,6 +784,134 @@ interface QuotedLiteralToken {
   value: string;
   /** 0-based offset of the opening quote character in the scanned text. */
   index: number;
+}
+
+interface LiteralSegment {
+  /** Static literal text, excluding its quote delimiters and `${...}` expressions. */
+  value: string;
+  /** 0-based offset where this static segment begins in the scanned expression. */
+  index: number;
+}
+
+/**
+ * Collect class-bearing literal segments from a configured attribute's JS-ish
+ * expression. Ordinary quoted strings are returned whole. Template literals
+ * are split into their static portions while each `${...}` interpolation is
+ * recursively scanned, so strings in conditional branches and nested calls
+ * are included without emitting interpolation source such as `${active}` as
+ * a class. Comments outside literals are skipped. This remains intentionally
+ * bounded by scanBalancedDelimited rather than attempting to be a JS parser.
+ */
+function scanAttributeLiteralSegments(text: string): LiteralSegment[] {
+  const segments: LiteralSegment[] = [];
+
+  const scanQuoted = (start: number, quote: string): number => {
+    let i = start + 1;
+    let value = '';
+    while (i < text.length) {
+      const ch = text[i];
+      if (ch === '\\' && i + 1 < text.length) {
+        value += ch + text[i + 1];
+        i += 2;
+        continue;
+      }
+      if (ch === quote) {
+        segments.push({ value, index: start + 1 });
+        return i + 1;
+      }
+      value += ch;
+      i++;
+    }
+    return i;
+  };
+
+  const scanCode = (start: number, stopAtBrace: boolean): number => {
+    let i = start;
+    while (i < text.length) {
+      const ch = text[i];
+
+      if (stopAtBrace && ch === '}') return i + 1;
+
+      if (ch === '/' && text[i + 1] === '/') {
+        const newline = text.indexOf('\n', i + 2);
+        i = newline === -1 ? text.length : newline + 1;
+        continue;
+      }
+      if (ch === '/' && text[i + 1] === '*') {
+        const close = text.indexOf('*/', i + 2);
+        i = close === -1 ? text.length : close + 2;
+        continue;
+      }
+      if (ch === "'" || ch === '"') {
+        i = scanQuoted(i, ch);
+        continue;
+      }
+      if (ch === '`') {
+        i = scanTemplate(i);
+        continue;
+      }
+      if (stopAtBrace && ch === '{') {
+        i = scanCode(i + 1, true);
+        continue;
+      }
+      i++;
+    }
+    return i;
+  };
+
+  const scanTemplate = (start: number): number => {
+    let i = start + 1;
+    let segmentStart = i;
+    let value = '';
+    while (i < text.length) {
+      const ch = text[i];
+      if (ch === '\\' && i + 1 < text.length) {
+        value += ch + text[i + 1];
+        i += 2;
+        continue;
+      }
+      if (ch === '`') {
+        segments.push({ value, index: segmentStart });
+        return i + 1;
+      }
+      if (ch === '$' && text[i + 1] === '{') {
+        segments.push({ value, index: segmentStart });
+        i = scanCode(i + 2, true);
+        segmentStart = i;
+        value = '';
+        continue;
+      }
+      value += ch;
+      i++;
+    }
+    return i;
+  };
+
+  scanCode(0, false);
+  return segments;
+}
+
+/** Extract every literal segment from one configured `{...}` attribute. */
+function extractFromAttributeExpression(
+  results: ExtractedClass[],
+  expressionText: string,
+  startLine0: number,
+  ignoredLines: Set<number>,
+): void {
+  const newlineOffsets = collectNewlineOffsets(expressionText);
+  for (const segment of scanAttributeLiteralSegments(expressionText)) {
+    const parts = segment.value.split('\n');
+    let lineOffset = 0;
+    while (lineOffset < newlineOffsets.length && newlineOffsets[lineOffset] < segment.index) {
+      lineOffset++;
+    }
+    for (let partIndex = 0; partIndex < parts.length; partIndex++) {
+      const actualLine0 = startLine0 + lineOffset + partIndex;
+      if (!ignoredLines.has(actualLine0)) {
+        addClasses(results, parts[partIndex], actualLine0 + 1);
+      }
+    }
+  }
 }
 
 /**

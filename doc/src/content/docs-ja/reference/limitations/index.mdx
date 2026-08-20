@@ -5,7 +5,7 @@ sidebar_position: 4
 category: reference
 ---
 
-`design-token-lint` は正規表現ベースの静的解析を使用して、ソースファイルからクラス名を抽出します。このアプローチは高速でビルドステップが不要ですが、実行時にコードを評価することはできません。そのため、一部の動的パターンは正しく解析されません。
+`design-token-lint` は上限付きの静的ソーススキャンと正規表現ベースのマッチングを使用して、ソースファイルからクラス名を抽出します。このアプローチは高速でビルドステップが不要ですが、実行時にコードを評価することはできません。そのため、一部の動的パターンは正しく解析されません。
 
 スキャンされる属性名とユーティリティ関数のセットは、設定ファイルの [`classAttributes` と `classFunctions`](../../guide/configuration/index.mdx) でカスタマイズできます。デフォルトでは、`className`、`class`、`cn`、`clsx`、`classNames`、`twMerge` がスキャンされます。
 
@@ -71,44 +71,42 @@ Vue の `:class`/`v-bind:class` バインディングは `class` 属性のパタ
 
 **回避策**: 関連するクラスを静的な文字列(computed プロパティや、変数に代入した `cn()`/`clsx()` 呼び出しなど)に抽出してリンターにプレーンな文字列リテラルとして認識させるか、無視コメントでこのギャップを明示してください。
 
-## 制限事項: 条件式
+## 複数行の属性式
 
-`className` 内の三項演算子は抽出されません:
+設定されたクラス属性のバランスした `{...}` 式は、物理的な複数行にまたがってスキャンされます。スキャナーはネストした配列、`.join(...)` 呼び出し、条件式、ネストしたデリミター、設定されたクラス関数呼び出しをたどり、各リテラルの物理的な行を保持します:
 
 ```tsx
-// Not linted — classes inside ternaries are silently skipped
-<div className={isActive ? "p-4" : "m-8"}>
+export const B = () => (
+  <div
+    className={[
+      'flex items-center',
+      'z-40',
+    ].join(' ')}
+  />
+);
+
+export const C = ({ active }: { active: boolean }) => (
+  <div
+    className={`
+      flex items-center
+      ${active ? 'z-40' : ''}
+    `}
+  />
+);
 ```
 
-エクストラクターは `className` や `class` に直接割り当てられた文字列リテラルを探します。三項演算子の構文にはマッチしないため、クラスは抽出されず、違反も報告されません。
+どちらの `z-40` リテラルもソースの行でリントされます。条件式が複数行にまたがる場合でも、その各分岐のリテラル文字列がチェックされます。マルフォーム/未クローズ式に対しては、スキャナーの上限が物理50行のままです。上限を超えた入力は、無関係なソースとして解釈せずスキャンされません。
 
-つまり、三項演算子の中にある禁止クラスは、誤検知を出すのではなく、リンターに静かにスルーされます。三項演算子の中をリンターにチェックさせる回避策はありません。これらのクラスをリントする必要がある場合は、静的な変数に抽出してください:
+## 動的なテンプレートセグメント
 
-```tsx
-// These static strings are linted
-const activeClass = "p-hgap-sm";
-const inactiveClass = "m-vgap-md";
-<div className={isActive ? activeClass : inactiveClass}>
-```
-
-## 制限事項: テンプレート補間
-
-動的な式を含むテンプレートリテラルは、いかなるリントルールにもマッチしない文字列を生成します:
+実行時に生成されるクラス名は静的には評価できません:
 
 ```tsx
-// Not linted — `p-${size}` is extracted as a literal string, matches no rules
+// The runtime value is unknown, so no complete class name can be checked.
 <div className={`p-${size} bg-${color}-500`}>
 ```
 
-エクストラクターは `${...}` 式を含む生のテンプレート内容を取り込みます。結果として得られる文字列（`p-${size}`、`bg-${color}-500`）はどのパターンにもマッチしないため、その中の違反は一切報告されません。
-
-**回避策**: 無視コメントを追加するか、静的なクラス名を使うよう変更してください:
-
-```tsx
-// Use ignore comment to acknowledge this is intentional
-{/* design-token-lint-ignore */}
-<div className={`p-${size}`}>
-```
+補間式の中に書かれたリテラルクラス文字列は引き続きチェックされるため、``${active ? 'z-40' : ''}`` のような条件式も対象です。リントで網羅したい動的な名前は、有限個のリテラル分岐へ書き換えるか、動的境界を明示する無視コメントを追加してください。
 
 ## 制限事項: エスケープされた引用符
 
@@ -158,14 +156,13 @@ const inactiveClass = "m-vgap-md";
 | 複数行の `className` | あり |
 | 複数行の `cn()`/`clsx()`/`class:list` 呼び出し | あり |
 | 静的な文字列リテラル | あり |
-| テンプレートリテラル(静的のみ) | あり |
+| 複数行の `{...}` クラス属性(配列、条件式、ネストした呼び出し) | あり — リテラルセグメント |
 | `class:list` のオブジェクトキー | あり |
 | カスタム属性名(`classAttributes`) | あり — 設定可能 |
 | カスタム関数名(`classFunctions`) | あり — 設定可能 |
 | Vue/Svelte の静的な `class="..."` 属性 | あり |
 | CSS/SCSS 宣言スキャン(オプトイン、`css` セクション) | あり — 宣言ベースのみ、上記参照 |
-| 三項演算子 | なし — 静かにスキップ |
-| 補間付きテンプレートリテラル | なし — 動的部分はリントされない |
+| 実行時に生成されるテンプレートセグメント | なし — 完全な動的名は評価できない |
 | クラス文字列内のエスケープされた引用符 | なし — 誤抽出の可能性あり |
 | Vue の `:class`/`v-bind:class` バインディング | なし — ゴミトークンとして抽出される |
 | Svelte の `class:name` ディレクティブ | なし — まったく認識されない |

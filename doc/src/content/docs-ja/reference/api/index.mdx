@@ -282,7 +282,7 @@ interface ExtractedClass {
 - `className='...'` と `class='...'` シングルクォートの HTML 属性(Astro/HTML でよく使われる)
 - `className={'...'}` シングルクォートのブレース
 - `className={"..."}` ダブルクォートのブレース
-- `` className={`...`} `` テンプレートリテラル(単純なケース)
+- `` className={`...`} `` テンプレートリテラルと複数行の `{...}` 属性式(静的な文字列とテンプレートセグメント)
 - `class:list={["...", '...']}` Astro の class:list 配列(常にスキャン)
 - `cn(...)`、`clsx(...)`、`classNames(...)`、`twMerge(...)` ユーティリティ呼び出し
 
@@ -353,6 +353,8 @@ const [decl] = extractCssDeclarations('.modal {\n  z-index: 9999;\n}\n');
 const violation = checkDeclaration(decl, { zIndex: true, colorLiterals: false, patterns: [] });
 // { className: 'z-index: 9999', reason: 'Raw z-index integer "9999" — use a --z-* token', category: 'z-index' }
 ```
+
+上記の従来のコンパイル済み形式は引き続き有効です。`css.zIndex: { allowed: [0] }` からコンパイルした設定は `zIndex: true` を維持し、明示的な素の整数の例外用にオプションの `zIndexAllowed: ReadonlySet<number>` を追加します。`zIndex: true` 自体には例外がありません。
 
 `CssViolation | null` を返します:
 
@@ -451,11 +453,13 @@ interface LintConfig {
 
 ```ts
 interface CssConfig {
-  zIndex?: boolean; // default false
+  zIndex?: boolean | { allowed: number[] }; // default false; object form enables and allows listed integers
   colorLiterals?: boolean; // default false
   patterns?: string[]; // CSS/SCSS globs the CLI scans, in addition to the Tailwind `patterns`
 }
 ```
+
+`CompiledCssConfig` は互換性のため `zIndex` を boolean のまま保持し、オブジェクト形式を使った場合はコンパイル済みの `zIndexAllowed?: ReadonlySet<number>` を持つことがあります。
 
 ### `ConfigPreset`
 

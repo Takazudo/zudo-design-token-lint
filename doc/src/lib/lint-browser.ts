@@ -12,10 +12,11 @@
  *   is no UI for picking a named preset, so preset resolution has nothing to
  *   attach to. `prohibited`/`allowed` are used as given (or empty arrays),
  *   never falling back to DEFAULT_CONFIG/CONFIG_PRESETS the way the CLI does.
- * - CSS/SCSS declaration scanning (core issue #131) is NOT mirrored. The
- *   playground lints a single pasted code snippet, not a file with an
- *   extension to dispatch on, so the class-lint path is the only one that
- *   makes sense here.
+ * - CSS/SCSS declaration extraction and file dispatch (core issue #131) are
+ *   not mirrored because the playground lints a single pasted snippet, not a
+ *   file with an extension. The CSS config shape and direct declaration rule
+ *   check are mirrored so browser-side config behavior stays aligned with the
+ *   exported API.
  * - `classAttributes`/`classFunctions` stay hardcoded to the core defaults
  *   (not configurable) — the playground config schema does not surface them,
  *   mirroring the pre-existing behavior of this file. `semanticPrefixes` is
@@ -60,6 +61,33 @@ export interface LintConfig {
    * `DEFAULT_SEMANTIC_PREFIXES`, not `[]`.
    */
   semanticPrefixes?: string[];
+  /** Opt-in CSS declaration rules; mirrors the source `CssConfig` shape. */
+  css?: CssConfig;
+}
+
+export interface CssConfig {
+  zIndex?: boolean | { allowed: number[] };
+  colorLiterals?: boolean;
+  patterns?: string[];
+}
+
+export interface CompiledCssConfig {
+  zIndex: boolean;
+  zIndexAllowed?: ReadonlySet<number>;
+  colorLiterals: boolean;
+  patterns: string[];
+}
+
+export interface CssDeclaration {
+  property: string;
+  value: string;
+  line: number;
+}
+
+export interface CssViolation {
+  className: string;
+  reason: string;
+  category: "z-index" | "color";
 }
 
 export interface CompiledRule {
@@ -79,6 +107,8 @@ export interface CompiledConfig {
   suggestions: Map<string, string>;
   /** Value namespaces that mark a semantic token — see `LintConfig.semanticPrefixes` */
   semanticPrefixes: string[];
+  /** Resolved CSS config, when the source config included a `css` section. */
+  css?: CompiledCssConfig;
 }
 
 export interface Violation {
@@ -269,6 +299,7 @@ export function compilePattern(
 }
 
 export function compileConfig(config: LintConfig): CompiledConfig {
+  const compiledCss = config.css !== undefined ? compileCssConfig(config.css) : undefined;
   return {
     rules: config.prohibited.map((p) =>
       typeof p === "string"
@@ -285,7 +316,137 @@ export function compileConfig(config: LintConfig): CompiledConfig {
     semanticPrefixes: (config.semanticPrefixes ?? DEFAULT_SEMANTIC_PREFIXES).filter(
       (p) => p.length > 0,
     ),
+    ...(compiledCss ? { css: compiledCss } : {}),
   };
+}
+
+function compileCssConfig(css: CssConfig): CompiledCssConfig {
+  const zIndex = css.zIndex;
+  if (
+    zIndex !== undefined &&
+    typeof zIndex !== "boolean" &&
+    (typeof zIndex !== "object" ||
+      zIndex === null ||
+      Array.isArray(zIndex) ||
+      Object.keys(zIndex).some((key) => key !== "allowed") ||
+      !Object.prototype.hasOwnProperty.call(zIndex, "allowed") ||
+      !Array.isArray(zIndex.allowed) ||
+      zIndex.allowed.some((entry) => typeof entry !== "number" || !Number.isInteger(entry)))
+  ) {
+    throw new Error(
+      'Invalid css config: "css.zIndex" must be a boolean or an object with an "allowed" integer array',
+    );
+  }
+  if (css.colorLiterals !== undefined && typeof css.colorLiterals !== "boolean") {
+    throw new Error('Invalid css config: "css.colorLiterals" must be a boolean');
+  }
+  if (css.patterns !== undefined && (!Array.isArray(css.patterns) || css.patterns.some((p) => typeof p !== "string"))) {
+    throw new Error('Invalid css config: "css.patterns" must be an array of strings');
+  }
+
+  if (zIndex && typeof zIndex === "object") {
+    return {
+      zIndex: true,
+      zIndexAllowed: new Set(zIndex.allowed),
+      colorLiterals: css.colorLiterals ?? false,
+      patterns: css.patterns ?? [],
+    };
+  }
+  return {
+    zIndex: zIndex ?? false,
+    colorLiterals: css.colorLiterals ?? false,
+    patterns: css.patterns ?? [],
+  };
+}
+
+// ── CSS declaration rules (direct API parity with src/css-rules.ts) ──
+
+const Z_INDEX_KEYWORDS = new Set([
+  "auto",
+  "inherit",
+  "initial",
+  "unset",
+  "revert",
+  "revert-layer",
+]);
+const BARE_INTEGER = /^-?\d+$/;
+const IMPORTANT_SUFFIX = /\s*!\s*important\s*$/i;
+const HEX_LITERAL = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/;
+const FUNCTIONAL_COLOR = /\b(?:rgba?|hsla?|oklch|oklab)\s*\(/i;
+
+function normalizeZIndexValue(value: string): string {
+  return value.replace(IMPORTANT_SUFFIX, "").trim();
+}
+
+function isRawZIndex(value: string): boolean {
+  const stripped = normalizeZIndexValue(value);
+  if (Z_INDEX_KEYWORDS.has(stripped.toLowerCase())) return false;
+  if (/var\s*\(/i.test(stripped)) return false;
+  if (/calc\s*\(/i.test(stripped)) return true;
+  return BARE_INTEGER.test(stripped);
+}
+
+function oneLine(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
+function findColorLiteral(value: string): string | null {
+  const scan = value.replace(/\burl\s*\([^)]*\)/gi, (m) => " ".repeat(m.length));
+  const hex = scan.match(HEX_LITERAL);
+  if (hex) return hex[0];
+  const fn = scan.match(FUNCTIONAL_COLOR);
+  if (fn) {
+    const start = fn.index ?? 0;
+    const end = value.indexOf(")", start);
+    return end === -1 ? value.slice(start).trim() : value.slice(start, end + 1);
+  }
+  return null;
+}
+
+function isTokenDefinitionProperty(property: string): boolean {
+  return property.startsWith("--") || property.startsWith("$");
+}
+
+export function checkDeclaration(
+  decl: CssDeclaration,
+  config: CompiledCssConfig,
+): CssViolation | null {
+  const property = decl.property.toLowerCase();
+  const displayValue = oneLine(decl.value);
+  const normalizedZIndex = normalizeZIndexValue(decl.value);
+  const rawZIndexNumber = BARE_INTEGER.test(normalizedZIndex)
+    ? Number(normalizedZIndex)
+    : undefined;
+
+  if (
+    config.zIndex &&
+    property === "z-index" &&
+    rawZIndexNumber !== undefined &&
+    config.zIndexAllowed?.has(rawZIndexNumber)
+  ) {
+    return null;
+  }
+  if (config.zIndex && property === "z-index" && isRawZIndex(decl.value)) {
+    const reasonPrefix = BARE_INTEGER.test(normalizedZIndex)
+      ? "Raw z-index integer"
+      : "Token-less z-index calculation";
+    return {
+      className: `${decl.property}: ${displayValue}`,
+      reason: `${reasonPrefix} "${displayValue}" — use a --z-* token`,
+      category: "z-index",
+    };
+  }
+  if (config.colorLiterals && !isTokenDefinitionProperty(decl.property)) {
+    const literal = findColorLiteral(decl.value);
+    if (literal) {
+      return {
+        className: `${decl.property}: ${displayValue}`,
+        reason: `Raw color literal "${oneLine(literal)}" — use a semantic color token`,
+        category: "color",
+      };
+    }
+  }
+  return null;
 }
 
 // ── Class extraction (from src/extractor.ts) ───────────────────────
