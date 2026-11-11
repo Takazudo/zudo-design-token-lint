@@ -6,9 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# PR runs are superseded freely. Push runs on main are never cancelled: every
+# main commit needs its own CI verdict, because publish.yml/release.yml admit a
+# release only on a successful CI push run for that exact commit.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

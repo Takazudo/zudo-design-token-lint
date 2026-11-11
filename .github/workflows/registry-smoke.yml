@@ -11,8 +11,8 @@
 # against @latest and @next.
 #
 # The `next` leg is conditional on the `next` dist-tag actually existing.
-# Under the stable-by-default release policy (see .claude/skills/l-make-release/
-# SKILL.md's Dist-tag policy), publish.yml removes a graduated `next` dist-tag
+# Under the stable-by-default release policy (see RELEASING.md's Dist-tag
+# policy), publish.yml removes a graduated `next` dist-tag
 # after a stable release, so `next` can legitimately be absent for long
 # stretches between soaks — an unconditional `npm i @next` would then fail
 # with ETARGET. When absent, the leg is skipped with a notice instead.

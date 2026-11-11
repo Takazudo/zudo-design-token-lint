@@ -26,6 +26,14 @@ export default defineConfig({
           testTimeout: 30000,
         },
       },
+      {
+        extends: true,
+        test: {
+          name: 'release',
+          include: ['scripts/release/**/*.test.mjs'],
+          testTimeout: 5000,
+        },
+      },
     ],
   },
 });
