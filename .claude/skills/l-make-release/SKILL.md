@@ -6,7 +6,7 @@ argument-description: "Optional: major | minor | patch (direct stable), next | n
 
 # /l-make-release
 
-**Read and follow [`RELEASING.md`](../../../RELEASING.md) at the repository root.** It is the single
+**Read and follow `RELEASING.md` at the repository root** ([view on GitHub](https://github.com/Takazudo/zudo-design-token-lint/blob/main/RELEASING.md)). It is the single
 canonical procedure, and the Codex skill `.agents/skills/make-release/` uses it too. Do not
 maintain a separate copy of the steps here.
 
