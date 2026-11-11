@@ -25,6 +25,10 @@ zudo-design-token-lint/
 ├── .design-token-lint.json       # Dogfooding config
 ├── .prettierrc                   # Prettier config
 ├── README.md                     # Lint package README
+├── RELEASING.md                  # Canonical release procedure (Claude + Codex entry points)
+├── AGENTS.md                     # Codex/agent pointer to CLAUDE.md + RELEASING.md
+├── scripts/release/              # Release CLI + policy (cli.mjs, lib.mjs, registry.mjs) + tests
+├── .agents/skills/make-release/  # Codex repository skill → RELEASING.md
 ├── LICENSE
 ├── pnpm-workspace.yaml           # workspace: ["doc"]; allowBuilds + minimumReleaseAgeExclude policy
 ├── .npmrc                        # install-affecting settings (applied workspace-wide by pnpm)
@@ -102,9 +106,10 @@ Workflows in `.github/workflows/`:
 - `ci.yml` — test + build + lint (npm package) on PR and push to `main`
 - `doc-deploy.yml` — build doc site + `wrangler deploy` to Cloudflare Workers on push to `main`
 - `doc-preview.yml` — build doc site + Workers preview deployment on PRs targeting `main` or `base/**`
-- `publish.yml` — publish the npm package when a `v*.*.*` tag is pushed
+- `publish.yml` — publish the npm package on an exact release tag (`vX.Y.Z` / `vX.Y.Z-next.N`) via npm OIDC trusted publishing (no npm token), then clean up a stale `next` and finalize the GitHub Release
+- `release.yml` — manual, dry-run-by-default release initiation (admits, tags and dispatches `publish.yml`)
 
-**Publishing**: push a `v*.*.*` tag to `main`; `publish.yml` runs tests + build + `pnpm publish --access public`. Requires the `NPM_TOKEN` secret.
+**Publishing**: follow [`RELEASING.md`](./RELEASING.md), the single canonical procedure for humans, Claude Code (`/l-make-release`) and Codex (`.agents/skills/make-release/`). Release logic is in `scripts/release/` (tests: `scripts/release/release.test.mjs`). No `NPM_TOKEN` is used; never add one.
 
 ## Dogfooding
 
