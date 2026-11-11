@@ -17,7 +17,7 @@ set -euo pipefail
 # Run locally from anywhere: `bash scripts/check-pack.sh` (paths below are
 # resolved relative to this script's own location, not the caller's cwd).
 # Wired into: ci.yml (PRs — cheap, catches files[]/bin regressions early) and
-# publish.yml (before both `pnpm publish` invocations — the real release gate).
+# publish.yml (build job, before the release tarball is packed — the real release gate).
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"

@@ -1,188 +1,381 @@
+# Publish @takazudo/zudo-design-token-lint to npm with OIDC trusted publishing.
+#
+# Procedure: RELEASING.md. Policy logic + tests: scripts/release/.
+#
+# No npm token is used anywhere. npm authenticates by exchanging this job's
+# GitHub OIDC token, which only works once npm's trusted-publisher entry for the
+# package names: owner Takazudo, repo zudo-design-token-lint, workflow
+# publish.yml, NO environment, with direct publishing and dist-tag management
+# allowed. If that entry is missing, publishing fails loudly. Nothing falls back
+# to a stored credential.
+#
+# Triggers:
+#   - push of an exact release tag (v1.2.3 / v1.2.3-next.4 / -beta.N / -rc.N)
+#   - workflow_dispatch ON A TAG REF: exact-source recovery and finalization
+#     resume, e.g. `gh workflow run publish.yml --ref v1.2.3`. release.yml uses
+#     this path too, because a tag it creates with GITHUB_TOKEN does not fire
+#     the push trigger.
+#
+# Jobs:
+#   admit    → enforces tag / version / source / CI admission and reads the
+#              exact registry state (absent | published | unknown)
+#   build    → install, test, pack check and tarball. No id-token.
+#   publish  → id-token only. No dependency install. Pinned npm publishes the
+#              tarball. Runs only when the version is absent.
+#   cleanup  → id-token only. Removes `next` if, and only if, it is strictly
+#              older than the stable release. Always reports an outcome and
+#              never fails the run.
+#   finalize → contents:write only. Idempotent GitHub Release.
+#   report   → partial-success summary.
+#
+# The shared group is non-cancelling because cleanup does a read-recheck-delete
+# against the registry. A concurrent prerelease publish must not move `next`
+# between the recheck and the rm.
+
 name: Publish to npm
+run-name: Publish ${{ github.ref_name }}${{ inputs.request_id && format(' [{0}]', inputs.request_id) || '' }}
 
 on:
   push:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      request_id:
+        description: Correlation id set by release.yml (leave empty for manual runs)
+        required: false
+        type: string
 
-# Single shared group (not per-ref): the stale-'next'-dist-tag cleanup below does a
-# check-then-delete against the registry, so a concurrent stable+prerelease publish
-# must not interleave, or a prerelease run could move 'next' between the recheck and
-# the rm and have a fresh tag deleted out from under it.
 concurrency:
   group: publish
   cancel-in-progress: false
 
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
+
+env:
+  NODE_VERSION: '22'
 
 jobs:
-  publish:
+  admit:
+    name: Admit release
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+      channel: ${{ steps.tag.outputs.channel }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+      ci_run_id: ${{ steps.ci.outputs.ci_run_id }}
+      ci_run_attempt: ${{ steps.ci.outputs.ci_run_attempt }}
+      registry_state: ${{ steps.registry.outputs.registry_state }}
+      publish_tag: ${{ steps.dist.outputs.publish_tag }}
     steps:
-      # workflow_dispatch allows a manual run (e.g. to retry a failed publish),
-      # but --no-git-checks below means it would otherwise publish from ANY ref.
-      # Guard manual runs to version tag refs only (same v*.*.* pattern as the
-      # push trigger — ref_type alone would let any tag through), and do it
-      # first so we fail fast without spending CI time on checkout/install/build.
-      - name: Guard workflow_dispatch to v*.*.* tag refs
-        if: github.event_name == 'workflow_dispatch'
+      - name: Refuse non-tag refs
+        env:
+          REF: ${{ github.ref }}
         run: |
-          if [ "$GITHUB_REF_TYPE" != "tag" ] || ! echo "$GITHUB_REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+'; then
-            echo "::error::workflow_dispatch must be run from a v*.*.* tag ref, not '$GITHUB_REF'"
-            exit 1
-          fi
+          case "$REF" in
+            refs/tags/v*) ;;
+            *) echo "::error::publish.yml only runs on a release tag ref, not '$REF'"; exit 1 ;;
+          esac
 
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
-          cache: pnpm
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Admit tag (exact grammar, name, version)
+        id: tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: node scripts/release/cli.mjs admit-tag --tag "$TAG"
+
+      - name: Admit source (tag commit on origin/main)
+        id: source
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          node scripts/release/cli.mjs admit-source --sha "$(git rev-parse HEAD)" --tag "$TAG"
+
+      - name: Admit CI (successful CI push run for this exact commit)
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.source.outputs.sha }}
+        run: node scripts/release/cli.mjs admit-ci --sha "$SHA" --repo "$REPO"
+
+      - name: Read exact registry state
+        id: registry
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: node scripts/release/cli.mjs registry-state --version "$VERSION"
+
+      - name: Existing publication must come from this commit
+        if: steps.registry.outputs.registry_state == 'published'
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+          SHA: ${{ steps.source.outputs.sha }}
+        run: node scripts/release/cli.mjs verify-published --version "$VERSION" --sha "$SHA"
+
+      - name: Dist-tag regression guard
+        id: dist
+        if: steps.registry.outputs.registry_state == 'absent'
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: node scripts/release/cli.mjs plan-publish-tag --version "$VERSION"
+
+  build:
+    name: Build and verify artifact
+    needs: admit
+    if: needs.admit.outputs.registry_state == 'absent'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      tarball: ${{ steps.pack.outputs.tarball }}
+      sha512: ${{ steps.pack.outputs.sha512 }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ needs.admit.outputs.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4
+
+      # No dependency cache in the release path: avoids restoring a store that
+      # another ref could have written.
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build npm package
-        run: pnpm -w run build
-
-      - name: Run package tests
+      - name: Run package tests (pretest builds dist/)
         run: pnpm -w run test
 
-      # Real-artifact gate, run BEFORE either `pnpm publish` path below: pack
-      # the tree, npm-install the tarball into a scratch project exactly like
-      # a consumer would, and verify the CLI + exports map actually work.
-      # This is the last chance to catch a files[]/bin/exports regression
-      # before it ships to the registry.
-      - name: Check pack (verify published artifact)
+      - name: Check pack (installed CLI + exports)
         run: bash scripts/check-pack.sh
 
-      # Dist-tag policy (derive from the version string; always pass --tag):
-      #   prerelease versions (matching -next./-beta./-rc.) → "next"
-      #   stable versions (clean X.Y.Z)                      → "latest"
-      # `next` is a preview side-channel and is NOT auto-advanced to stable —
-      # publishing to `latest` never touches `next`. A `next` left pointing at
-      # an OLDER prerelease once a stable ships is stale, not intentional; the
-      # "Clean up stale next dist-tag" step below removes it once confirmed
-      # behind the new `latest`.
-      # NPM_TOKEN MUST be an Automation-type token: scoped publish (@takazudo/*)
-      # requires 2FA, and only an Automation (or 2FA-bypassing granular) token can
-      # publish unattended in CI. A standard user token fails with an OTP/EOTP error.
+      - name: Pack release tarball
+        id: pack
+        env:
+          VERSION: ${{ needs.admit.outputs.version }}
+        run: |
+          pnpm run build
+          mkdir -p release-artifact
+          FILE=$(pnpm pack --pack-destination release-artifact --json | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(require("path").basename(JSON.parse(d).filename)))')
+          INNER=$(tar -xOzf "release-artifact/$FILE" package/package.json | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const p=JSON.parse(d);console.log(p.name+"@"+p.version)})')
+          if [ "$INNER" != "@takazudo/zudo-design-token-lint@$VERSION" ]; then
+            echo "::error::tarball contains $INNER, expected @takazudo/zudo-design-token-lint@$VERSION"
+            exit 1
+          fi
+          echo "tarball=$FILE" >> "$GITHUB_OUTPUT"
+          echo "sha512=$(sha512sum "release-artifact/$FILE" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-tarball
+          path: release-artifact/${{ steps.pack.outputs.tarball }}
+          retention-days: 3
+          if-no-files-found: error
+
+  publish:
+    name: Publish (OIDC)
+    needs: [admit, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      outcome: ${{ steps.publish.outputs.publish_outcome }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ needs.admit.outputs.sha }}
+          persist-credentials: false
+          sparse-checkout: scripts/release
+
+      # No registry-url: setup-node then writes no _authToken line and no
+      # NODE_AUTH_TOKEN placeholder, so OIDC is the only credential path.
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install pinned npm (OIDC publish + dist-tag support)
+        run: |
+          NPM_PIN=$(node scripts/release/cli.mjs npm-version)
+          npm install -g "npm@$NPM_PIN"
+          node scripts/release/cli.mjs assert-runtime
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-tarball
+          path: release-artifact
+
+      - name: Verify tarball digest
+        env:
+          FILE: ${{ needs.build.outputs.tarball }}
+          EXPECTED: ${{ needs.build.outputs.sha512 }}
+        run: |
+          ACTUAL=$(sha512sum "release-artifact/$FILE" | cut -d' ' -f1)
+          [ "$ACTUAL" = "$EXPECTED" ] || { echo "::error::tarball digest mismatch"; exit 1; }
+
+      # Re-read immediately before publishing: another run may have published
+      # or moved the channel since admission.
+      - name: Recheck registry state and dist-tag guard
+        env:
+          VERSION: ${{ needs.admit.outputs.version }}
+        run: |
+          node scripts/release/cli.mjs registry-state --version "$VERSION" | tee state.txt
+          grep -qx 'registry_state=absent' state.txt || { echo "::error::$VERSION is no longer absent; re-dispatch publish.yml on the tag to resume"; exit 1; }
+          node scripts/release/cli.mjs plan-publish-tag --version "$VERSION"
+
       - name: Publish package
         id: publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Publishing @takazudo/zudo-design-token-lint@$VERSION"
-          if echo "$VERSION" | grep -Eq -- '-(next|beta|rc)\.'; then
-            echo "Prerelease → dist-tag 'next'"
-            pnpm publish --tag next --access public --no-git-checks --provenance
-          else
-            echo "Stable → dist-tag 'latest'"
-            pnpm publish --tag latest --access public --no-git-checks --provenance
-          fi
+          VERSION: ${{ needs.admit.outputs.version }}
+          DIST_TAG: ${{ needs.admit.outputs.publish_tag }}
+          FILE: ${{ needs.build.outputs.tarball }}
+        run: node scripts/release/cli.mjs publish --version "$VERSION" --tag "$DIST_TAG" --tarball "release-artifact/$FILE"
 
-      # Post-publish cleanup, stable path only: a `next` dist-tag that's still
-      # pointing at an OLDER prerelease than the `latest` we just published is
-      # stale, not the intentional lag described above. Guarded, not a blanket
-      # `|| true` — query first, remove only when `next` exists AND is
-      # semver-older, then re-query to confirm removal. `continue-on-error` is
-      # a backstop only; failures are handled explicitly as `::warning::`
-      # below since the publish itself already succeeded and must not be
-      # failed by cleanup.
-      - name: Clean up stale next dist-tag
-        if: ${{ !contains(steps.publish.outputs.version, '-') }}
-        continue-on-error: true
+      - name: Confirm visible on the registry
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.admit.outputs.version }}
+        run: node scripts/release/cli.mjs await-published --version "$VERSION"
+
+  cleanup:
+    name: Clean up stale next dist-tag
+    needs: [admit, publish]
+    if: >-
+      always() && needs.admit.result == 'success' &&
+      needs.admit.outputs.prerelease == 'false' &&
+      (needs.publish.result == 'success' || needs.admit.outputs.registry_state == 'published')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      outcome: ${{ steps.cleanup.outputs.cleanup_outcome }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ needs.admit.outputs.sha }}
+          persist-credentials: false
+          sparse-checkout: scripts/release
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install pinned npm
         run: |
-          PKG_NAME=$(node -p "require('./package.json').name")
-          STABLE_VERSION="${{ steps.publish.outputs.version }}"
+          npm install -g "npm@$(node scripts/release/cli.mjs npm-version)"
+          node scripts/release/cli.mjs assert-runtime
 
-          if ! DIST_TAGS=$(npm dist-tag ls "$PKG_NAME" 2>&1); then
-            echo "::warning::Could not query dist-tags for $PKG_NAME — skipping stale 'next' cleanup ($DIST_TAGS)"
-            exit 0
-          fi
+      # Always exits 0 with an explicit outcome:
+      # removed | noop-absent | noop-not-stale | noop-unparseable |
+      # skipped-changed | error-query | error-remove | error-unconfirmed.
+      - name: Remove next only if strictly older (recheck before delete)
+        id: cleanup
+        env:
+          VERSION: ${{ needs.admit.outputs.version }}
+        run: node scripts/release/cli.mjs cleanup-next --stable "$VERSION"
 
-          NEXT_VERSION=$(echo "$DIST_TAGS" | sed -n 's/^next: //p')
-          if [ -z "$NEXT_VERSION" ]; then
-            echo "No 'next' dist-tag set — nothing to clean up"
-            exit 0
-          fi
+  finalize:
+    name: Finalize GitHub Release
+    needs: [admit, publish]
+    if: >-
+      always() && needs.admit.result == 'success' &&
+      (needs.publish.result == 'success' || needs.admit.outputs.registry_state == 'published')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      outcome: ${{ steps.finalize.outputs.finalize_outcome }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ needs.admit.outputs.sha }}
+          persist-credentials: false
 
-          IS_OLDER=$(NEXT_VERSION="$NEXT_VERSION" STABLE_VERSION="$STABLE_VERSION" node -e '
-            const a = process.env.NEXT_VERSION;
-            const b = process.env.STABLE_VERSION;
-            function parse(v) {
-              const parts = v.split("-");
-              const core = parts[0];
-              const pre = parts.length > 1 ? parts.slice(1).join("-") : null;
-              const nums = core.split(".").map(Number);
-              return { major: nums[0], minor: nums[1], patch: nums[2], pre: pre ? pre.split(".") : null };
-            }
-            function cmpIdent(x, y) {
-              const nx = /^\d+$/.test(x);
-              const ny = /^\d+$/.test(y);
-              if (nx && ny) return Number(x) - Number(y);
-              if (nx) return -1;
-              if (ny) return 1;
-              return x < y ? -1 : x > y ? 1 : 0;
-            }
-            function cmp(x, y) {
-              if (x.major !== y.major) return x.major - y.major;
-              if (x.minor !== y.minor) return x.minor - y.minor;
-              if (x.patch !== y.patch) return x.patch - y.patch;
-              if (!x.pre && !y.pre) return 0;
-              if (!x.pre) return 1;
-              if (!y.pre) return -1;
-              const len = Math.max(x.pre.length, y.pre.length);
-              for (let i = 0; i < len; i++) {
-                if (x.pre[i] === undefined) return -1;
-                if (y.pre[i] === undefined) return 1;
-                const c = cmpIdent(x.pre[i], y.pre[i]);
-                if (c !== 0) return c;
-              }
-              return 0;
-            }
-            process.stdout.write(String(cmp(parse(a), parse(b)) < 0));
-          ' 2>/dev/null)
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
-          if [ "$IS_OLDER" != "true" ]; then
-            echo "'next' ($NEXT_VERSION) is not older than the published $STABLE_VERSION — leaving it"
-            exit 0
-          fi
+      - name: Create or confirm the GitHub Release
+        id: finalize
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.admit.outputs.tag }}
+          VERSION: ${{ needs.admit.outputs.version }}
+        run: |
+          NOTES="$RUNNER_TEMP/release-notes.md"
+          node scripts/release/cli.mjs release-notes --version "$VERSION" --out "$NOTES"
+          node scripts/release/cli.mjs finalize --tag "$TAG" --version "$VERSION" --notes-file "$NOTES" --repo "$REPO"
 
-          # Re-verify immediately before deleting: a concurrent prerelease publish
-          # could have moved `next` since it was read above, and an unconditional
-          # rm here would delete a fresh tag instead of the stale one we checked.
-          RECHECK_NEXT_VERSION=$(npm dist-tag ls "$PKG_NAME" 2>/dev/null | sed -n 's/^next: //p')
-          if [ "$RECHECK_NEXT_VERSION" != "$NEXT_VERSION" ]; then
-            echo "'next' changed to '$RECHECK_NEXT_VERSION' since it was checked — skipping removal to avoid deleting a fresh tag"
-            exit 0
-          fi
-
-          echo "'next' ($NEXT_VERSION) is older than the published $STABLE_VERSION — removing stale 'next' dist-tag"
-          if ! npm dist-tag rm "$PKG_NAME" next; then
-            echo "::warning::Failed to remove stale 'next' dist-tag ($NEXT_VERSION) after publishing $STABLE_VERSION — remove it manually"
-            exit 0
-          fi
-
-          if ! AFTER_TAGS=$(npm dist-tag ls "$PKG_NAME" 2>&1); then
-            echo "::warning::Could not query dist-tags for $PKG_NAME after removal — unable to confirm ($AFTER_TAGS)"
-            exit 0
-          fi
-
-          AFTER=$(echo "$AFTER_TAGS" | sed -n 's/^next: //p')
-          if [ -n "$AFTER" ]; then
-            echo "::warning::'next' dist-tag still shows '$AFTER' after removal — remove it manually"
+  report:
+    name: Release report
+    needs: [admit, build, publish, cleanup, finalize]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Summarize partial or full success
+        env:
+          TAG: ${{ needs.admit.outputs.tag }}
+          SHA: ${{ needs.admit.outputs.sha }}
+          ADMIT: ${{ needs.admit.result }}
+          CI_RUN: ${{ needs.admit.outputs.ci_run_id }}
+          CI_ATTEMPT: ${{ needs.admit.outputs.ci_run_attempt }}
+          STATE: ${{ needs.admit.outputs.registry_state }}
+          BUILD: ${{ needs.build.result }}
+          PUBLISH: ${{ needs.publish.result }}
+          PUBLISH_OUTCOME: ${{ needs.publish.outputs.outcome }}
+          CLEANUP: ${{ needs.cleanup.result }}
+          CLEANUP_OUTCOME: ${{ needs.cleanup.outputs.outcome }}
+          FINALIZE: ${{ needs.finalize.result }}
+          FINALIZE_OUTCOME: ${{ needs.finalize.outputs.outcome }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          if [ "$PUBLISH" = success ]; then
+            PUB="published now via OIDC (fresh trusted-publishing evidence)"
+          elif [ "$STATE" = published ]; then
+            PUB="skipped: already on npm from this commit (NOT fresh OIDC evidence)"
           else
-            echo "Confirmed stale 'next' dist-tag removed"
+            PUB="$PUBLISH ${PUBLISH_OUTCOME:+($PUBLISH_OUTCOME)}"
           fi
+          {
+            echo "## Release ${TAG:-(not admitted)}"
+            echo ""
+            echo "| Stage | Result |"
+            echo "|---|---|"
+            echo "| Run | $RUN_ID attempt $RUN_ATTEMPT |"
+            echo "| Admission | $ADMIT (commit \`${SHA:-?}\`, CI run ${CI_RUN:-?} attempt ${CI_ATTEMPT:-?}) |"
+            echo "| Registry before | ${STATE:-unknown} |"
+            echo "| Build | $BUILD |"
+            echo "| npm publish | $PUB |"
+            echo "| Stale next cleanup | $CLEANUP ${CLEANUP_OUTCOME:+($CLEANUP_OUTCOME)} |"
+            echo "| GitHub Release | $FINALIZE ${FINALIZE_OUTCOME:+($FINALIZE_OUTCOME)} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$FINALIZE" != success ] && { [ "$PUBLISH" = success ] || [ "$STATE" = published ]; }; then
+            echo "::warning::npm has $TAG but the GitHub Release is not finalized. Resume with: gh workflow run publish.yml --ref $TAG (no republish, no retag)."
+          fi
+          case "$CLEANUP_OUTCOME" in error-*) echo "::warning::stale next cleanup reported $CLEANUP_OUTCOME — see RELEASING.md 'Stale next'";; esac

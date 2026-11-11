@@ -1,0 +1,102 @@
+# Hosted release initiation. This is an alternative to pushing the tag yourself,
+# for sessions (e.g. Codex Cloud) that can dispatch workflows but cannot push
+# tags. Procedure: RELEASING.md.
+#
+# Inputs name the exact version and the exact main commit to release. The
+# commit must already carry the version bump and changelog. Every admission
+# rule from publish.yml runs here first:
+#   - dispatched from main
+#   - exact tag grammar, and package.json at that commit equals the version
+#   - the commit is on origin/main
+#   - a successful CI push run exists for that commit (run id and attempt recorded)
+#   - the version is absent on npm, never `unknown`
+#   - no dist-tag would regress
+#   - the tag, if it already exists, points at the same commit
+#
+# dry_run (the default) stops there: nothing is tagged, published or released.
+# Otherwise the start job creates the tag through the API and explicitly
+# dispatches publish.yml on it. A GITHUB_TOKEN-created tag push does not
+# trigger workflows, so the dispatch is required.
+
+name: Start release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact version already in package.json at `sha` (e.g. 2.2.0 or 2.2.0-next.1)
+        required: true
+        type: string
+      sha:
+        description: Full 40-char commit on main that carries the bump + changelog
+        required: true
+        type: string
+      dry_run:
+        description: Only run admission (no tag, publish, dist-tag or Release changes)
+        required: true
+        type: boolean
+        default: true
+
+concurrency:
+  group: release-start
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  admit:
+    name: Admit (non-mutating)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '22'
+
+      - name: Admission (dry run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref }}
+          SHA: ${{ inputs.sha }}
+          VERSION: ${{ inputs.version }}
+        run: node scripts/release/cli.mjs start --dry-run --sha "$SHA" --version "$VERSION" --repo "$REPO" --ref "$REF"
+
+  start:
+    name: Tag and dispatch publish
+    needs: admit
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '22'
+
+      # Re-runs the full admission (state may have changed since the admit job),
+      # then creates the tag and dispatches publish.yml, recording the exact run id.
+      - name: Tag admitted commit and dispatch publish.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref }}
+          SHA: ${{ inputs.sha }}
+          VERSION: ${{ inputs.version }}
+          REQUEST_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: node scripts/release/cli.mjs start --sha "$SHA" --version "$VERSION" --repo "$REPO" --ref "$REF" --request-id "$REQUEST_ID" --tries 2 --interval-sec 5
