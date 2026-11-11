@@ -194,8 +194,9 @@ gh run watch "$RUN" --exit-status
 
 Use the run for **this SHA**, never "the latest run". If it is empty, wait and retry.
 
-If CI fails, fix it, land the fix (5a/5b), re-record `SHA`, and wait again. `ci.yml` cancels
-superseded runs on `main`, so release the commit whose own run is green.
+If CI fails, fix it, land the fix (5a/5b), re-record `SHA`, and wait again. `ci.yml` never cancels
+push runs on `main`, so every `main` commit gets its own verdict. Admission uses the **newest** CI
+push run for the commit: an older green run does not outvote a newer red one.
 
 `publish.yml` independently refuses any commit without a successful CI push run for its exact
 SHA. It waits up to 30 minutes for one that is in progress.
@@ -254,8 +255,11 @@ Report each of these:
   `next`.
 - Publishing to `latest` never advances `next` to the stable version.
 - After a stable publish, the `cleanup` job removes `next` **only** when `next` is strictly older
-  than the stable version. It rereads `next` immediately before deleting, inside the shared
-  non-cancelling `publish` concurrency group. Its outcome is always reported:
+  than the stable version. It rereads `next` immediately before deleting. The publish and cleanup
+  jobs share the job-level, non-cancelling `npm-registry-mutation` concurrency group, so a
+  concurrent prerelease publish cannot interleave. GitHub keeps at most one _pending_ job per
+  group: if three runs overlap, the middle run's pending job is cancelled. Nothing wrong is
+  mutated, and the run shows `cancelled`; re-dispatch it. The outcome is always reported:
 
   | Outcome                                          | Meaning                                       |
   | ------------------------------------------------ | --------------------------------------------- |
@@ -272,8 +276,9 @@ Report each of these:
 
 ## Recovery
 
-Re-dispatch the tag: `gh workflow run publish.yml --ref v<version>`, or re-run the failed run's jobs.
-This is always safe:
+Start a **fresh** run on the tag: `gh workflow run publish.yml --ref v<version>`. "Re-run all jobs"
+on the old run is equivalent, but do **not** use "Re-run failed jobs": that reuses the old admission
+outputs, so it cannot notice that npm already has the version. A fresh run is always safe:
 
 | Registry state of `<version>`               | What the run does                                                                     |
 | ------------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -292,6 +297,14 @@ This is always safe:
 
 - **Publish failed and a code change is needed:** the tag's version was never published. Cut a
   **new** version. Do not move a pushed tag.
+- **"cannot publish over previously published version" right after another run published:** the
+  registry CDN can briefly answer 404 for a version that has just been published, so admission
+  saw `absent`. This failure is safe, because nothing is overwritten. Re-dispatch, and the new run
+  takes the `published` path.
+- **npm accepted the publish but a later publish-job step failed** (for example the visibility
+  check timed out): the report says "published now via OIDC, but a later publish-job step failed".
+  Cleanup and finalize still run. If they did not, re-dispatch.
+- **Finalizing an older stable** never takes the "Latest" badge from a newer GitHub Release.
 - **`auth-failed`:** trusted publishing is misconfigured. Fix it on npmjs.com (see below) and
   re-dispatch. Do not add a token.
 

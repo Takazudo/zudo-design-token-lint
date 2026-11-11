@@ -26,7 +26,11 @@ function provenance(commit) {
     predicate: {
       buildDefinition: {
         externalParameters: {
-          workflow: { ref: 'refs/tags/v2.2.0', path: '.github/workflows/publish.yml' },
+          workflow: {
+            ref: 'refs/tags/v2.2.0',
+            path: '.github/workflows/publish.yml',
+            repository: 'https://github.com/Takazudo/zudo-design-token-lint',
+          },
         },
         resolvedDependencies: [{ digest: { gitCommit: commit } }],
       },
@@ -261,19 +265,26 @@ describe('existing publication', () => {
 
   it('accepted only when provenance names the same commit', async () => {
     const f = fakeDeps({ routes: route(provenance(SHA)) });
-    expect(await main(['verify-published', '--version', '2.2.0', '--sha', SHA], f.deps)).toBe(0);
+    expect(
+      await main(['verify-published', '--repo', REPO, '--version', '2.2.0', '--sha', SHA], f.deps),
+    ).toBe(0);
   });
 
   it('refuses a publication built from a different commit', async () => {
     const f = fakeDeps({ routes: route(provenance(OTHER)) });
-    expect(await main(['verify-published', '--version', '2.2.0', '--sha', SHA], f.deps)).toBe(1);
+    expect(
+      await main(['verify-published', '--repo', REPO, '--version', '2.2.0', '--sha', SHA], f.deps),
+    ).toBe(1);
     expect(f.lines.join('\n')).toMatch(/conflicting-publication/);
   });
 
   it('refuses when provenance cannot be read (bounded)', async () => {
     const f = fakeDeps({ routes: route(undefined, 404) });
     expect(
-      await main(['verify-published', '--version', '2.2.0', '--sha', SHA, '--tries', '2'], f.deps),
+      await main(
+        ['verify-published', '--repo', REPO, '--version', '2.2.0', '--sha', SHA, '--tries', '2'],
+        f.deps,
+      ),
     ).toBe(1);
     expect(f.lines.join('\n')).toMatch(/provenance-unavailable/);
   });
@@ -665,5 +676,124 @@ describe('runtime assertion', () => {
     const oldNode = fakeDeps({ exec: () => ({ code: 0, stdout: '11.21.1\n', stderr: '' }) });
     oldNode.deps.nodeVersion = '22.13.1';
     expect(await main(['assert-runtime'], oldNode.deps)).toBe(1);
+  });
+});
+
+describe('review fixes', () => {
+  const run = (o) => ({
+    head_sha: SHA,
+    event: 'push',
+    head_branch: 'main',
+    status: 'completed',
+    conclusion: 'success',
+    run_attempt: 1,
+    ...o,
+  });
+
+  it('CI: the newest run for the SHA decides; an older green run cannot outvote a newer red one', () => {
+    expect(selectCiRun([run({ id: 1 }), run({ id: 2, conclusion: 'failure' })], SHA)).toMatchObject(
+      { status: 'refused', runId: 2 },
+    );
+    expect(
+      selectCiRun([run({ id: 1, conclusion: 'cancelled' }), run({ id: 2 })], SHA),
+    ).toMatchObject({ status: 'admitted', runId: 2 });
+    expect(
+      selectCiRun([run({ id: 3, status: 'in_progress', conclusion: null, run_attempt: 2 })], SHA),
+    ).toMatchObject({ status: 'pending', attempt: 2 });
+  });
+
+  it('dist-tags 404 is unknown (never "no tags"), so the regression guard fails closed', async () => {
+    const f = fakeDeps({ routes: { [`-/package/${enc}/dist-tags`]: { status: 404 } } });
+    expect(await main(['plan-publish-tag', '--version', '2.2.0'], f.deps)).toBe(1);
+    expect(f.lines.join('\n')).toMatch(/registry-unknown/);
+    const c = fakeDeps({ routes: { [`-/package/${enc}/dist-tags`]: { status: 404 } } });
+    expect(await main(['cleanup-next', '--stable', '2.2.0'], c.deps)).toBe(0);
+    expect(c.outputs.cleanup_outcome).toBe('error-query');
+  });
+
+  it('provenance from another repository or workflow is a conflict', async () => {
+    const p = provenance(SHA);
+    const stmt = JSON.parse(Buffer.from(p.attestations[0].bundle.dsseEnvelope.payload, 'base64'));
+    stmt.predicate.buildDefinition.externalParameters.workflow.path = '.github/workflows/evil.yml';
+    p.attestations[0].bundle.dsseEnvelope.payload = Buffer.from(JSON.stringify(stmt)).toString(
+      'base64',
+    );
+    const f = fakeDeps({ routes: { [`attestations/${enc}@2.2.0`]: { status: 200, json: p } } });
+    expect(
+      await main(['verify-published', '--repo', REPO, '--version', '2.2.0', '--sha', SHA], f.deps),
+    ).toBe(1);
+    expect(f.outputs.provenance).toBe('conflict');
+  });
+
+  it('plan sorts tags semantically (a stable tag outranks its own -next prerelease)', async () => {
+    const f = fakeDeps({
+      files: { 'package.json': JSON.stringify(pkg('2.2.0')) },
+      exec: (cmd, args) => {
+        if (args[0] === 'tag')
+          return {
+            code: 0,
+            stdout: 'v2.1.0\nv2.2.0-next.1\nv2.2.0\nv2.10.0-rc.1\nvbogus\n',
+            stderr: '',
+          };
+        if (args[0] === 'log') return { code: 0, stdout: '', stderr: '' };
+        return { code: 0, stdout: '', stderr: '' };
+      },
+    });
+    expect(await main(['plan', '--arg', 'patch'], f.deps)).toBe(0);
+    expect(f.calls.find((c) => c[1] === 'log')[2]).toBe('v2.10.0-rc.1..HEAD');
+    const g = fakeDeps({
+      files: { 'package.json': JSON.stringify(pkg('2.2.0')) },
+      exec: (cmd, args) =>
+        args[0] === 'tag'
+          ? { code: 0, stdout: 'v2.2.0-next.1\nv2.2.0\nv2.1.0\n', stderr: '' }
+          : { code: 0, stdout: '', stderr: '' },
+    });
+    expect(await main(['plan'], g.deps)).toBe(0);
+    expect(g.calls.find((c) => c[1] === 'log')[2]).toBe('v2.2.0..HEAD');
+  });
+
+  it('finalize: an older stable never takes "Latest"; the newest stable does', async () => {
+    const notes = 'N\n';
+    const mk = (latestTag) =>
+      fakeDeps({
+        files: { 'n.md': notes },
+        exec: (cmd, args) => {
+          if (args[1] === 'view') return { code: 1, stdout: '', stderr: 'release not found' };
+          if (args[0] === 'api') return { code: 0, stdout: `${latestTag}\n`, stderr: '' };
+          return { code: 0, stdout: '', stderr: '' };
+        },
+      });
+    const args = [
+      'finalize',
+      '--tag',
+      'v2.0.1',
+      '--version',
+      '2.0.1',
+      '--notes-file',
+      'n.md',
+      '--repo',
+      REPO,
+    ];
+    const older = mk('v2.1.0');
+    expect(await main(args, older.deps)).toBe(0);
+    expect(older.calls.find((c) => c[2] === 'create')).toContain('--latest=false');
+    const newest = mk('v2.0.0');
+    expect(await main(args, newest.deps)).toBe(0);
+    expect(newest.calls.find((c) => c[2] === 'create')).toContain('--latest');
+  });
+
+  it('flag values may contain "="', async () => {
+    const f = fakeDeps();
+    expect(
+      await main(
+        [
+          'admit-tag',
+          '--tag=v2.2.0',
+          `--package-json-text=${JSON.stringify({ ...pkg('2.2.0'), x: 'a=b=c' })}`,
+        ],
+        f.deps,
+      ),
+    ).toBe(0);
+    expect(f.outputs.version).toBe('2.2.0');
   });
 });

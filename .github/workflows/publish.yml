@@ -28,9 +28,13 @@
 #   finalize → contents:write only. Idempotent GitHub Release.
 #   report   → partial-success summary.
 #
-# The shared group is non-cancelling because cleanup does a read-recheck-delete
-# against the registry. A concurrent prerelease publish must not move `next`
-# between the recheck and the rm.
+# Registry mutations (publish, cleanup) share the job-level, non-cancelling
+# `npm-registry-mutation` group. Cleanup does a read-recheck-delete, and a
+# concurrent prerelease publish must not move `next` between the recheck and the
+# rm. The lock is job-level so admission's CI wait (up to 30 min) never holds it.
+# GitHub keeps at most ONE pending job per group: a third queued run cancels the
+# second one's pending job. Nothing is mutated wrongly when that happens; the run
+# shows `cancelled`, and recovery is a re-dispatch on the tag.
 
 name: Publish to npm
 run-name: Publish ${{ github.ref_name }}${{ inputs.request_id && format(' [{0}]', inputs.request_id) || '' }}
@@ -45,10 +49,6 @@ on:
         description: Correlation id set by release.yml (leave empty for manual runs)
         required: false
         type: string
-
-concurrency:
-  group: publish
-  cancel-in-progress: false
 
 permissions: {}
 
@@ -72,6 +72,7 @@ jobs:
       ci_run_id: ${{ steps.ci.outputs.ci_run_id }}
       ci_run_attempt: ${{ steps.ci.outputs.ci_run_attempt }}
       registry_state: ${{ steps.registry.outputs.registry_state }}
+      provenance: ${{ steps.existing.outputs.provenance }}
       publish_tag: ${{ steps.dist.outputs.publish_tag }}
     steps:
       - name: Refuse non-tag refs
@@ -106,6 +107,13 @@ jobs:
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           node scripts/release/cli.mjs admit-source --sha "$(git rev-parse HEAD)" --tag "$TAG"
 
+      # Notes come from the immutable tag commit; validate before anything is
+      # published so finalization can never be stuck on missing notes.
+      - name: Release notes exist for this version
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: node scripts/release/cli.mjs release-notes --version "$VERSION" --out "$RUNNER_TEMP/notes.md"
+
       - name: Admit CI (successful CI push run for this exact commit)
         id: ci
         env:
@@ -120,12 +128,14 @@ jobs:
           VERSION: ${{ steps.tag.outputs.version }}
         run: node scripts/release/cli.mjs registry-state --version "$VERSION"
 
-      - name: Existing publication must come from this commit
+      - name: Existing publication must come from this commit and workflow
+        id: existing
         if: steps.registry.outputs.registry_state == 'published'
         env:
           VERSION: ${{ steps.tag.outputs.version }}
           SHA: ${{ steps.source.outputs.sha }}
-        run: node scripts/release/cli.mjs verify-published --version "$VERSION" --sha "$SHA"
+          REPO: ${{ github.repository }}
+        run: node scripts/release/cli.mjs verify-published --version "$VERSION" --sha "$SHA" --repo "$REPO"
 
       - name: Dist-tag regression guard
         id: dist
@@ -173,7 +183,6 @@ jobs:
         env:
           VERSION: ${{ needs.admit.outputs.version }}
         run: |
-          pnpm run build
           mkdir -p release-artifact
           FILE=$(pnpm pack --pack-destination release-artifact --json | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(require("path").basename(JSON.parse(d).filename)))')
           INNER=$(tar -xOzf "release-artifact/$FILE" package/package.json | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const p=JSON.parse(d);console.log(p.name+"@"+p.version)})')
@@ -196,11 +205,15 @@ jobs:
     needs: [admit, build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      group: npm-registry-mutation
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
     outputs:
       outcome: ${{ steps.publish.outputs.publish_outcome }}
+      registry_state_after: ${{ steps.publish.outputs.registry_state_after }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -262,9 +275,16 @@ jobs:
     if: >-
       always() && needs.admit.result == 'success' &&
       needs.admit.outputs.prerelease == 'false' &&
-      (needs.publish.result == 'success' || needs.admit.outputs.registry_state == 'published')
+      (needs.publish.result == 'success' || needs.publish.outputs.outcome == 'published' ||
+       needs.admit.outputs.registry_state == 'published')
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Cleanup must never turn a successful publication into a failed run; any
+    # failure (including setup) is surfaced by the report job instead.
+    continue-on-error: true
+    concurrency:
+      group: npm-registry-mutation
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
@@ -300,7 +320,8 @@ jobs:
     needs: [admit, publish]
     if: >-
       always() && needs.admit.result == 'success' &&
-      (needs.publish.result == 'success' || needs.admit.outputs.registry_state == 'published')
+      (needs.publish.result == 'success' || needs.publish.outputs.outcome == 'published' ||
+       needs.admit.outputs.registry_state == 'published')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -345,6 +366,8 @@ jobs:
           CI_RUN: ${{ needs.admit.outputs.ci_run_id }}
           CI_ATTEMPT: ${{ needs.admit.outputs.ci_run_attempt }}
           STATE: ${{ needs.admit.outputs.registry_state }}
+          PROVENANCE: ${{ needs.admit.outputs.provenance }}
+          STATE_AFTER: ${{ needs.publish.outputs.registry_state_after }}
           BUILD: ${{ needs.build.result }}
           PUBLISH: ${{ needs.publish.result }}
           PUBLISH_OUTCOME: ${{ needs.publish.outputs.outcome }}
@@ -355,12 +378,21 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
-          if [ "$PUBLISH" = success ]; then
-            PUB="published now via OIDC (fresh trusted-publishing evidence)"
-          elif [ "$STATE" = published ]; then
+          NPM_HAS_IT=false
+          if [ "$PUBLISH_OUTCOME" = published ]; then
+            NPM_HAS_IT=true
+            if [ "$PUBLISH" = success ]; then
+              PUB="published now via OIDC (fresh trusted-publishing evidence)"
+            else
+              PUB="published now via OIDC, but a later publish-job step failed ($PUBLISH)"
+            fi
+          elif [ "$STATE" = published ] && [ "$PROVENANCE" = match ] && [ "$ADMIT" = success ]; then
+            NPM_HAS_IT=true
             PUB="skipped: already on npm from this commit (NOT fresh OIDC evidence)"
+          elif [ "$STATE" = published ]; then
+            PUB="refused: on npm but provenance is ${PROVENANCE:-unverified} for this commit"
           else
-            PUB="$PUBLISH ${PUBLISH_OUTCOME:+($PUBLISH_OUTCOME)}"
+            PUB="$PUBLISH ${PUBLISH_OUTCOME:+($PUBLISH_OUTCOME)}${STATE_AFTER:+, registry now: $STATE_AFTER}"
           fi
           {
             echo "## Release ${TAG:-(not admitted)}"
@@ -375,7 +407,13 @@ jobs:
             echo "| Stale next cleanup | $CLEANUP ${CLEANUP_OUTCOME:+($CLEANUP_OUTCOME)} |"
             echo "| GitHub Release | $FINALIZE ${FINALIZE_OUTCOME:+($FINALIZE_OUTCOME)} |"
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$FINALIZE" != success ] && { [ "$PUBLISH" = success ] || [ "$STATE" = published ]; }; then
-            echo "::warning::npm has $TAG but the GitHub Release is not finalized. Resume with: gh workflow run publish.yml --ref $TAG (no republish, no retag)."
+          if [ "$NPM_HAS_IT" = true ] && [ "$FINALIZE" != success ]; then
+            echo "::warning::npm has $TAG but the GitHub Release is not finalized. Resume with a fresh dispatch: gh workflow run publish.yml --ref $TAG (no republish, no retag)."
           fi
-          case "$CLEANUP_OUTCOME" in error-*) echo "::warning::stale next cleanup reported $CLEANUP_OUTCOME — see RELEASING.md 'Stale next'";; esac
+          if [ "$STATE_AFTER" = published ] && [ "$PUBLISH_OUTCOME" != published ]; then
+            echo "::warning::npm publish reported failure but the registry now lists $TAG's version. Re-dispatch publish.yml on $TAG to verify provenance and finalize."
+          fi
+          if [ "$CLEANUP" != skipped ] && { [ "$CLEANUP" != success ] || [ -z "$CLEANUP_OUTCOME" ]; }; then
+            echo "::warning::stale next cleanup job ended '$CLEANUP' without an outcome — check dist-tags (RELEASING.md 'Dist-tag policy')"
+          fi
+          case "$CLEANUP_OUTCOME" in error-*) echo "::warning::stale next cleanup reported $CLEANUP_OUTCOME — see RELEASING.md 'Dist-tag policy'";; esac

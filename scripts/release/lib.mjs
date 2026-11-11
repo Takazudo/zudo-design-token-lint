@@ -132,31 +132,19 @@ export function admitBranchRef(ref) {
   return true;
 }
 
-// Pick CI evidence for exactly `sha` from a list of GitHub workflow runs.
+// Pick CI evidence for exactly `sha`: the NEWEST CI push run for that commit on
+// main decides (re-runs keep their id and bump run_attempt). An older green run
+// never outvotes a newer red one.
 export function selectCiRun(runs, sha) {
   const mine = (runs ?? []).filter(
     (r) => r.head_sha === sha && r.event === 'push' && r.head_branch === RELEASE_BRANCH,
   );
-  const ok = mine.filter((r) => r.status === 'completed' && r.conclusion === 'success');
-  if (ok.length > 0) {
-    const run = ok.reduce((a, b) => (b.id > a.id ? b : a));
-    return {
-      status: 'admitted',
-      runId: run.id,
-      attempt: run.run_attempt,
-      url: run.html_url,
-    };
-  }
-  if (mine.some((r) => r.status !== 'completed')) return { status: 'pending' };
   if (mine.length === 0) return { status: 'missing' };
-  const latest = mine.reduce((a, b) => (b.id > a.id ? b : a));
-  return {
-    status: 'refused',
-    runId: latest.id,
-    attempt: latest.run_attempt,
-    conclusion: latest.conclusion,
-    url: latest.html_url,
-  };
+  const run = mine.reduce((a, b) => (b.id > a.id ? b : a));
+  const info = { runId: run.id, attempt: run.run_attempt, url: run.html_url };
+  if (run.status !== 'completed') return { status: 'pending', ...info };
+  if (run.conclusion === 'success') return { status: 'admitted', ...info };
+  return { status: 'refused', conclusion: run.conclusion, ...info };
 }
 
 // Decide what to publish under, without regressing an existing dist-tag.

@@ -48,7 +48,8 @@ export async function getVersionState(name, version, deps, opts) {
 export async function getDistTags(name, deps, opts) {
   const r = await readJson(`${REGISTRY}/-/package/${encodeName(name)}/dist-tags`, deps, opts);
   if (r.kind === 'ok' && r.json && typeof r.json === 'object') return { state: 'ok', tags: r.json };
-  if (r.kind === 'not-found') return { state: 'ok', tags: {} };
+  // The package exists, so a 404 here is registry/CDN trouble, not "no tags".
+  if (r.kind === 'not-found') return { state: 'unknown', error: 'dist-tags endpoint returned 404' };
   return {
     state: 'unknown',
     error: r.kind === 'error' ? keepErrors(r.errors).join(' | ') : 'bad body',

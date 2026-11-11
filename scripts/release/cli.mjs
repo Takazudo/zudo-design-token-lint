@@ -13,6 +13,7 @@ import {
   assertSha,
   categorizeCommit,
   channelFor,
+  compareVersions,
   computeNextVersion,
   decideNextCleanup,
   extractReleaseNotes,
@@ -68,7 +69,9 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a.startsWith('--')) {
-      const [k, v] = a.slice(2).split('=', 2);
+      const eq = a.indexOf('=');
+      const k = eq < 0 ? a.slice(2) : a.slice(2, eq);
+      const v = eq < 0 ? undefined : a.slice(eq + 1);
       if (v !== undefined) flags[k] = v;
       else if (argv[i + 1] !== undefined && !argv[i + 1].startsWith('--')) flags[k] = argv[++i];
       else flags[k] = 'true';
@@ -110,6 +113,20 @@ function makeCtx(deps) {
       return deps.exec('gh', args, opts);
     },
   };
+}
+
+// Commit a remote tag points at (dereferencing annotated tags), or null if absent.
+function remoteTagTarget(ctx, repo, tag) {
+  const ref = ctx.gh(['api', `repos/${repo}/git/ref/tags/${tag}`]);
+  if (ref.code !== 0) {
+    if (/HTTP 404|Not Found/i.test(ref.stderr)) return null;
+    throw new ReleaseError('gh', `cannot read ref ${tag}: ${ref.stderr.trim()}`);
+  }
+  const obj = JSON.parse(ref.stdout).object;
+  if (obj.type !== 'tag') return obj.sha;
+  const t = ctx.gh(['api', `repos/${repo}/git/tags/${obj.sha}`]);
+  if (t.code !== 0) throw new ReleaseError('gh', `cannot read tag object: ${t.stderr.trim()}`);
+  return JSON.parse(t.stdout).object.sha;
 }
 
 function readPackageJson(ctx, file = 'package.json') {
@@ -218,18 +235,26 @@ const commands = {
       { tries: Number(flags.tries ?? 6), delayMs: 10000 },
     );
     const p = res.value;
+    const repoUrl = `https://github.com/${need(flags, 'repo')}`;
     if (p.state !== 'ok') {
+      ctx.output('provenance', 'unavailable');
       throw new ReleaseError(
         'provenance-unavailable',
         `${version} is published but its provenance is ${p.state}${p.error ? `: ${p.error}` : ''}; cannot confirm it was built from ${sha}`,
       );
     }
-    if (p.commit !== sha) {
+    if (
+      p.commit !== sha ||
+      p.repository !== repoUrl ||
+      p.workflow !== `.github/workflows/${PUBLISH_WORKFLOW}`
+    ) {
+      ctx.output('provenance', 'conflict');
       throw new ReleaseError(
         'conflicting-publication',
-        `${version} on npm was built from ${p.commit} (${p.ref}), not ${sha}; refusing to finalize`,
+        `${version} on npm was built from ${p.commit} by ${p.repository}/${p.workflow} (${p.ref}), not ${sha} by ${repoUrl}/.github/workflows/${PUBLISH_WORKFLOW}; refusing to finalize`,
       );
     }
+    ctx.output('provenance', 'match');
     ctx.output('provenance_commit', p.commit);
     return 0;
   },
@@ -385,6 +410,21 @@ const commands = {
       prerelease: isPrerelease(version),
       notes: ctx.readFile(notesFile),
     };
+    // GitHub marks a new non-prerelease Release "Latest" by default; never let a
+    // recovered older stable take that from a newer one.
+    let latestArgs = ['--latest=false'];
+    if (!expected.prerelease) {
+      const cur = ctx.gh(['api', `repos/${repo}/releases/latest`, '--jq', '.tag_name']);
+      const curTag = cur.code === 0 ? cur.stdout.trim() : null;
+      if (cur.code !== 0 && !/HTTP 404|Not Found/i.test(cur.stderr)) {
+        throw new ReleaseError('gh', `cannot read latest release: ${cur.stderr.trim()}`);
+      }
+      const newer =
+        curTag &&
+        isAllowedVersion(curTag.slice(1)) &&
+        compareVersions(curTag.slice(1), version) > 0;
+      latestArgs = newer ? ['--latest=false'] : ['--latest'];
+    }
     for (let round = 1; round <= 2; round++) {
       const view = ctx.gh([
         'release',
@@ -425,17 +465,10 @@ const commands = {
               tag,
               '--notes-file',
               notesFile,
-              ...(expected.prerelease ? ['--prerelease', '--latest=false'] : []),
+              ...(expected.prerelease ? ['--prerelease'] : []),
+              ...latestArgs,
             ]
-          : [
-              'release',
-              'edit',
-              tag,
-              '--repo',
-              repo,
-              '--draft=false',
-              ...(expected.prerelease ? ['--latest=false'] : []),
-            ];
+          : ['release', 'edit', tag, '--repo', repo, '--draft=false', ...latestArgs];
       const r = ctx.gh(args);
       if (r.code === 0) {
         ctx.output('finalize_outcome', plan.action === 'create' ? 'created' : 'published-draft');
@@ -453,23 +486,13 @@ const commands = {
     const tag = need(flags, 'tag');
     const sha = assertSha(need(flags, 'sha'));
     const repo = need(flags, 'repo');
-    const cur = ctx.gh(['api', `repos/${repo}/git/ref/tags/${tag}`]);
-    if (cur.code === 0) {
-      const obj = JSON.parse(cur.stdout).object;
-      let target = obj.sha;
-      if (obj.type === 'tag') {
-        const t = ctx.gh(['api', `repos/${repo}/git/tags/${obj.sha}`]);
-        if (t.code !== 0)
-          throw new ReleaseError('gh', `cannot read tag object: ${t.stderr.trim()}`);
-        target = JSON.parse(t.stdout).object.sha;
-      }
+    const target = remoteTagTarget(ctx, repo, tag);
+    if (target !== null) {
       if (target !== sha)
         throw new ReleaseError('tag-moved', `${tag} already exists at ${target}, not ${sha}`);
       ctx.output('tag_outcome', 'exists');
       return 0;
     }
-    if (!/HTTP 404|Not Found/i.test(cur.stderr))
-      throw new ReleaseError('gh', `cannot read ref: ${cur.stderr.trim()}`);
     const mk = ctx.gh([
       'api',
       '-X',
@@ -550,22 +573,12 @@ const commands = {
     admitBranchRef(need(flags, 'ref'));
     const tag = `v${version}`;
     const pkgText = ctx.git('show', `${sha}:package.json`);
-    await commands['admit-tag'](ctx, parseArgs(['--tag', tag, '--package-json-text', pkgText]));
-    await commands['admit-source'](ctx, parseArgs(['--sha', sha]));
+    commands['admit-tag'](ctx, { flags: { tag, 'package-json-text': pkgText } });
+    commands['admit-source'](ctx, { flags: { sha } });
     extractReleaseNotes(ctx.git('show', `${sha}:${CHANGELOG_DIR}/v${version}.mdx`));
-    await commands['admit-ci'](
-      ctx,
-      parseArgs([
-        '--sha',
-        sha,
-        '--repo',
-        repo,
-        '--tries',
-        flags.tries ?? '60',
-        '--interval-sec',
-        flags['interval-sec'] ?? '30',
-      ]),
-    );
+    await commands['admit-ci'](ctx, {
+      flags: { sha, repo, tries: flags.tries, 'interval-sec': flags['interval-sec'] },
+    });
     const st = await getVersionState(PACKAGE_NAME, version, ctx);
     if (st.state === 'unknown')
       throw new ReleaseError('registry-unknown', `cannot determine registry state: ${st.error}`);
@@ -575,20 +588,12 @@ const commands = {
         `${version} is already on npm; recover by dispatching publish.yml on ${tag} instead`,
       );
     }
-    await commands['plan-publish-tag'](ctx, parseArgs(['--version', version]));
-    const ref = ctx.gh(['api', `repos/${repo}/git/ref/tags/${tag}`]);
-    let tagState = 'absent';
-    if (ref.code === 0) {
-      const obj = JSON.parse(ref.stdout).object;
-      let target = obj.sha;
-      if (obj.type === 'tag')
-        target = JSON.parse(ctx.gh(['api', `repos/${repo}/git/tags/${obj.sha}`]).stdout).object.sha;
-      if (target !== sha)
-        throw new ReleaseError('tag-moved', `${tag} already exists at ${target}, not ${sha}`);
-      tagState = 'exists-same-sha';
-    } else if (!/HTTP 404|Not Found/i.test(ref.stderr)) {
-      throw new ReleaseError('gh', `cannot read ref ${tag}: ${ref.stderr.trim()}`);
+    await commands['plan-publish-tag'](ctx, { flags: { version } });
+    const target = remoteTagTarget(ctx, repo, tag);
+    if (target !== null && target !== sha) {
+      throw new ReleaseError('tag-moved', `${tag} already exists at ${target}, not ${sha}`);
     }
+    const tagState = target === null ? 'absent' : 'exists-same-sha';
     ctx.output('tag_state', tagState);
     ctx.summary(
       `- release ${tag} at \`${sha}\`: admitted (${dryRun ? 'dry-run, nothing mutated' : 'starting'})`,
@@ -599,11 +604,10 @@ const commands = {
       );
       return 0;
     }
-    await commands['create-tag'](ctx, parseArgs(['--tag', tag, '--sha', sha, '--repo', repo]));
-    return commands['dispatch-publish'](
-      ctx,
-      parseArgs(['--tag', tag, '--repo', repo, '--request-id', need(flags, 'request-id')]),
-    );
+    commands['create-tag'](ctx, { flags: { tag, sha, repo } });
+    return commands['dispatch-publish'](ctx, {
+      flags: { tag, repo, 'request-id': need(flags, 'request-id') },
+    });
   },
 
   // Assert the publish runtime: Node >= 22.14.0 and the pinned npm next to node.
@@ -639,8 +643,12 @@ const commands = {
     const pkg = readPackageJson(ctx);
     const current = pkg.version;
     const arg = flags.arg ?? '';
-    const tags = ctx.git('tag', '-l', 'v*', '--sort=-v:refname').split('\n').filter(Boolean);
-    const allowed = tags.filter((t) => isAllowedVersion(t.slice(1)));
+    // Sort semantically: git's v:refname order puts vX.Y.Z-next.N above vX.Y.Z.
+    const allowed = ctx
+      .git('tag', '-l', 'v*')
+      .split('\n')
+      .filter((t) => t && isAllowedVersion(t.slice(1)))
+      .sort((x, y) => compareVersions(y.slice(1), x.slice(1)));
     const stableTags = allowed.filter((t) => !isPrerelease(t.slice(1)));
     const base = needsStableBase({ current, arg }) ? stableTags[0] : allowed[0];
     const range = base ? `${base}..HEAD` : 'HEAD';
