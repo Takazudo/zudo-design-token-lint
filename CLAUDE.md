@@ -35,7 +35,7 @@ zudo-design-token-lint/
 ├── doc/                          # zfb doc host-app (workspace member)
 │   ├── src/                      # Source
 │   │   ├── content/              # docs/docs-ja + docs-v1.0/docs-v1.0-ja (archived version)
-│   │   ├── components/           # Preact .tsx components (incl. components/content/)
+│   │   ├── components/           # zudo-react .tsx islands (playground.tsx)
 │   │   ├── lib/                  # Browser-safe lint mirror + playground sample data
 │   │   ├── styles/                # global.css (token overrides, brand typography)
 │   │   └── chrome-bindings.tsx   # Host-callables binding for the <Playground> MDX tag
