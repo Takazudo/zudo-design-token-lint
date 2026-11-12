@@ -306,3 +306,38 @@ export function computeNextVersion({ current, arg = '', commits = [], lastStable
     noQualifyingCommits: words.length === 0 && noQualifying,
   };
 }
+
+// ── GitHub API responses (`gh api --include`) ────────────────────────────────
+
+// `gh api --include` prints the status line and headers, a blank line, then the
+// body. Plain `gh api` output (no header block) is accepted as body-only.
+export function parseGhApiResponse(stdout) {
+  const text = String(stdout ?? '');
+  let status = null;
+  const headers = {};
+  let body = text;
+  const m = /^HTTP\/[\d.]+ (\d{3})/.exec(text);
+  if (m) {
+    status = Number(m[1]);
+    const sep = /\r?\n\r?\n/.exec(text);
+    const head = sep ? text.slice(0, sep.index) : text;
+    body = sep ? text.slice(sep.index + sep[0].length) : '';
+    for (const line of head.split(/\r?\n/).slice(1)) {
+      const i = line.indexOf(':');
+      if (i > 0) headers[line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim();
+    }
+  }
+  let json = null;
+  try {
+    json = body.trim() ? JSON.parse(body) : null;
+  } catch {
+    json = null;
+  }
+  return { status, headers, body, json };
+}
+
+// Where a candidate sits relative to the current main head.
+export function candidatePosition({ sha, head, behind }) {
+  if (sha === head) return 'main-head';
+  return `behind-main-by-${behind ?? 'unknown'}`;
+}

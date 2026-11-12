@@ -1,24 +1,36 @@
-# Hosted release initiation. This is an alternative to pushing the tag yourself,
-# for sessions (e.g. Codex Cloud) that can dispatch workflows but cannot push
-# tags. Procedure: RELEASING.md.
+# Hosted release initiation: the default path for agent and Cloud sessions,
+# which dispatch this workflow (gh, GitHub MCP, or the Actions UI) instead of
+# pushing a tag. Procedure: RELEASING.md.
 #
-# Inputs name the exact version and the exact main commit to release. The
-# commit must already carry the version bump and changelog. Every admission
+# Inputs name the exact version and the FIXED candidate commit to release
+# (`node scripts/release/cli.mjs candidate` selects the CI-green main head).
+# The commit must already carry the version bump and changelog. Every admission
 # rule from publish.yml runs here first:
 #   - dispatched from main
 #   - exact tag grammar, and package.json at that commit equals the version
 #   - the commit is on origin/main
 #   - a successful CI push run exists for that commit (run id and attempt recorded)
-#   - the version is absent on npm, never `unknown`
+#   - the registry state is read exactly (absent | published | unknown → refuse)
 #   - no dist-tag would regress
-#   - the tag, if it already exists, points at the same commit
 #
-# dry_run (the default) stops there: nothing is tagged, published or released.
-# Otherwise the start job creates the tag through the API and explicitly
-# dispatches publish.yml on it. A GITHUB_TOKEN-created tag push does not
-# trigger workflows, so the dispatch is required.
+# Mode is decided by the remote tag, and the SHA is never replaced:
+#   new    tag absent        → tag the candidate, dispatch publish.yml. If main
+#                              moved on since selection, a warning names both
+#                              SHAs; the candidate is still the one released.
+#   resume tag at same SHA   → no new tag; dispatch publish.yml (an existing npm
+#                              publication must match by provenance)
+#   refuse tag at other SHA  → a release tag is never moved
+#
+# dry_run (the default) stops after admission: nothing is tagged, published or
+# released. A GITHUB_TOKEN-created tag does not trigger workflows, so the start
+# job dispatches publish.yml explicitly and records its exact run id.
+# On a refused tag creation or dispatch, the job summary lists the HTTP status,
+# message, request id, accepted permissions, candidate SHA, control (workflow)
+# SHA and the .github/workflows files that differ between them. Those are
+# observations for diagnosis, not a stated cause.
 
 name: Start release
+run-name: Start release v${{ inputs.version }}${{ inputs.dry_run && ' (dry run)' || '' }}${{ inputs.request_id && format(' [{0}]', inputs.request_id) || '' }}
 
 on:
   workflow_dispatch:
@@ -28,7 +40,7 @@ on:
         required: true
         type: string
       sha:
-        description: Full 40-char commit on main that carries the bump + changelog
+        description: Full 40-char fixed candidate commit on main that carries the bump + changelog
         required: true
         type: string
       dry_run:
@@ -36,6 +48,10 @@ on:
         required: true
         type: boolean
         default: true
+      request_id:
+        description: Correlation id shown in the run title so the dispatcher can find this exact run
+        required: false
+        type: string
 
 concurrency:
   group: release-start
@@ -70,7 +86,10 @@ jobs:
           REF: ${{ github.ref }}
           SHA: ${{ inputs.sha }}
           VERSION: ${{ inputs.version }}
-        run: node scripts/release/cli.mjs start --dry-run --sha "$SHA" --version "$VERSION" --repo "$REPO" --ref "$REF"
+          CONTROL_SHA: ${{ github.workflow_sha }}
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          node scripts/release/cli.mjs start --dry-run --sha "$SHA" --version "$VERSION" --repo "$REPO" --ref "$REF" --control-sha "$CONTROL_SHA"
 
   start:
     name: Tag and dispatch publish
@@ -94,7 +113,8 @@ jobs:
           package-manager-cache: false
 
       # Re-runs the full admission (state may have changed since the admit job),
-      # then creates the tag and dispatches publish.yml, recording the exact run id.
+      # then tags (new) or keeps the tag (resume) and dispatches publish.yml,
+      # recording the exact run id.
       - name: Tag admitted commit and dispatch publish.yml
         env:
           GH_TOKEN: ${{ github.token }}
@@ -102,5 +122,8 @@ jobs:
           REF: ${{ github.ref }}
           SHA: ${{ inputs.sha }}
           VERSION: ${{ inputs.version }}
+          CONTROL_SHA: ${{ github.workflow_sha }}
           REQUEST_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-        run: node scripts/release/cli.mjs start --sha "$SHA" --version "$VERSION" --repo "$REPO" --ref "$REF" --request-id "$REQUEST_ID" --tries 2 --interval-sec 5
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          node scripts/release/cli.mjs start --sha "$SHA" --version "$VERSION" --repo "$REPO" --ref "$REF" --control-sha "$CONTROL_SHA" --request-id "$REQUEST_ID" --tries 2 --interval-sec 5
