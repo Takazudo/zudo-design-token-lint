@@ -1,98 +1,23 @@
-/* Cascade-layer order for the flow-space fix (zudolab/zudo-doc#2082 / #2109):
- *   zd-preflight  — Tailwind's preflight reset (incl. `* { margin: 0 }`)
- *   zd-flow       — the .zd-content flow-space margin-top rule (below)
- *   (unlayered)   — `tailwindcss/utilities` (mt-* etc.) — highest priority
- * Unlayered always beats any layer, so `mt-*` utilities win over the flow
- * rule; the flow rule (zd-flow) sits above zd-preflight so it still beats the
- * preflight `margin: 0` reset and the .zd-content vertical rhythm is preserved.
- * Preflight is the de-facto lowest-priority origin already, so moving it into
- * the lowest layer is observably inert for every other author rule (which stay
- * unlayered and continue to outrank it). */
-@layer zd-preflight, zd-flow;
-@import "tailwindcss/preflight" layer(zd-preflight);
-@import "tailwindcss/utilities";
+/* zfb's zudo-wind preset owns the reset and generated utility layer. Declare
+   the package layers first so authored flow styles keep their cascade order. */
+@layer zw-reset, zd-flow;
 
-/* designTokenPanel: true (zfb.config.ts) requires this line here — it can't
- * ship unconditionally from @takazudo/zudo-doc/theme.css because it pulls in
- * zdtp's own bytes. Matches create-zudo-doc's designTokenPanel feature
- * postProcess, which inserts this exact line right after the @layer
- * declaration above for every project with the panel enabled. */
-@import "@takazudo/zdtp/styles.css";
-
-/* ========================================
- * @takazudo/zudo-doc package tokens + base rules + safelist
- *
- * theme.css is the package's single source of truth for the default
- * `@theme` token block (colors, spacing, icon sizes, elevation, typography,
- * radius, breakpoints, z-index) plus the project-agnostic base rules
- * (scroll-margin, selection color, focus ring, search / find-in-page
- * highlight, version-switcher visibility) every zudo-doc project needs —
- * see zudolab/zudo-doc#2655. Order below is load-bearing (theme.css's own
- * header comment): theme.css MUST precede safelist/content/page-loading/
- * features (all four consume its @theme tokens) and MUST precede this
- * file's own token-override @theme block further down (last-declaration-
- * wins per custom property).
- *
- * The package ships a build-generated safelist at `dist/safelist.css`
- * (zudolab/zudo-doc#1993). Importing it via the module resolver is
- * reliable across all consumer environments — the same module-resolver
- * code path used for any feature stylesheet injected at the
- * `@slot:global-css:feature-styles` anchor below.
- *
- * Why not @source the package dist/ glob? The old approach
- * (`@source "../../node_modules/@takazudo/zudo-doc/dist/**"`) was
- * unreliable: pnpm stores packages in a content-addressable store and
- * surfaces them to node_modules via symlinks. Tailwind v4's file
- * scanner does not reliably traverse those symlinks, so arbitrary-value
- * candidates (e.g. `w-[var(--zd-sidebar-w)]`, `h-[calc(100vh-3.5rem)]`)
- * were intermittently dropped across rebuilds (zudolab/zudo-doc#1971,
- * #1989). The package-generated `@source inline()` in dist/safelist.css
- * contains the full set, extracted at package build time — no drift, no
- * symlink traversal, auto-syncs on package upgrade (zudolab/zudo-doc#1994).
- * ======================================== */
-
+/* designTokenPanel: true (zfb.config.ts) requires the zdtp import right after
+   theme.css — it can't ship unconditionally from @takazudo/zudo-doc/theme.css
+   because it pulls in zdtp's own bytes. Matches create-zudo-doc's
+   designTokenPanel feature postProcess. */
 @import "@takazudo/zudo-doc/theme.css";
-@import "@takazudo/zudo-doc/safelist.css";
-
-/* Content typography (`.zd-content` rules + admonitions + mermaid layout).
-   Shipped by @takazudo/zudo-doc as the single source of truth — do not inline
-   these rules here (they used to live here and drifted; see
-   zudolab/zudo-doc#2188). The @layer zd-flow order it relies on is declared
-   above (line 11); the safelist import above generates the component utilities
-   its headings/links/etc. depend on. */
+@import "@takazudo/zdtp/styles.css";
 @import "@takazudo/zudo-doc/content.css";
 @import "@takazudo/zudo-doc/page-loading.css";
-/* Non-island feature CSS (code block buttons, syntect light-dark token rule,
-   .zd-html-preview-code, KaTeX, sidebar toggle geometry, view-transition chrome,
-   .ai-chat-md, .zd-enlarge*, .zd-mermaid*, doc-history diff viewer).
-   Shipped by @takazudo/zudo-doc as single source of truth. See zudolab/zudo-doc#2331. */
 @import "@takazudo/zudo-doc/features.css";
-
-/* ========================================
- * Tailwind v4 content sources
- *
- * Without a `.git` directory in the project root Tailwind v4's content
- * scanner falls back to explicit @source directives for class detection.
- * Builds that run outside a git checkout (E2E fixtures, CI containers
- * that copy the source tree without history, etc.) hit this fallback,
- * and zfb's default content roots only cover `pages/`. Components live
- * outside pages/, so these directives ensure the consumer's own code is
- * always scanned for utility classes. The package's utilities are now
- * covered by the @import above — these directives cover consumer code only.
- * ======================================== */
-
-@source "src/components/**/*.{tsx,ts,jsx,js,mdx,md}";
-@source "src/content/**/*.{mdx,md}";
-@source "src/hooks/**/*.{tsx,ts,jsx,js}";
-@source "src/utils/**/*.{tsx,ts,jsx,js}";
-@source "pages/**/*.{tsx,ts,jsx,js}";
 
 /* ========================================
  * Project token overrides
  *
  * Only genuinely project-specific additions on top of the package defaults
  * in @takazudo/zudo-doc/theme.css live below — theme.css now covers the
- * full color/spacing/typography/radius/breakpoint/z-index @theme block, the
+ * full color/spacing/typography/radius/breakpoint/z-index token set, the
  * :root scale tokens, and the base rules (selection, focus ring, search
  * highlight, version-switcher visibility, find-in-page highlight) that used
  * to be hand-carried here verbatim from the pre-4.x site. See the doc
@@ -130,7 +55,7 @@
  * site-name anchor exposes no className hook, so it is targeted here via its
  * stable `data-header-logo` attribute. Normal weight matches the pre-zfb site
  * (the package defaults the logo to font-bold). Unlayered + last in source
- * order, so it overrides Tailwind's `font-bold` utility.
+ * order, so it overrides the generated `font-bold` utility.
  * Same specificity caveat as above: bauhaus scopes its own
  * `html[data-theme-pack="bauhaus"] [data-header-logo]` rule, which currently
  * wins over this bare-attribute selector while bauhaus is active. */
