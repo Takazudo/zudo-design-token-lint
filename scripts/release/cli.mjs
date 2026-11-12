@@ -580,7 +580,12 @@ const commands = {
       return 0;
     }
     // A concurrent or re-sent start may have created it meanwhile: same SHA is fine.
-    const after = remoteTagTarget(ctx, repo, tag);
+    let after = null;
+    try {
+      after = remoteTagTarget(ctx, repo, tag);
+    } catch (err) {
+      ctx.out(`diagnostic tag re-read after the failed create: ${err.message}`);
+    }
     if (after !== null) return existing(after);
     const f = reportApiFailure(ctx, {
       action: `create ${tag} at ${sha}`,
@@ -771,8 +776,8 @@ const commands = {
         );
     }
     const head = ctx.git('rev-parse', `origin/${RELEASE_BRANCH}`);
-    const headPkg = JSON.parse(ctx.git('show', `${head}:package.json`));
-    const version = flags.version ?? headPkg.version;
+    const basePkg = JSON.parse(ctx.git('show', `${flags.sha ?? head}:package.json`));
+    const version = flags.version ?? basePkg.version;
     const tag = `v${version}`;
     const ls = ctx.run('git', [
       'ls-remote',
@@ -824,13 +829,29 @@ const commands = {
         `${version} is already on npm but ${tag} does not exist; not a release candidate`,
       );
     }
+    // Without an explicit --sha the caller wants a release; a published version
+    // is finished (bump first). Resuming finalization needs an explicit --sha.
+    if (st.state === 'published' && !flags.sha) {
+      throw new ReleaseError(
+        'already-released',
+        `${version} is already published from ${tag} at ${sha}. For a new release, bump first (RELEASING.md Step 2). To resume only provenance check + GitHub Release finalization, rerun with --sha ${sha}`,
+      );
+    }
     const ci = ctx.gh([
       'api',
       `repos/${repo}/actions/workflows/${CI_WORKFLOW}/runs?head_sha=${sha}&per_page=100`,
     ]);
     let ciNote;
+    let runs = null;
     if (ci.code === 0) {
-      const sel = selectCiRun(JSON.parse(ci.stdout).workflow_runs, sha);
+      try {
+        runs = JSON.parse(ci.stdout).workflow_runs;
+      } catch {
+        runs = null;
+      }
+    }
+    if (Array.isArray(runs)) {
+      const sel = selectCiRun(runs, sha);
       ctx.output('ci_status', sel.status);
       if (sel.runId) ctx.output('ci_run_id', sel.runId);
       if (sel.status === 'refused') {
@@ -843,7 +864,11 @@ const commands = {
         sel.status === 'admitted' ? `green (run ${sel.runId})` : `${sel.status}: wait for green`;
     } else {
       ctx.output('ci_status', 'unchecked');
-      ciNote = `unchecked here (gh unavailable): read the ${CI_WORKFLOW} push run for ${sha} with GitHub MCP or the Actions UI; release.yml admission enforces it anyway`;
+      const why =
+        ci.code === 0
+          ? 'unreadable response'
+          : (ci.stderr ?? '').trim().split('\n')[0] || `gh exit ${ci.code}`;
+      ciNote = `unchecked here (gh: ${why}): read the ${CI_WORKFLOW} push run for ${sha} with GitHub MCP or the Actions UI; release.yml admission enforces it anyway`;
     }
     const requestId =
       flags['request-id'] ??
@@ -1060,9 +1085,12 @@ const commands = {
     const dirty = ctx.run('git', ['status', '--porcelain']).stdout.trim();
     add('clean working tree', dirty ? 'no' : 'yes', '');
 
+    // gh logged in but write not reported (some token types): gh is still the
+    // first thing to try, and a dry-run dispatch is the non-mutating proof.
     let initiation;
     if (ghDispatch === 'yes') initiation = 'gh';
     else if (mcp === 'yes') initiation = 'github-mcp';
+    else if (ghDispatch === 'unknown') initiation = 'gh-unverified';
     else if (mcp === 'unknown') initiation = 'probe-github-mcp';
     else initiation = 'manual';
     const monitoring = ghRuns
@@ -1074,10 +1102,17 @@ const commands = {
           : 'manual';
     const howTo = {
       gh: `dispatch ${START_WORKFLOW} with gh (RELEASING.md Step 7b)`,
+      'gh-unverified': `try gh: a dry-run dispatch of ${START_WORKFLOW} proves dispatch rights without mutating anything (RELEASING.md Step 7b)`,
       'github-mcp': `dispatch ${START_WORKFLOW} with the GitHub MCP run_workflow tool (RELEASING.md Step 7b)`,
       'probe-github-mcp':
         'probe the GitHub MCP Actions tools, then rerun preflight with --github-mcp yes|no',
       manual: `hand off: the owner runs ${START_WORKFLOW} from the Actions UI with the printed inputs (RELEASING.md Step 7b)`,
+    };
+    const watch = {
+      gh: 'gh run view / gh run watch <exact run id>',
+      'github-mcp': 'GitHub MCP Actions run read tools, by exact run id',
+      'probe-github-mcp': howTo['probe-github-mcp'],
+      manual: 'the owner watches the run in the Actions UI',
     };
     ctx.out(
       rows.map((r) => `${r.state.padEnd(10)} ${r.cap}${r.note ? ` — ${r.note}` : ''}`).join('\n'),
@@ -1086,9 +1121,7 @@ const commands = {
     ctx.output('initiation', initiation);
     ctx.output('monitoring', monitoring);
     ctx.out(`→ release start: ${howTo[initiation]}`);
-    ctx.out(
-      `→ run monitoring: ${monitoring === 'manual' ? 'owner watches the Actions UI' : howTo[monitoring].replace(/^dispatch \S+ with (the )?/, 'read runs with ')}`,
-    );
+    ctx.out(`→ run monitoring: ${watch[monitoring]}`);
     return 0;
   },
 

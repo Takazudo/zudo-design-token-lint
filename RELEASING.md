@@ -76,7 +76,8 @@ a session may reach GitHub through the `gh` CLI, through GitHub MCP tools (agent
 - git read access and branch push (dry-run only);
 - being on `main` with a clean tree.
 
-It prints `initiation=` and `monitoring=` as `gh`, `github-mcp`, `probe-github-mcp` or `manual`. A
+It prints `initiation=` and `monitoring=` as `gh`, `gh-unverified` (logged in, write not reported:
+a dry-run dispatch proves it), `github-mcp`, `probe-github-mcp` or `manual`. A
 successful clone does **not** imply push, tag or dispatch rights.
 
 | Capability                               | Use                                                                 |
@@ -194,7 +195,10 @@ Then fix the candidate: the exact commit that will be released.
 node scripts/release/cli.mjs candidate      # read-only; git + public registry, gh optional
 ```
 
-`candidate` fetches `origin/main` and picks its **head** as the fixed candidate SHA. It checks:
+`candidate` fetches `origin/main` and picks its **head** as the fixed candidate SHA. The one
+exception is a resume: if the head's version is already tagged but not yet on npm, it selects the
+tag's original SHA. If that version is already published, it stops and says so (bump first); to
+resume only provenance and GitHub Release finalization, pass that SHA with `--sha`. It checks:
 
 - `package.json` at that commit has the exact version, and its changelog exists;
 - the remote tag `v<version>`: absent → mode `new`; at the same commit → mode `resume` (the

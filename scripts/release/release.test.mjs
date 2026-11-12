@@ -1146,6 +1146,65 @@ describe('Cloud release path: fixed candidate, resume, diagnostics', () => {
     });
   });
 
+  describe('review fixes (candidate / diagnostics)', () => {
+    const cand = (...extra) => ['candidate', '--fetch', 'false', '--request-id', 'q1', ...extra];
+
+    it('explicit --sha takes its version from that commit, not from a newer head bump', async () => {
+      const w = world({ head: HEAD });
+      const exec = (cmd, args) =>
+        cmd === 'git' && args[0] === 'show' && args[1] === `${HEAD}:package.json`
+          ? { code: 0, stdout: JSON.stringify(pkg('2.3.0')), stderr: '' }
+          : w.exec(cmd, args);
+      const f = fakeDeps({ routes: absent, exec });
+      expect(await main(cand('--sha', SHA), f.deps)).toBe(0);
+      expect(f.outputs).toMatchObject({ version: '2.2.0', candidate_sha: SHA });
+    });
+
+    it('no-arg candidate on a finished release says bump first; --sha resumes finalization', async () => {
+      const f = fakeDeps({ routes: published(SHA), exec: world({ tag: SHA }).exec });
+      expect(await main(cand(), f.deps)).toBe(1);
+      expect(f.lines.join('\n')).toMatch(/already-released.*bump first/);
+
+      const r = fakeDeps({ routes: published(SHA), exec: world({ tag: SHA }).exec });
+      expect(await main(cand('--sha', SHA), r.deps)).toBe(0);
+      expect(r.outputs.start_mode).toBe('resume');
+    });
+
+    it('a failing gh read is reported as unchecked with its reason, never as green', async () => {
+      for (const res of [
+        { code: 1, stdout: '', stderr: 'gh: Server Error (HTTP 502)' },
+        { code: 0, stdout: '<html>proxy</html>', stderr: '' },
+      ]) {
+        const w = world();
+        const exec = (cmd, args) =>
+          cmd === 'gh' && String(args[1]).includes('/ci.yml/runs') ? res : w.exec(cmd, args);
+        const f = fakeDeps({ routes: absent, exec });
+        expect(await main(cand(), f.deps)).toBe(0);
+        expect(f.outputs.ci_status).toBe('unchecked');
+        expect(f.lines.join('\n')).toMatch(
+          /unchecked here \(gh: (HTTP|gh: Server Error|unreadable)/,
+        );
+      }
+    });
+
+    it('403 diagnostics survive a failing tag re-read', async () => {
+      const w = world({ createTag: '403' });
+      let posted = false;
+      const exec = (cmd, args) => {
+        if (args.includes('POST')) posted = true;
+        if (posted && cmd === 'gh' && String(args[1]).includes('/git/ref/tags/')) {
+          return { code: 1, stdout: '', stderr: 'gh: Bad Gateway (HTTP 502)' };
+        }
+        return w.exec(cmd, args);
+      };
+      const f = fakeDeps({ routes: absent, exec });
+      expect(await main(start(), f.deps)).toBe(1);
+      expect(f.outputs.tag_http_status).toBe('403');
+      expect(f.lines.join('\n')).toMatch(/diagnostic tag re-read after the failed create: .*502/);
+      expect(f.lines.join('\n')).toMatch(/tag-create-failed/);
+    });
+  });
+
   describe('preflight (capability-based, read-only)', () => {
     const exec =
       ({ gh = 'none', perms = null } = {}) =>
@@ -1193,6 +1252,17 @@ describe('Cloud release path: fixed candidate, resume, diagnostics', () => {
       expect(await main(['preflight', '--github-mcp', 'no'], f.deps)).toBe(0);
       expect(f.outputs).toMatchObject({ initiation: 'manual', monitoring: 'manual' });
       expect(f.lines.join('\n')).toMatch(/owner runs release\.yml from the Actions UI/);
+    });
+
+    it('gh logged in but write not reported → try gh with a dry run; MCP monitoring uses read tools', async () => {
+      const f = fakeDeps({ exec: exec({ gh: 'auth', perms: null }) });
+      expect(await main(['preflight'], f.deps)).toBe(0);
+      expect(f.outputs.initiation).toBe('gh-unverified');
+      const m = fakeDeps({ exec: exec() });
+      expect(await main(['preflight', '--github-mcp', 'yes'], m.deps)).toBe(0);
+      const text = m.lines.join('\n');
+      expect(text).toMatch(/run monitoring: GitHub MCP Actions run read tools/);
+      expect(text.split('run monitoring')[1]).not.toMatch(/run_workflow/);
     });
 
     it('authenticated gh with write → gh dispatch', async () => {
