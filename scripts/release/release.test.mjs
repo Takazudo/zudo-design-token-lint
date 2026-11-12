@@ -1,3 +1,4 @@
+import { resolve as resolvePath } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   PACKAGE_NAME,
@@ -343,9 +344,29 @@ describe('publish', () => {
     expect(f.outputs.registry_state_after).toBe('absent');
     const npm = f.calls.filter((c) => c[0] === 'npm');
     expect(npm).toEqual([
-      ['npm', 'publish', 'p.tgz', '--tag', 'latest', '--access', 'public', '--provenance'],
+      [
+        'npm',
+        'publish',
+        resolvePath('p.tgz'),
+        '--tag',
+        'latest',
+        '--access',
+        'public',
+        '--provenance',
+      ],
     ]);
     expect(f.lines.join('\n')).toMatch(/no token fallback/);
+  });
+
+  it('passes npm an absolute tarball path (a bare dir/file.tgz is GitHub shorthand to npm)', async () => {
+    const f = fakeDeps({ routes, exec: () => ({ code: 0, stdout: '', stderr: '' }) });
+    await main(
+      ['publish', '--version', '2.2.0', '--tag', 'latest', '--tarball', 'release-artifact/p.tgz'],
+      f.deps,
+    );
+    const spec = f.calls.find((c) => c[0] === 'npm')[2];
+    expect(spec.startsWith('/')).toBe(true);
+    expect(spec.endsWith('/release-artifact/p.tgz')).toBe(true);
   });
 
   it('refuses a dist-tag that does not match the channel', async () => {

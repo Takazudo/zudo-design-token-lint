@@ -3,6 +3,7 @@
 // publish/release workflows. Run `node scripts/release/cli.mjs help`.
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   PACKAGE_NAME,
@@ -279,9 +280,10 @@ const commands = {
     if (tag !== channelFor(version)) {
       throw new ReleaseError('bad-tag', `dist-tag ${tag} does not match channel of ${version}`);
     }
+    // npm reads a bare `dir/file.tgz` spec as GitHub shorthand (`user/repo`), so pass an absolute path.
     const r = ctx.run(
       'npm',
-      ['publish', tarball, '--tag', tag, '--access', 'public', '--provenance'],
+      ['publish', resolvePath(tarball), '--tag', tag, '--access', 'public', '--provenance'],
       { stream: true },
     );
     if (r.code === 0) {

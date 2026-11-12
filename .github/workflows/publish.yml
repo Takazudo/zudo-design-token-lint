@@ -268,7 +268,7 @@ jobs:
           VERSION: ${{ needs.admit.outputs.version }}
           DIST_TAG: ${{ needs.admit.outputs.publish_tag }}
           FILE: ${{ needs.build.outputs.tarball }}
-        run: node scripts/release/cli.mjs publish --version "$VERSION" --tag "$DIST_TAG" --tarball "release-artifact/$FILE"
+        run: node scripts/release/cli.mjs publish --version "$VERSION" --tag "$DIST_TAG" --tarball "./release-artifact/$FILE"
 
       - name: Confirm visible on the registry
         env:
