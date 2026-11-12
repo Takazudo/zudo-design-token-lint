@@ -1,0 +1,20 @@
+---
+title: v2.1.4
+description: "The documentation site moves to zudo-doc 10 and zfb 6. The linter's behaviour and public API are unchanged."
+sidebar_position: 9988
+category: changelog
+---
+
+This release does not change the linter's behaviour or its public API. It updates the documentation site's framework and dependencies.
+
+## Documentation Site
+
+- The doc site now runs on zudo-doc 10.0.3, the zfb 6.0.1 engine family and zdtp 0.9.5. katex moves to 0.19, and Preact, Tailwind and `@types/react` are no longer dependencies (`d213d7c`, `b35c6a5`).
+- The Playground and the doc routes are ported from Preact to the zudo-react runtime. Styling now comes from the zudo-wind utility compiler instead of Tailwind (`e7cb90e`).
+- The doc CI workflows run on Node 24, which zudo-doc now requires. The lint package still supports Node 18 and later, and its CI still tests Node 20, 22 and 24 (`177d81b`).
+- The template drift allowlist is re-baselined on create-zudo-doc 10.0.3 (`b5783c3`).
+
+## Fixes
+
+- In the Playground, a kept result row now updates its reason text when the config changes (`4261541`).
+- In-page links on the configuration and API pages point to the new heading IDs again. Heading IDs now include inline-code text (`7d59ce2`).
