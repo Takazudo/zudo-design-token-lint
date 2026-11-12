@@ -92,6 +92,8 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: ${{ env.NODE_VERSION }}
+          # setup-node v5 auto-caches the packageManager (pnpm) by default; off in the release path.
+          package-manager-cache: false
 
       - name: Admit tag (exact grammar, name, version)
         id: tag
@@ -168,6 +170,8 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: ${{ env.NODE_VERSION }}
+          # setup-node v5 auto-caches the packageManager (pnpm) by default; off in the release path.
+          package-manager-cache: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -226,6 +230,8 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: ${{ env.NODE_VERSION }}
+          # setup-node v5 auto-caches the packageManager (pnpm) by default; off in the release path.
+          package-manager-cache: false
 
       - name: Install pinned npm (OIDC publish + dist-tag support)
         run: |
@@ -300,6 +306,8 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: ${{ env.NODE_VERSION }}
+          # setup-node v5 auto-caches the packageManager (pnpm) by default; off in the release path.
+          package-manager-cache: false
 
       - name: Install pinned npm
         run: |
@@ -337,6 +345,8 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: ${{ env.NODE_VERSION }}
+          # setup-node v5 auto-caches the packageManager (pnpm) by default; off in the release path.
+          package-manager-cache: false
 
       - name: Create or confirm the GitHub Release
         id: finalize

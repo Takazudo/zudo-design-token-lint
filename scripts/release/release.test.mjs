@@ -797,3 +797,19 @@ describe('review fixes', () => {
     expect(f.outputs.version).toBe('2.2.0');
   });
 });
+
+describe('release workflows', () => {
+  // setup-node v5 enables a packageManager cache by default, which fails in jobs without pnpm.
+  it.each(['publish.yml', 'release.yml'])(
+    '%s disables the setup-node package-manager cache',
+    async (name) => {
+      const { readFileSync } = await import('node:fs');
+      const src = readFileSync(new URL(`../../.github/workflows/${name}`, import.meta.url), 'utf8');
+      const steps = src
+        .split(/\n(?= *- (?:uses|name):)/)
+        .filter((s) => /uses: actions\/setup-node@/.test(s));
+      expect(steps.length).toBeGreaterThan(0);
+      for (const step of steps) expect(step).toMatch(/\n\s+package-manager-cache: false\n/);
+    },
+  );
+});
