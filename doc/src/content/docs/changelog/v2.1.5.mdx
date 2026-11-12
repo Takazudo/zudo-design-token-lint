@@ -1,0 +1,15 @@
+---
+title: v2.1.5
+description: "The release tooling gains a Cloud-friendly path. The linter's behaviour and public API are unchanged."
+sidebar_position: 9987
+category: changelog
+---
+
+This release does not change the linter's behaviour or its public API. It improves how releases are started from Cloud and agent sessions.
+
+## Release Tooling
+
+- A new read-only `candidate` command fixes the release commit: the CI-green `main` head, or the existing tag's commit when resuming. If `main` moves on later, the chosen commit is kept and the change is reported (`3cc7730`).
+- The hosted release workflow tells a new release (tag absent) from a resume (tag at the same commit). It refuses a tag at another commit and checks provenance before resuming an already-published version (`3cc7730`).
+- A refused tag creation or publish dispatch now reports the HTTP status, request ID, accepted permissions, candidate and workflow commits, and differing workflow files. These are reported as observations, without guessing a cause (`3cc7730`, `2eb3986`).
+- Release runs carry a request ID in their title so the exact run can be tracked. The capability preflight covers the gh CLI, GitHub MCP tools and the manual Actions UI path (`3cc7730`, `2eb3986`).
