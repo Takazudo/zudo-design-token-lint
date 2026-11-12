@@ -171,5 +171,13 @@ export default defineConfig(
     // Cloudflare adapter — required for the Workers deploy (dist/_worker.js) and
     // any non-prerendered package-owned routes. Bindings come from wrangler.toml.
     adapter: '@takazudo/zfb-adapter-cloudflare',
+    wind: {
+      sources: {
+        // Playground seed data: deliberately token-violating sample markup
+        // (p-4, bg-gray-200, ...) fed to the live linter, never rendered as
+        // classes. Scanning it would fail the build with ZW006.
+        exclude: ['src/lib/playground-samples.ts'],
+      },
+    },
   }),
 );

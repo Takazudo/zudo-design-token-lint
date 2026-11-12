@@ -1,10 +1,6 @@
-/** @jsxRuntime automatic */
-/** @jsxImportSource preact */
-// Locked manifest (#2653 Decision 4): a SELF-CONTAINED doc-route stub —
-// REQUIRED because the injected DYNAMIC `/docs/[[...slug]]` route 404s in
-// `zfb dev` (real pre-existing gap in zfb's dev-mode dynamic-route rendering,
-// distinct from the `/`-injection gap zfb#1227; empirically confirmed on
-// #2653). This stub reconstructs the doc route from scratch using ONLY the
+// Locked manifest (#2653 Decision 4): a SELF-CONTAINED doc-route stub retained
+// for explicit host route ownership. zfb also serves package-injected dynamic
+// routes in dev. This stub reconstructs the doc route from scratch using ONLY the
 // sanctioned package entrypoints — no `pages/lib`, no `@/config`:
 //   1. the `virtual:zudo-doc-route-context` virtual module (serializable
 //      settings/translations/tagVocabulary/colorSchemes payload),
@@ -14,35 +10,33 @@
 // The bindings import is unconditional: the routes plugin supplies an empty
 // object when `chromeBindingsModule` is unset, while configured projects get
 // their MDX/chrome bindings without editing this stub.
-// Makes `/docs/getting-started/` return 200 in BOTH `zfb dev` and `zfb build`
-// (see the "TM negative guard" case in route-injection-build.slow.test.ts for
-// the no-stub 404 proof this fixes).
+// Makes `/docs/getting-started/` return 200 in BOTH `zfb dev` and `zfb build`.
+// The route-injection build test covers the corresponding package-owned route;
+// this kept file remains the explicit host-owned seam.
 //
 // docHistory note: when the docHistory feature is selected, the generator
-// patches this file to statically import DocHistory from
-// "@takazudo/zudo-doc/doc-history" and merge it over chromeBindings in
+// patches this file to statically import DocHistoryBoundary as DocHistory from
+// "@takazudo/zudo-doc/doc-history-area" and merge it over chromeBindings in
 // createChrome's hostBindings (second) argument —
 // DocHistory's chrome-derive default is a no-op stub (unlike
-// DesignTokenPanelBootstrap, which the package auto-defaults), so without
+// DesignTokenPanelBootstrap server boundary, which the package auto-defaults), so without
 // that patch the doc-history button never hydrates on this route.
 
-import type { JSX } from "preact";
+import type { JSX } from "@takazudo/zfb/zudo-react/jsx-runtime";
 import { routeContext } from "virtual:zudo-doc-route-context";
 import {
   createRouteContext,
   type RouteContextPayload,
 } from "@takazudo/zudo-doc/route-context";
 import { createChrome } from "@takazudo/zudo-doc/chrome";
-import { DocHistory } from "@takazudo/zudo-doc/doc-history";
+import { DocHistoryBoundary as DocHistory } from "@takazudo/zudo-doc/doc-history-area";
 import { defineChromeBindings } from "@takazudo/zudo-doc/chrome-bindings";
 // STATIC import, not `virtual:zudo-doc-chrome-bindings` — deliberate divergence
 // from the generated stub. This site's bindings carry the `<Playground>`
 // interactive island; the virtual-module path is SSR-presentational only and
 // leaves the island unreachable to zfb's scanner, so it would render the
-// placeholder and never hydrate. zudo-doc's "Interactive islands
-// (experimental)" recipe prescribes exactly this substitution in every
-// applicable doc-route stub. `chromeBindingsModule` stays set in zfb.config.ts
-// so package-injected routes still receive the same bindings.
+// placeholder and never hydrate. `chromeBindingsModule` stays set in
+// zfb.config.ts so package-injected routes still receive the same bindings.
 import { chromeBindings } from "../../src/chrome-bindings";
 
 const ctx = routeContext as unknown as RouteContextPayload;

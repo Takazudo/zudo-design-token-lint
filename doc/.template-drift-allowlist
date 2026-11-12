@@ -5,56 +5,35 @@
 # Format: one repo-relative path per line (no leading slash).
 # Blank lines and `#` comments are ignored.
 #
-# Re-baselined against create-zudo-doc 5.8.0 (the version pinned in
-# doc/package.json's devDependencies) after the 4.x doc-site rescaffold
-# (issue #150). The drift check (scripts/check-template-drift.sh) only walks
+# Re-baselined against create-zudo-doc 10.0.3 (the version pinned in
+# doc/package.json's devDependencies) after the zudo-doc 6→10 / zfb 4→6 port
+# (issue #197): tsconfig.json now matches the template byte-for-byte (the
+# React→Preact compat paths are gone), so it needs no entry. The drift check
+# (scripts/check-template-drift.sh) only walks
 # node_modules/create-zudo-doc/templates/{base,features}; top-level identity
 # files (zfb.config.ts, wrangler.toml, package.json, setup-preset.json) have
-# no template counterpart there and are never compared, so they need no
-# allowlist entry. The old pre-rescaffold entries (settings.ts/settings-types.ts,
-# pages/lib/, per-feature component shims, etc.) are gone because the files
-# and template feature dirs they referenced no longer exist in the 4.5.0
-# template shape — nothing to allowlist for paths the drift check no longer
-# walks at all.
+# no template counterpart there and are never compared.
 
-# scripts/setup-doc-skill.sh is intentionally customized for this repo's
-# hybrid layout. The template version assumes Claude/Codex resources live
-# inside the doc-app itself (project root == doc/); this repo's `.claude/`
-# lives one level ABOVE `doc/`, at the repo root (root = the npm lint
-# package, doc/ = the doc site). The customized script resolves the project
-# name from the ROOT package.json (not doc/package.json), reads/writes
-# `.claude/skills/` at the repo root (never `doc/.claude`), and does not
-# implement the template's newer --target/tracked-skill-linking machinery
-# (single Claude Code target only; no Codex support needed here).
+# Customized for the hybrid layout: resolves the project name from the ROOT
+# package.json and reads/writes the repo-root `.claude/skills/` (not doc/.claude).
 scripts/setup-doc-skill.sh
 
-# pages/docs/[[...slug]].tsx and pages/[locale]/docs/[[...slug]].tsx replace
-# the generated `virtual:zudo-doc-chrome-bindings` import with a STATIC
-# relative import of src/chrome-bindings, because this site's docs use a
-# custom <Playground> interactive island that the virtual-module (SSR-only)
-# path can't make scanner-reachable. Both files carry an in-file comment
-# explaining the substitution (zudo-doc's "Interactive islands
-# (experimental)" recipe). Everything else is byte-identical to the template.
+# Template stub + the docHistory feature's DocHistoryBoundary patch, but with a
+# STATIC import of src/chrome-bindings instead of the virtual module, so zfb's
+# island scanner reaches the <Playground> island (in-file comment explains).
 pages/docs/[[...slug]].tsx
 pages/[locale]/docs/[[...slug]].tsx
 
-# src/styles/global.css carries project-specific content beyond the
-# generated @slot markers: brand typography overrides (Futura page titles/
-# header logo, currently inert while themePack: "bauhaus" is active — see
-# the in-file comment), extra `@source` content globs for src/components,
-# and the designTokenPanel import. See the file's own header comments for
-# the full rationale; not reproduced here to avoid a second copy drifting
-# from the first.
+# Template CSS entry + the designTokenPanel zdtp import, plus project brand
+# typography overrides (Futura tokens / [data-header-logo]); see in-file comments.
 src/styles/global.css
 
-# The project uses branded generated favicon assets rather than the generic
-# create-zudo-doc files. The SVG template is intentionally absent because the
-# detailed source mark is unreadable at favicon sizes.
+# Branded favicon assets instead of the generic ones; the SVG template is absent
+# because the detailed source mark is unreadable at favicon sizes.
 public/favicon-16x16.png
 public/favicon-32x32.png
 public/favicon.ico
 public/favicon.svg
 
-# This repo's link checker includes stricter versioned-route and allowlist
-# behavior than the generic scaffolded checker.
+# Stricter versioned-route and allowlist behavior than the scaffolded checker.
 scripts/check-links.js

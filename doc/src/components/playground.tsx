@@ -1,17 +1,10 @@
 'use client';
 
-// preact/compat is imported by its real specifier, NOT through the "react"
-// tsconfig alias: zfb 1.1.1's bundler consults the tsconfig `paths` entry
-// (react → ./node_modules/preact/compat/) ahead of its own framework alias and
-// cannot resolve that bare directory target, failing the build with "matched a
-// first-party mapping but no target resolved". Naming the package directly
-// resolves through preact's exports map and keeps this file's original typing
-// surface — plain preact/hooks would retype the JSX against @types/react,
-// where `spellcheck` must be spelled `spellCheck`, which preact then drops from
-// the DOM instead of setting. The "use client" directive marks this as a
-// hydrating island so zfb's scanner registers it in the island manifest (the
-// marker name is pinned in src/chrome-bindings.tsx).
-import { useState, useRef, useEffect } from 'preact/compat';
+// The "use client" directive marks this as a hydrating island so zfb's scanner
+// registers it in the island manifest. Interactive state uses zudo-react's
+// setup-time signals: the component body runs ONCE per scope, so every value
+// that changes is a signal/computed read by the JSX, never a render snapshot.
+import { computed, For, getScope, Show, signal } from '@takazudo/zfb/zudo-react';
 import { compileConfig, lintContent, type LintConfig, type LintResult } from '@/lib/lint-browser';
 import { DEFAULT_CODE, DEFAULT_CONFIG } from '@/lib/playground-samples';
 
@@ -115,118 +108,145 @@ function runLintSync(
   }
 }
 
-// Compute initial lint results at module load (not inside render)
+// Compute initial lint results at module load (not inside setup)
 const INITIAL_LINT = runLintSync(DEFAULT_CODE, DEFAULT_CONFIG);
+
+const LINT_DEBOUNCE_MS = 300;
 
 export default function Playground({ lang = 'en' }: { lang?: PlaygroundLang }) {
   const t = UI_LABELS[lang] ?? UI_LABELS.en;
-  const [code, setCode] = useState(DEFAULT_CODE);
-  const [configStr, setConfigStr] = useState(DEFAULT_CONFIG);
-  const [results, setResults] = useState<LintResult[]>(INITIAL_LINT.results);
-  const [configError, setConfigError] = useState<string | null>(INITIAL_LINT.configError);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isInitialMount = useRef(true);
+  const scope = getScope();
+  const code = signal(DEFAULT_CODE);
+  const configStr = signal(DEFAULT_CONFIG);
+  const results = signal<LintResult[]>(INITIAL_LINT.results);
+  const configError = signal<string | null>(INITIAL_LINT.configError);
+
+  const hasConfigError = computed(() => configError.value !== null);
+  const hasNoResults = computed(() => results.value.length === 0);
+  const keyedResults = computed(() =>
+    results.value.map((r, i) => ({ ...r, key: `${r.line}-${r.className}-${i}` })),
+  );
 
   function applyLint(codeVal: string, configVal: string) {
     const { results: r, configError: err } = runLintSync(codeVal, configVal);
-    setResults(r);
-    setConfigError(err);
+    results.value = r;
+    configError.value = err;
   }
 
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
+  // Debounced re-lint on edit. The first run only subscribes: the initial
+  // results were already computed at module load.
+  let isFirstRun = true;
+  scope.effect(() => {
+    const codeVal = code.value;
+    const configVal = configStr.value;
+    if (isFirstRun) {
+      isFirstRun = false;
       return;
     }
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => applyLint(code, configStr), 300);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [code, configStr]);
+    const timer = setTimeout(() => applyLint(codeVal, configVal), LINT_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  });
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-hsp-lg">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-hsp-lg">
       {/* Left panel: Code + Config */}
-      <div className="flex flex-col gap-vsp-sm">
-        <div className="flex flex-col gap-vsp-2xs">
-          <label htmlFor="pg-code" className="text-caption font-semibold text-muted">
+      <div class="flex flex-col gap-vsp-sm">
+        <div class="flex flex-col gap-vsp-2xs">
+          <label for="pg-code" class="text-caption font-semibold text-muted">
             {t.code}
           </label>
           <textarea
             id="pg-code"
-            value={code}
-            onInput={(e) => setCode((e.target as HTMLTextAreaElement).value)}
-            className={TEXTAREA_CLASS}
+            modelValue={code}
+            class={TEXTAREA_CLASS}
             rows={7}
             spellcheck={false}
           />
         </div>
-        <div className="flex flex-col gap-vsp-2xs">
-          <label htmlFor="pg-config" className="text-caption font-semibold text-muted">
+        <div class="flex flex-col gap-vsp-2xs">
+          <label for="pg-config" class="text-caption font-semibold text-muted">
             {t.configuration}
           </label>
           <textarea
             id="pg-config"
-            value={configStr}
-            onInput={(e) => setConfigStr((e.target as HTMLTextAreaElement).value)}
-            className={TEXTAREA_CLASS}
+            modelValue={configStr}
+            class={TEXTAREA_CLASS}
             rows={14}
             spellcheck={false}
           />
-          {configError && (
-            <p className="text-caption text-danger">
-              {t.configErrorPrefix} {configError}
-            </p>
-          )}
+          <Show when={hasConfigError}>
+            {() => (
+              <p class="text-caption text-danger">
+                {t.configErrorPrefix} {computed(() => configError.value ?? '')}
+              </p>
+            )}
+          </Show>
         </div>
         <button
           type="button"
-          onClick={() => applyLint(code, configStr)}
-          className="self-start rounded-lg border border-accent bg-accent/10 px-hsp-lg py-vsp-2xs text-caption font-semibold text-accent transition-colors hover:bg-accent/20 focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
+          on:click={() => applyLint(code.value, configStr.value)}
+          class="self-start rounded-lg border border-accent bg-accent/10 px-hsp-lg py-vsp-2xs text-caption font-semibold text-accent transition-colors hover:bg-accent/20 focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
         >
           {t.lintButton}
         </button>
       </div>
 
       {/* Right panel: Results */}
-      <div className="flex flex-col gap-vsp-2xs">
-        <span className="text-caption font-semibold text-muted">
+      <div class="flex flex-col gap-vsp-2xs">
+        <span class="text-caption font-semibold text-muted">
           {t.results}
-          {!configError && (
-            <span className="ml-hsp-xs font-normal">{t.violationCount(results.length)}</span>
-          )}
+          <Show when={computed(() => !hasConfigError.value)}>
+            {() => (
+              <span class="ml-hsp-xs font-normal">
+                {computed(() => t.violationCount(results.value.length))}
+              </span>
+            )}
+          </Show>
         </span>
         <div
-          className="min-h-[10rem] rounded-lg border border-muted/30 bg-surface/50 p-hsp-md overflow-y-auto"
+          class="min-h-[10rem] rounded-lg border border-muted/30 bg-surface/50 p-hsp-md overflow-y-auto"
           aria-live="polite"
         >
-          {configError ? (
-            <p className="text-caption text-danger italic">{t.fixConfigError}</p>
-          ) : results.length === 0 ? (
-            <p className="text-caption text-success">{t.noViolations}</p>
-          ) : (
-            <ul className="flex flex-col gap-vsp-xs list-none p-0 m-0">
-              {results.map((r, i) => (
-                <li
-                  key={`${r.line}-${r.className}-${i}`}
-                  className="flex flex-col gap-vsp-2xs border-b border-muted/20 pb-vsp-xs last:border-b-0"
-                >
-                  <div className="flex items-baseline gap-hsp-sm flex-wrap">
-                    <span className="text-caption text-muted whitespace-nowrap">
-                      {t.line(r.line)}
-                    </span>
-                    <code className="rounded bg-code-bg px-hsp-xs py-px font-mono text-caption text-danger font-medium">
-                      {r.className}
-                    </code>
-                  </div>
-                  <p className="text-caption text-muted m-0">{r.reason}</p>
-                </li>
-              ))}
-            </ul>
-          )}
+          <Show
+            when={hasConfigError}
+            fallback={() => (
+              <Show
+                when={hasNoResults}
+                fallback={() => (
+                  <ul class="flex flex-col gap-vsp-xs list-none p-0 m-0">
+                    <For each={keyedResults} by={(r) => r.key}>
+                      {(item) => {
+                        const r = item.value;
+                        return (
+                          <li class="flex flex-col gap-vsp-2xs border-b border-muted/20 pb-vsp-xs last:border-b-0">
+                            <div class="flex items-baseline gap-hsp-sm flex-wrap">
+                              <span class="text-caption text-muted whitespace-nowrap">
+                                {t.line(r.line)}
+                              </span>
+                              <code class="rounded bg-code-bg px-hsp-xs py-px font-mono text-caption text-danger font-medium">
+                                {r.className}
+                              </code>
+                            </div>
+                            <p class="text-caption text-muted m-0">{r.reason}</p>
+                          </li>
+                        );
+                      }}
+                    </For>
+                  </ul>
+                )}
+              >
+                {() => <p class="text-caption text-success">{t.noViolations}</p>}
+              </Show>
+            )}
+          >
+            {() => <p class="text-caption text-danger italic">{t.fixConfigError}</p>}
+          </Show>
         </div>
       </div>
     </div>
   );
 }
+
+// Pin the island marker name so it survives minification; zfb reads
+// displayName for the island identity (must equal the function name).
+Playground.displayName = 'Playground';
