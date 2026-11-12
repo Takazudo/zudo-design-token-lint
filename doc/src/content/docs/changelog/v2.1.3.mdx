@@ -1,0 +1,27 @@
+---
+title: v2.1.3
+description: Token-free npm publishing through OIDC trusted publishing, with a shared, tested release procedure for local and hosted sessions.
+sidebar_position: 9989
+category: changelog
+---
+
+This release does not change the linter's behaviour or its public API. It moves npm publishing to OIDC trusted publishing and replaces the release procedure with a single, tested one. It also contains every change from v2.1.1 and v2.1.2, which were tagged but never published to npm.
+
+## Publishing
+
+- `publish.yml` now publishes through npm OIDC trusted publishing with a pinned npm 11.21.1 and `--provenance`. No npm token or other publishing secret is used (`1d0f631`).
+- The package is built, tested and packed in a job without publishing rights. A separate job publishes that exact tarball after checking its digest (`1d0f631`).
+- Before publishing, the workflow checks four things. The tag must be exact and match `package.json`. The commit must be on `main` and have a successful CI push run for that exact commit. The version must be absent from npm (a registry error stops the run). No dist-tag may move backwards (`1d0f631`, `b51ea58`).
+- After a stable release, a `next` tag that is older than the new version is removed. A failed cleanup is reported and does not fail the publish (`1d0f631`).
+- The GitHub Release is created from the changelog and is safe to create again. The release report lists the outcome of each step (`1ae6c82`, `b51ea58`).
+
+## Release Procedure
+
+- `RELEASING.md` is now the single release procedure. The Claude Code and Codex skills both point to it, and `scripts/release/` holds the tested release CLI (`596a512`, `1ae6c82`).
+- A new `release.yml` workflow runs the same checks and can start a release. It does a dry run by default (`1d0f631`).
+- CI no longer cancels push runs on `main`, so every `main` commit gets its own result (`b51ea58`).
+
+## Fixes
+
+- The release workflows turn off the pnpm cache that `actions/setup-node` v5 enables by default. That cache made the v2.1.1 publish run fail before admission, so v2.1.1 was never published (`d7e1d1c`).
+- The release CLI passes npm an absolute tarball path. npm read the relative `release-artifact/<file>.tgz` path as GitHub shorthand, so the v2.1.2 publish run failed before contacting the registry and v2.1.2 was never published (`599f74f`).
