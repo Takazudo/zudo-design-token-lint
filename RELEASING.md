@@ -62,29 +62,34 @@ If trusted publishing is not configured, the job fails with an explicit `auth-fa
 ```bash
 git clone https://github.com/Takazudo/zudo-design-token-lint.git && cd zudo-design-token-lint
 corepack enable && pnpm install --frozen-lockfile
-node scripts/release/cli.mjs preflight
+node scripts/release/cli.mjs preflight [--github-mcp yes|no]
 ```
 
-Preflight reports `yes` / `no` / `unknown` for each capability:
+Preflight is read-only. It reports `yes` / `no` / `unknown` per capability **and per path**, because
+a session may reach GitHub through the `gh` CLI, through GitHub MCP tools (agent tools such as
+`run_workflow` and Actions run listing), or not at all:
 
-- gh authentication;
-- repository write;
-- reading Actions runs;
-- git push (dry-run only);
+- `gh` installed and authenticated; repo write; reading Actions runs (public reads work without a
+  login);
+- GitHub MCP dispatch + run reading. The CLI cannot see agent tools, so an agent first probes them
+  with a **read-only** call (list `release.yml` runs) and passes the result as `--github-mcp yes|no`;
+- git read access and branch push (dry-run only);
 - being on `main` with a clean tree.
 
-It does not mutate anything. A successful clone does **not** imply push, tag or dispatch rights.
-Pick the integration and initiation paths from what preflight reports:
+It prints `initiation=` and `monitoring=` as `gh`, `github-mcp`, `probe-github-mcp` or `manual`. A
+successful clone does **not** imply push, tag or dispatch rights.
 
-| Capability                               | Use                                               |
-| ---------------------------------------- | ------------------------------------------------- |
-| push to `main` + push tags               | direct commit (Step 5a) + tag push (Step 7a)      |
-| push branches / open PRs, no `main` push | PR integration (Step 5b)                          |
-| Actions write (dispatch), no tag push    | `release.yml` initiation (Step 7b)                |
-| read-only                                | prepare the PR / proposal only; hand off the rest |
+| Capability                               | Use                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------------- |
+| push to `main`                           | direct commit (Step 5a)                                             |
+| push branches / open PRs, no `main` push | PR integration (Step 5b)                                            |
+| `release.yml` dispatch (gh or MCP)       | `release.yml` initiation (Step 7b), the default for agents          |
+| none of the above                        | prepare the PR / proposal; the owner dispatches from the Actions UI |
+| local human with tag push                | Step 7a is also allowed                                             |
 
-Never add a personal access token to make a step work. If a capability is missing, stop at that
-step and report exactly which one.
+Agent and Cloud sessions **never push tags**: `release.yml` creates the tag. Never add a personal
+access token, and never bypass branch or tag protection to make a step work. If a capability is
+missing, stop at that step and report exactly which one, with the manual alternative.
 
 ## Step 1 — Resume detection
 
@@ -104,8 +109,10 @@ git ls-remote --tags origin "refs/tags/v$CUR"
   - release that exact commit, or
   - cut a fresh bump that includes the newer commits.
 - **Published on npm but no GitHub Release** (check with
-  `node scripts/release/cli.mjs registry-state --version "$CUR"` plus `gh release view "v$CUR"`) →
-  this is not a new release. Use [Recovery](#recovery).
+  `node scripts/release/cli.mjs registry-state --version "$CUR"` plus `gh release view "v$CUR"`, or
+  the Releases page) → this is not a new release. Use [Recovery](#recovery).
+- `node scripts/release/cli.mjs candidate` summarizes all of this read-only: it reports `new` or
+  `resume`, the SHA, the registry state and CI.
 
 ## Step 2 — Propose the version (THE GATE, non-mutating)
 
@@ -181,9 +188,27 @@ files, and `doc/zfb.config.ts` if Step 3.3 changed it.
 - **5b. PR (no direct push):** push branch `release/v<version>` (never reuse a branch name) and open a
   PR to `main`. Merge it with a regular merge once its checks are green.
 
-Then record the exact commit that will be released:
-`SHA=$(git rev-parse origin/main)` after `git fetch origin`. Confirm it carries the bump:
-`git show "$SHA:package.json" | grep '"version"'`.
+Then fix the candidate: the exact commit that will be released.
+
+```bash
+node scripts/release/cli.mjs candidate      # read-only; git + public registry, gh optional
+```
+
+`candidate` fetches `origin/main` and picks its **head** as the fixed candidate SHA. It checks:
+
+- `package.json` at that commit has the exact version, and its changelog exists;
+- the remote tag `v<version>`: absent → mode `new`; at the same commit → mode `resume` (the
+  original SHA is kept); at another commit → refused, because a release tag is never moved;
+- the registry state: `unknown` is refused; `published` without a tag is refused;
+- CI for that commit when `gh` can read runs (`ci_status=admitted|pending|missing`; red is refused).
+  Without `gh` it says `unchecked`: read the `ci.yml` push run for the SHA with GitHub MCP or the
+  Actions UI. `release.yml` enforces CI either way.
+
+It prints the `release.yml` inputs as JSON, including a fresh `request_id`. **From here on the SHA is
+fixed.** If `main` moves on later, nothing replaces it silently: `release.yml` warns that the
+candidate is behind `main` and still releases exactly the candidate. To ship the newer commits
+instead, go back to Step 2 for a new version. `--sha <sha>` selects an explicit candidate; it is
+kept as given and warned about if it is not the head.
 
 ## Step 6 — Wait for CI on that exact commit
 
@@ -192,9 +217,11 @@ RUN=$(gh run list --workflow ci.yml --event push --commit "$SHA" --json database
 gh run watch "$RUN" --exit-status
 ```
 
-Use the run for **this SHA**, never "the latest run". If it is empty, wait and retry.
+`SHA` is the `candidate_sha` from Step 5. Without `gh`, list `ci.yml` runs with GitHub MCP (event
+`push`, branch `main`) and pick the one whose `head_sha` equals `SHA`, then read it by its id. Use the
+run for **this SHA**, never "the latest run". If it is empty, wait and retry.
 
-If CI fails, fix it, land the fix (5a/5b), re-record `SHA`, and wait again. `ci.yml` never cancels
+If CI fails, fix it, land the fix (5a/5b), select the candidate again, and wait again. `ci.yml` never cancels
 push runs on `main`, so every `main` commit gets its own verdict. Admission uses the **newest** CI
 push run for the commit: an older green run does not outvote a newer red one.
 
@@ -205,7 +232,7 @@ SHA. It waits up to 30 minutes for one that is in progress.
 
 Choose by capability. Both paths end in the same `publish.yml` admission.
 
-**7a. Tag push:**
+**7a. Tag push (local human only):**
 
 ```bash
 git tag "v<version>" "$SHA" && git push origin "v<version>"
@@ -213,22 +240,51 @@ PUBLISH_RUN=$(gh run list --workflow publish.yml --event push --commit "$SHA" \
   --json databaseId,headBranch -q '[.[] | select(.headBranch=="v<version>")][0].databaseId')
 ```
 
-**7b. Hosted initiation via `release.yml`** (needs only Actions dispatch). Run a dry run first; it
-performs every admission check and mutates nothing:
+**7b. Hosted initiation via `release.yml`** (the default for agents and Cloud). Dispatch on ref
+`main` with the inputs `candidate` printed: `version`, `sha`, `dry_run`, `request_id`. Always a dry
+run first; it performs every admission check and mutates nothing. Then the same inputs with
+`dry_run=false` and a new `request_id`.
 
-```bash
-gh api -X POST repos/Takazudo/zudo-design-token-lint/actions/workflows/release.yml/dispatches \
-  -f ref=main -f 'inputs[version]=<version>' -f "inputs[sha]=$SHA" -f 'inputs[dry_run]=true' \
-  -F return_run_details=true            # prints workflow_run_id — watch exactly that run
-```
+- **gh:**
 
-Then dispatch again with `inputs[dry_run]=false`. The `start` job:
+  ```bash
+  gh api -X POST repos/Takazudo/zudo-design-token-lint/actions/workflows/release.yml/dispatches \
+    -f ref=main -f 'inputs[version]=<version>' -f "inputs[sha]=$SHA" -f 'inputs[dry_run]=true' \
+    -f 'inputs[request_id]=<request_id>' -F return_run_details=true   # prints workflow_run_id
+  ```
 
-1. re-admits;
-2. creates the tag at `$SHA` through the API;
-3. explicitly dispatches `publish.yml` on that tag, because a tag created with `GITHUB_TOKEN`
-   does not trigger workflows;
-4. prints `publish_run_id`.
+- **GitHub MCP:** `run_workflow` with owner `Takazudo`, repo `zudo-design-token-lint`, workflow
+  `release.yml`, ref `main`, inputs `{"version": "<version>", "sha": "<sha>", "dry_run": "true",
+"request_id": "<request_id>"}`.
+- **Manual (no dispatch capability):** the owner opens Actions → "Start release" → "Run workflow"
+  on `main` and enters the same inputs. The session hands off and stops; it does not ask for a
+  token.
+
+**Exact run tracking.** The run title is `Start release v<version> (dry run) [<request_id>]`. Find
+the `release.yml` `workflow_dispatch` run whose title contains `[<request_id>]`. Exactly one must
+match; never use "the latest run". The `start` job dispatches `publish.yml` with request id
+`<release run id>-<attempt>`, prints `publish_run_id`, and the publish run's title carries that id
+in brackets.
+
+What the `start` job does, re-admitting first because state may have changed since the dry run:
+
+| Remote tag `v<version>` | Mode     | Action                                                                                                   |
+| ----------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
+| absent                  | `new`    | creates the tag at the fixed SHA through the API, then dispatches `publish.yml`                          |
+| at the same SHA         | `resume` | keeps it (no new tag) and dispatches `publish.yml`; an existing npm publication must match by provenance |
+| at another SHA          | refused  | `tag-moved`; resume with the tag's SHA or cut a new version                                              |
+
+A tag created with `GITHUB_TOKEN` does not trigger workflows, so the explicit dispatch is required.
+A re-sent start is safe: a tag that appears at the same SHA in the meantime counts as `exists`.
+
+**When tag creation or dispatch is refused** (for example HTTP 403), the job fails before anything
+is published. Its summary lists the HTTP status, message, `documentation_url`, request id,
+`X-Accepted-GitHub-Permissions`, the candidate SHA, the control SHA (`github.workflow_sha`, the
+commit `release.yml` ran from) and the `.github/workflows/` files that differ between the two.
+These are observations, not a diagnosis. In zudo-design-token-panel a 403 on an older candidate
+coincided with workflow-file differences, but that link is a **hypothesis**, not documented GitHub
+behaviour. Do not add a PAT and do not bypass protection: report the fields. If the tag was created
+and only the dispatch failed, resume with the same `version` and `sha`.
 
 ## Step 8 — Watch the publish run and report
 
@@ -238,9 +294,12 @@ gh run view "$PUBLISH_RUN"           # the "Release report" job summary has the 
 npm view @takazudo/zudo-design-token-lint dist-tags --json
 ```
 
+Without `gh`, read the same run by its exact id with GitHub MCP (run, then its jobs) and the
+registry with `node scripts/release/cli.mjs registry-state --version <version>`.
+
 Report each of these:
 
-- the publish run ID and attempt;
+- the `release.yml` run ID (dry run and start), and the publish run ID and attempt;
 - the admitted commit;
 - the CI run ID and attempt it was admitted on;
 - the npm publish outcome. `published now via OIDC` is fresh trusted-publishing evidence;
@@ -276,7 +335,9 @@ Report each of these:
 
 ## Recovery
 
-Start a **fresh** run on the tag: `gh workflow run publish.yml --ref v<version>`. "Re-run all jobs"
+Start a **fresh** run on the tag: `gh workflow run publish.yml --ref v<version>`, GitHub MCP
+`run_workflow` (workflow `publish.yml`, ref `v<version>`), or `release.yml` with the tag's own SHA
+(resume mode). "Re-run all jobs"
 on the old run is equivalent, but do **not** use "Re-run failed jobs": that reuses the old admission
 outputs, so it cannot notice that npm already has the version. A fresh run is always safe:
 
@@ -340,14 +401,21 @@ Once a real OIDC publish has succeeded:
 
 The live cutover is tracked in issue #192.
 
-## Codex Cloud
+## Cloud sessions (Claude Code / Codex)
 
 Environment setup (owner, once):
 
 - repository `Takazudo/zudo-design-token-lint`;
 - install script `corepack enable && pnpm install --frozen-lockfile`;
 - internet access for at least `registry.npmjs.org`, `github.com`, `api.github.com`;
-- GitHub access for the account running the task. Add a GitHub credential only if the owner
-  decides to; the procedure does not require a PAT.
+- GitHub access for the account running the task, through the product's GitHub connection. A `gh`
+  login is optional. Add a GitHub credential only if the owner decides to; the procedure does not
+  require a PAT.
 
-Then run preflight. It decides which of Steps 5 and 7 the Cloud session can perform itself.
+Then run preflight (Step 0). A Cloud session typically has no `gh` login but has GitHub MCP tools:
+it reads runs and dispatches `release.yml` with them (Step 7b), and integrates the release commit
+through a PR (Step 5b). It never pushes a tag. Without dispatch tools it prepares everything up to
+the printed `candidate` inputs and hands the dispatch to the owner.
+
+A mocked or dry-run success is not a publish. Only a `publish.yml` report row "published now via
+OIDC" is evidence that a release went out.
