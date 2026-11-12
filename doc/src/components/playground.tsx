@@ -227,7 +227,9 @@ export default function Playground({ lang = 'en' }: { lang?: PlaygroundLang }) {
                                 {r.className}
                               </code>
                             </div>
-                            <p class="text-caption text-muted m-0">{r.reason}</p>
+                            <p class="text-caption text-muted m-0">
+                              {computed(() => item.value.reason)}
+                            </p>
                           </li>
                         );
                       }}
