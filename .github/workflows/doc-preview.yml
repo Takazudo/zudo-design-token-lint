@@ -156,6 +156,12 @@ jobs:
         working-directory: doc
         run: pnpm check
 
+      # zudo-wind utility audit: fails on error-level diagnostics only
+      # (informational findings, e.g. regex strings in src/lib, never trip it).
+      - name: Run zudo-wind audit
+        working-directory: doc
+        run: pnpm exec zfb wind audit --fail-on error
+
   # ---------------------------------------------------------------------------
   # Job 2: Build the zfb docs site (full clone — needed for SSG meta dates)
   # ---------------------------------------------------------------------------

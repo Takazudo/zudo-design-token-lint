@@ -34,7 +34,7 @@ zudo-design-token-lint/
 ├── .npmrc                        # install-affecting settings (applied workspace-wide by pnpm)
 ├── doc/                          # zfb doc host-app (workspace member)
 │   ├── src/                      # Source
-│   │   ├── content/              # docs/docs-ja + docs-v1.0/docs-v1.0-ja (archived version)
+│   │   ├── content/              # docs/docs-ja + docs-v2.0/docs-v2.0-ja (archived version)
 │   │   ├── components/           # zudo-react .tsx islands (playground.tsx)
 │   │   ├── lib/                  # Browser-safe lint mirror + playground sample data
 │   │   ├── styles/                # global.css (token overrides, brand typography)

@@ -9,17 +9,18 @@ set -euo pipefail
 #   3. Pin parity check (pure-Node, reads package.json only)
 #   4. Wrangler pin check (needs node_modules — reads the zfb platform binary)
 #   5. Type checking (zfb check)
-#   6. Build (zfb build)
-#   7. HTML validation (html-validate dist/**/*.html)
-#   8. Link check (check-links)
+#   6. zudo-wind audit (zfb wind audit --fail-on error)
+#   7. Build (zfb build)
+#   8. HTML validation (html-validate dist/**/*.html)
+#   9. Link check (check-links)
 #
 # Env overrides for non-interactive use:
-#   B4PUSH_SKIP_HTML_VALIDATE=1  — skip HTML validation (step 7)
-#   B4PUSH_SKIP_LINK_CHECK=1     — skip link check (step 8)
+#   B4PUSH_SKIP_HTML_VALIDATE=1  — skip HTML validation (step 8)
+#   B4PUSH_SKIP_LINK_CHECK=1     — skip link check (step 9)
 
 START_TIME=$(date +%s)
 FAILURES=()
-TOTAL_STEPS=8
+TOTAL_STEPS=9
 CURRENT_STEP=0
 
 step() {
@@ -84,7 +85,16 @@ else
   fail "Type checking"
 fi
 
-# ── Step 6: Build ─────────────────────────────────────
+# ── Step 6: zudo-wind audit ───────────────────────────
+# Fails only on error-level diagnostics; informational findings pass.
+step "zudo-wind audit (zfb wind audit --fail-on error)"
+if (cd "$ROOT_DIR" && pnpm exec zfb wind audit --fail-on error); then
+  pass "zudo-wind audit passed"
+else
+  fail "zudo-wind audit"
+fi
+
+# ── Step 7: Build ─────────────────────────────────────
 step "Build (zfb build)"
 if (cd "$ROOT_DIR" && pnpm build); then
   pass "Build passed"
@@ -92,7 +102,7 @@ else
   fail "Build"
 fi
 
-# ── Step 7: HTML validation ───────────────────────────
+# ── Step 8: HTML validation ───────────────────────────
 step "HTML validation (html-validate)"
 if [[ "${B4PUSH_SKIP_HTML_VALIDATE:-}" == "1" ]]; then
   skip "HTML validation (B4PUSH_SKIP_HTML_VALIDATE=1)"
@@ -104,7 +114,7 @@ else
   fi
 fi
 
-# ── Step 8: Link check ───────────────────────────────
+# ── Step 9: Link check ───────────────────────────────
 step "Link check (check:links)"
 if [[ "${B4PUSH_SKIP_LINK_CHECK:-}" == "1" ]]; then
   skip "Link check (B4PUSH_SKIP_LINK_CHECK=1)"
