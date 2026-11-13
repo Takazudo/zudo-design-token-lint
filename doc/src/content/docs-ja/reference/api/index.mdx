@@ -187,6 +187,7 @@ interface ProhibitedEntry {
   pattern: string;
   reason?: string; // full reason override — supports "{CLASS}"
   category?: string; // rule-family tag, surfaced on Violation.category when this rule matches
+  arbitraryValues?: 'skip' | 'check'; // default "skip"; "check" also evaluates z-[70]-style classes
 }
 
 type ProhibitedConfigEntry = string | ProhibitedEntry;
@@ -207,6 +208,8 @@ const compiled = compileConfig({
 checkClassWithConfig('w-4', compiled);
 // { className: 'w-4', reason: 'Numeric width "w-4" — use a semantic sizing token or arbitrary value', category: 'sizing' }
 ```
+
+`arbitraryValues: "check"` を指定すると、`z-[70]` のような任意値クラスがそのルールの対象になります(デフォルトの `"skip"` はこれまでどおりすべての `[...]` クラスを通します)。組み込みの `z-index` プリセットはこれを設定しています。これらの一致でも `Violation` の形状は変わらず、`className` は元のクラスです。正確な判定規則は [`arbitraryValues`](../../guide/configuration/index.mdx#フィールド-prohibited-arbitraryvalues) を参照してください。
 
 ### `setConfig(compiled)` / `getConfig()`
 
@@ -233,6 +236,7 @@ interface CompilePatternOptions {
   suggestionSuffix?: string; // tweaks the shape-inferred default reason (spacing/color patterns only)
   reason?: string; // full reason override — supports "{CLASS}"; wins over suggestionSuffix
   category?: string; // rule-family tag carried onto CompiledRule.category and, on a match, Violation.category
+  arbitraryValues?: 'skip' | 'check'; // "check" sets CompiledRule.arbitraryValues
 }
 
 const rule = compilePattern('w-{n}', {
@@ -479,6 +483,7 @@ interface ProhibitedEntry {
   pattern: string;
   reason?: string;
   category?: string;
+  arbitraryValues?: 'skip' | 'check';
 }
 
 type ProhibitedConfigEntry = string | ProhibitedEntry;
@@ -491,6 +496,7 @@ interface CompilePatternOptions {
   suggestionSuffix?: string;
   reason?: string;
   category?: string;
+  arbitraryValues?: 'skip' | 'check';
 }
 ```
 
@@ -502,7 +508,7 @@ const CONFIG_PRESETS: Record<string, ConfigPreset>;
 // { default: { prohibited: [...], allowed: [...] }, "z-index": { prohibited: [...], allowed: ["z-0"] } }
 ```
 
-`CONFIG_PRESETS` は `extends` が参照するレジストリです。組み込みの `"z-index"` プリセット(オプトインで、`DEFAULT_CONFIG` には含まれません)は `z-{n}` クラスを z-index 固有の理由でフラグします — デフォルトの上に重ねるには `extends: ["default", "z-index"]` を使用してください。
+`CONFIG_PRESETS` は `extends` が参照するレジストリです。組み込みの `"z-index"` プリセット(オプトインで、`DEFAULT_CONFIG` には含まれません)は `z-{n}` クラスを(`arbitraryValues: "check"` により `z-[70]` のような任意値の書き方も含めて)z-index 固有の理由でフラグします — デフォルトの上に重ねるには `extends: ["default", "z-index"]` を使用してください。
 
 ### `ExtractorOptions`
 

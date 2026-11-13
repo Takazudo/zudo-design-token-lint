@@ -36,7 +36,7 @@ Create a `.design-token-lint.json` or `design-token-lint.config.json` file at yo
 
 | Field | Type | Description |
 |---|---|---|
-| `prohibited` | `(string \| ProhibitedEntry)[]` | Patterns to flag as violations — a plain string, or a structured `{pattern, reason?, category?}` object |
+| `prohibited` | `(string \| ProhibitedEntry)[]` | Patterns to flag as violations — a plain string, or a structured `{pattern, reason?, category?, arbitraryValues?}` object |
 | `allowed` | `string[]` | Exceptions that always pass, even if they match a prohibited pattern |
 | `ignore` | `string[]` | File glob patterns to skip entirely |
 | `patterns` | `string[]` | File glob patterns to scan (used when no CLI args are given) |
@@ -88,8 +88,40 @@ Instead of a plain string, an entry can be an object to override the default vio
 - **`pattern`** (required) — same placeholder syntax as a plain string entry.
 - **`reason`** (optional) — full replacement for the violation message. Supports the `{CLASS}` placeholder (replaced with the actual class name). When omitted, the pattern-shape-inferred default message is used, same as a plain string entry.
 - **`category`** (optional) — a free-form tag (e.g. `"sizing"`, `"z-index"`) copied onto the resulting `Violation.category` when this rule matches, so tooling can group or filter violations by rule family. Plain string entries never produce a `category`.
+- **`arbitraryValues`** (optional) — `"skip"` (default) or `"check"`. Decides whether arbitrary-value classes such as `z-[70]` are in scope for this rule; see [`arbitraryValues`](#fields-prohibited-arbitraryvalues) below. Any other value is a config error.
 
-A plain string entry is always equivalent to `{ pattern: theString }` with no `reason`/`category` override — mixing string and object entries in the same `prohibited` array is fine.
+A plain string entry is always equivalent to `{ pattern: theString }` with no `reason`/`category`/`arbitraryValues` override — mixing string and object entries in the same `prohibited` array is fine.
+
+#### `arbitraryValues`
+
+By default every class containing `[` passes, because for spacing, sizing and color the bracket form (`p-[12px]`, `w-[28px]`, `bg-[#123]`) is the deliberate escape hatch from the token scale. For some rules the bracket form is instead the most likely spelling of the violation: once `z-70` turns out not to exist, an author writes `z-[70]`. Setting `"arbitraryValues": "check"` on a structured entry brings those classes into that rule's scope:
+
+```json
+{
+  "prohibited": [
+    {
+      "pattern": "z-{n}",
+      "reason": "Numeric z-index \"{CLASS}\" — use a semantic z tier token",
+      "category": "z-index",
+      "arbitraryValues": "check"
+    }
+  ],
+  "allowed": ["z-0"]
+}
+```
+
+For a `"check"` rule, the class is normalized as usual (variant prefix, `!` important modifier, leading `-`, and a trailing `/N` opacity modifier outside the brackets) and, when it has the shape `<prefix>-[<body>]`, the bracket body is treated as the value. Underscores in the body stand for spaces.
+
+| Class | Result | Why |
+| --- | --- | --- |
+| `z-[70]`, `-z-[1]`, `z-[-1]`, `hover:z-[60]`, `!z-[70]`, `z-[70]!` | **FLAG** | the body (after an optional sign) matches the rule's own value pattern |
+| `z-[calc(70+1)]`, `z-[calc(70_+_1)]`, `z-[calc(10/2)]` | **FLAG** | `calc()` with no `var()` is raw arithmetic (`{n}` rules only) |
+| `z-[var(--z-index-content)]`, `z-[calc(var(--z-index-dialog-panel)+1)]` | pass | a `var()` reference is the token-based answer |
+| `z-[0]` | pass | follows the `0` bypass, like `z-0` |
+| `z-[5]` | pass when `z-[5]` or `z-5` is in `allowed` | the bracket form follows `allowed` |
+| `z-[auto]`, `z-[inherit]`, `p-[12px]` | pass | keywords and unit values are not numeric |
+
+The `var()`/`calc()` classification is shared with the [`css.zIndex`](#fields-css-zindex) declaration rule, so `z-[calc(70+1)]` in a class and `z-index: calc(70 + 1)` in a stylesheet get the same verdict. Rules without the flag — plain string entries, and structured entries with `"skip"` or no `arbitraryValues` — keep passing every `[...]` class exactly as before. The built-in [`z-index` preset](#fields-extends) sets `"check"`.
 
 ### `allowed`
 
@@ -115,7 +147,7 @@ Inherit `prohibited`/`allowed` patterns from one or more built-in presets instea
 Currently there are two registered presets:
 
 - **`default`** — the built-in `prohibited`/`allowed` lists described in [Built-in Defaults](#built-in-defaults) below.
-- **`z-index`** — opt-in numeric z-index ban: flags `z-{n}` (e.g. `z-10`, `z-50`) with a z-index-specific message, allows `z-0`. NOT part of `default` — list it explicitly to enable it:
+- **`z-index`** — opt-in numeric z-index ban: flags `z-{n}` (e.g. `z-10`, `z-50`) and its arbitrary-value spellings (`z-[70]`, `z-[calc(70+1)]`, via [`arbitraryValues: "check"`](#fields-prohibited-arbitraryvalues)) with a z-index-specific message, allows `z-0` (and so `z-[0]`). Token-based bodies such as `z-[var(--z-modal)]` pass. NOT part of `default` — list it explicitly to enable it:
 
   ```json
   {
@@ -149,7 +181,7 @@ This keeps every default rule and adds a `z-{n}` spacing-style rule plus a `z-0`
 
 <Note>
 
-This particular `z-{n}`/`z-0` combination now ships as the built-in [`z-index` preset](#fields-extends) — `"extends": ["default", "z-index"]` does the same thing with a z-index-specific violation message. `prohibitedAdd`/`allowedAdd` remain the right tool for project-specific rules that aren't covered by a registered preset.
+This particular `z-{n}`/`z-0` combination now ships as the built-in [`z-index` preset](#fields-extends) — `"extends": ["default", "z-index"]` does the same thing with a z-index-specific violation message, and additionally catches arbitrary-value spellings like `z-[70]`. `prohibitedAdd`/`allowedAdd` remain the right tool for project-specific rules that aren't covered by a registered preset.
 
 </Note>
 
@@ -549,7 +581,7 @@ These classes always pass without being in `allowed`:
 
 - **Semantic spacing tokens**: `p-hgap-sm`, `gap-vgap-xs`, `m-hgap-md` (classes with a non-numeric `hgap-*`/`vgap-*`/`hsp-*`/`vsp-*` tail — see [`semanticPrefixes`](#fields-semanticprefixes); a numeric tail like `p-hgap-2` is flagged, not allowed)
 - **Non-default colors**: `bg-surface`, `text-fg`, `bg-zd-black` (any color name that isn't one of the standard Tailwind palette names)
-- **Arbitrary values**: `w-[28px]`, `bg-[#123]`, `p-[10px]`
+- **Arbitrary values**: `w-[28px]`, `bg-[#123]`, `p-[10px]` — unless the matching rule opts in with [`arbitraryValues: "check"`](#fields-prohibited-arbitraryvalues), as the `z-index` preset does
 - **Non-spacing and non-color utilities**: `flex`, `grid`, `hidden`, `w-full`, `font-bold`, etc.
 - **Zero, for *any* numeric spacing/sizing rule**: `p-0`, `mt-0`, `px-0`, `inset-0`, `w-0`, `gap-0`, `top-0`, etc. all pass — not just the handful of `0`-suffixed classes that happen to be listed in `allowed`. The linter has a dedicated runtime check ("does this rule's numeric value equal `0`?") that fires for every `{n}`-shaped spacing/sizing pattern, regardless of what `allowed` contains.
 - **Non-numeric spacing-shaped values**: `p-1px`, `mt-1px`, `inset-1px`, etc. also pass — but for a different, simpler reason than the zero case above. The `{n}` placeholder only matches purely numeric values (`^\d+(\.\d+)?$`); a value containing letters like `1px` never satisfies that pattern in the first place, so it was never going to be flagged. `p-1px` in the default `allowed` list is therefore inert — it would pass with or without that entry.
