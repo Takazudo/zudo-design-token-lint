@@ -1,0 +1,19 @@
+---
+title: v2.2.0
+description: "The built-in z-index preset now flags arbitrary bracket classes such as z-[70], through a new opt-in arbitraryValues check."
+sidebar_position: 9986
+category: changelog
+---
+
+This release adds an opt-in check for Tailwind arbitrary-value classes. The built-in z-index preset turns it on, so projects that use the preset may see new findings for bracket classes such as `z-[70]`.
+
+## Linter
+
+- A structured `prohibited` entry can set `arbitraryValues: "check"`. Bracket classes such as `z-[70]`, `-z-[1]` and `hover:z-[60]` are then evaluated instead of skipped. Bodies that reference a token through `var()` or `calc(var())` pass, and a token-less `calc()` is flagged (`aa54545`).
+- The built-in z-index preset opts in to this check. Raw bracket z-index classes are now reported, consistent with the existing `css.zIndex` check (`aa54545`).
+- The documentation playground mirrors the new check (`aa54545`).
+
+## Documentation
+
+- The configuration guide and API reference describe `arbitraryValues` and the z-index bracket check (`eeee850`).
+- The doc site moves to zudo-doc 11.0.0 and zdtp 0.9.7 (`8092473`, `e83ff98`).
