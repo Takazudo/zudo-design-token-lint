@@ -72,7 +72,7 @@ function normalizeZIndexValue(value: string): string {
  * token-less `calc(...)` expression. `var(...)`, `calc(var(...) ...)`, and
  * keyword values all pass.
  */
-function isRawZIndex(value: string): boolean {
+export function isRawZIndex(value: string): boolean {
   const stripped = normalizeZIndexValue(value);
   const lower = stripped.toLowerCase();
   if (Z_INDEX_KEYWORDS.has(lower)) return false;

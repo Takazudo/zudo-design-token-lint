@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { compileConfig as rootCompileConfig, type LintConfig } from './config.js';
+import { compileConfig as rootCompileConfig, CONFIG_PRESETS, type LintConfig } from './config.js';
 import { checkClassWithConfig as rootCheckClassWithConfig } from './rules.js';
 import { checkDeclaration as rootCheckDeclaration, type CompiledCssConfig } from './css-rules.js';
 import semanticPrefixesMatrix from './__fixtures__/semantic-prefixes-matrix.json';
@@ -153,6 +153,114 @@ describe('root/mirror parity — CSS zIndex config (issue #178)', () => {
         { property: 'z-index', value: '0', line: 1 },
         rootConfig.css as CompiledCssConfig,
       ),
+    );
+  });
+});
+
+type ArbitraryCase = {
+  prohibited: LintConfig['prohibited'];
+  allowed: string[];
+  className: string;
+  expect: 'pass' | 'flag';
+};
+
+// The playground mirror has no `extends`, so the z-index preset is inlined
+// from CONFIG_PRESETS — a change to the preset entry flows into both sides.
+const zIndexPreset = CONFIG_PRESETS['z-index'];
+const zIndexCase = (
+  className: string,
+  expected: 'pass' | 'flag',
+  allowed = zIndexPreset.allowed ?? [],
+): ArbitraryCase => ({
+  prohibited: zIndexPreset.prohibited,
+  allowed,
+  className,
+  expect: expected,
+});
+
+const ARBITRARY_VALUE_CASES: ArbitraryCase[] = [
+  ...[
+    'z-[70]',
+    'z-[1]',
+    'z-[9999]',
+    '-z-[1]',
+    'z-[-1]',
+    'hover:z-[60]',
+    'md:hover:z-[5]',
+    'data-[state=open]:z-[70]',
+    '!z-[70]',
+    'z-[70]!',
+    'z-[calc(70+1)]',
+    'z-[calc(70_+_1)]',
+    'z-[calc(10/2)]',
+    'z-10',
+  ].map((c) => zIndexCase(c, 'flag')),
+  ...[
+    'z-[0]',
+    'z-[var(--z-index-content)]',
+    'z-[calc(var(--z-index-dialog-panel)+1)]',
+    'z-[calc(var(--z)/2)]',
+    'z-[auto]',
+    'z-[inherit]',
+    'z-(--z-modal)',
+    'z-0',
+  ].map((c) => zIndexCase(c, 'pass')),
+  zIndexCase('z-[5]', 'pass', ['z-0', 'z-[5]']),
+  ...['z-[70]', 'p-[12px]', 'w-[28px]', 'bg-[#123]'].map(
+    (className): ArbitraryCase => ({
+      prohibited: ['z-{n}', 'p-{n}'],
+      allowed: [],
+      className,
+      expect: 'pass',
+    }),
+  ),
+  {
+    prohibited: [{ pattern: 'p-{n}', arbitraryValues: 'check' }],
+    allowed: [],
+    className: 'p-[4]',
+    expect: 'flag',
+  },
+  ...['p-[12px]', 'p-[var(--gap)]'].map(
+    (className): ArbitraryCase => ({
+      prohibited: [{ pattern: 'p-{n}', arbitraryValues: 'check' }],
+      allowed: [],
+      className,
+      expect: 'pass',
+    }),
+  ),
+];
+
+describe('root/mirror parity — arbitraryValues "check" (issue #187)', () => {
+  it.each(ARBITRARY_VALUE_CASES)(
+    '$expect: $className — root and mirror agree',
+    ({ prohibited, allowed, className, expect: expected }) => {
+      const rootResult = rootCheckClassWithConfig(
+        className,
+        rootCompileConfig({ prohibited, allowed, ignore: [] }),
+      );
+      const mirrorResult = mirror.checkClassWithConfig(
+        className,
+        mirror.compileConfig({ prohibited, allowed, ignore: [] }),
+      );
+      if (expected === 'pass') {
+        expect(rootResult).toBeNull();
+        expect(mirrorResult).toBeNull();
+      } else {
+        expect(rootResult).not.toBeNull();
+        expect(mirrorResult).toEqual(rootResult);
+      }
+    },
+  );
+
+  it('mirror rejects an unknown arbitraryValues mode like the root', () => {
+    const prohibited = [
+      { pattern: 'z-{n}', arbitraryValues: 'yes' },
+    ] as unknown as LintConfig['prohibited'];
+    expect(() => rootCompileConfig({ prohibited, allowed: [], ignore: [] })).toThrow(
+      /"arbitraryValues" must be "skip" or "check"/,
+    );
+    expect(() => mirror.compileConfig({ prohibited, allowed: [], ignore: [] })).toThrow(
+      /"arbitraryValues" must be "skip" or "check"/,
     );
   });
 });

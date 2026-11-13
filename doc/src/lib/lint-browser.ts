@@ -35,7 +35,12 @@ export interface ProhibitedEntry {
   pattern: string;
   reason?: string;
   category?: string;
+  /** `"skip"` (default) passes `[...]` classes; `"check"` evaluates the bracket body */
+  arbitraryValues?: ArbitraryValuesMode;
 }
+
+/** Accepted values of `ProhibitedEntry.arbitraryValues` (mirrors config.ts). */
+export type ArbitraryValuesMode = "skip" | "check";
 
 /** A `prohibited` entry: a plain pattern string, or a structured object. */
 export type ProhibitedConfigEntry = string | ProhibitedEntry;
@@ -97,6 +102,8 @@ export interface CompiledRule {
   isSpacingRule: boolean;
   /** Rule-family tag from a structured `prohibited` entry (e.g. "sizing", "z-index") */
   category?: string;
+  /** Present (as `"check"`) only when the rule also evaluates arbitrary-value classes */
+  arbitraryValues?: "check";
 }
 
 export interface CompiledConfig {
@@ -232,6 +239,7 @@ export interface CompilePatternOptions {
   suggestionSuffix?: string;
   reason?: string;
   category?: string;
+  arbitraryValues?: ArbitraryValuesMode;
 }
 
 export function compilePattern(
@@ -242,7 +250,11 @@ export function compilePattern(
     typeof optionsOrSuffix === "string"
       ? { suggestionSuffix: optionsOrSuffix }
       : (optionsOrSuffix ?? {});
-  const { suggestionSuffix, reason, category } = options;
+  const { suggestionSuffix, reason, category, arbitraryValues } = options;
+  if (arbitraryValues !== undefined && arbitraryValues !== "skip" && arbitraryValues !== "check") {
+    throw new Error(`Invalid pattern "${pattern}": "arbitraryValues" must be "skip" or "check"`);
+  }
+  const arbitraryField = arbitraryValues === "check" ? { arbitraryValues: "check" as const } : {};
 
   const placeholderIndex = pattern.indexOf("{");
   if (placeholderIndex === -1) {
@@ -256,6 +268,7 @@ export function compilePattern(
       reasonTemplate: reason ?? `Prohibited class "{CLASS}"`,
       isSpacingRule: false,
       ...(category !== undefined ? { category } : {}),
+      ...arbitraryField,
     };
   }
 
@@ -295,6 +308,7 @@ export function compilePattern(
     reasonTemplate: reason ?? reasonTemplate,
     isSpacingRule,
     ...(category !== undefined ? { category } : {}),
+    ...arbitraryField,
   };
 }
 
@@ -308,6 +322,7 @@ export function compileConfig(config: LintConfig): CompiledConfig {
             suggestionSuffix: config.suggestionSuffix,
             reason: p.reason,
             category: p.category,
+            arbitraryValues: p.arbitraryValues,
           }),
     ),
     allowed: new Set(config.allowed),
@@ -1094,6 +1109,90 @@ function matchRule(
   return null;
 }
 
+/**
+ * Strip a trailing opacity modifier (`bg-[#123]/50`) without cutting a `/`
+ * inside the brackets (`z-[calc(var(--z)/2)]`). Mirrors src/rules.ts.
+ */
+function stripArbitraryOpacity(withoutNeg: string): string | null {
+  const close = withoutNeg.lastIndexOf("]");
+  if (close === -1) {
+    return null;
+  }
+  const rest = withoutNeg.slice(close + 1);
+  if (rest !== "" && !rest.startsWith("/")) {
+    return null;
+  }
+  return withoutNeg.slice(0, close + 1);
+}
+
+/**
+ * Evaluate an arbitrary-value class (`z-[70]`) against the rules that opted
+ * in with `arbitraryValues: "check"`. Mirrors `checkArbitraryClass` in
+ * src/rules.ts; uses this module's `isRawZIndex` copy of src/css-rules.ts.
+ */
+function checkArbitraryClass(
+  className: string,
+  withoutNeg: string,
+  config: CompiledConfig,
+): Violation | null {
+  const checkRules = config.rules.filter((rule) => rule.arbitraryValues === "check");
+  if (checkRules.length === 0) {
+    return null;
+  }
+  const normalized = stripArbitraryOpacity(withoutNeg);
+  if (normalized === null) {
+    return null;
+  }
+  if (config.allowed.has(normalized) || config.allowed.has(className)) {
+    return null;
+  }
+  for (const rule of checkRules) {
+    const violation = matchArbitraryRule(className, normalized, rule, config);
+    if (violation) {
+      return violation;
+    }
+  }
+  return null;
+}
+
+function matchArbitraryRule(
+  originalClassName: string,
+  normalized: string,
+  rule: CompiledRule,
+  config: CompiledConfig,
+): Violation | null {
+  if (rule.valuePattern.source === "^$") {
+    return normalized === rule.prefix || originalClassName === rule.prefix
+      ? buildViolation(originalClassName, rule, normalized, config.suggestions)
+      : null;
+  }
+
+  const open = rule.prefix + "-[";
+  if (!normalized.startsWith(open) || !normalized.endsWith("]")) {
+    return null;
+  }
+  const rawBody = normalized.slice(open.length, -1);
+  const body = rawBody.replace(/_/g, " ").trim();
+  const unsigned = body.replace(/^[+-]/, "");
+
+  if (config.allowed.has(`${rule.prefix}-${rawBody}`)) {
+    return null;
+  }
+  if (rule.isSpacingRule && unsigned === "0") {
+    return null;
+  }
+  if (/var\s*\(/i.test(body)) {
+    return null;
+  }
+  if (rule.isSpacingRule && isRawZIndex(body)) {
+    return buildViolation(originalClassName, rule, normalized, config.suggestions);
+  }
+  if (rule.valuePattern.test(unsigned)) {
+    return buildViolation(originalClassName, rule, normalized, config.suggestions);
+  }
+  return null;
+}
+
 export function checkClassWithConfig(
   className: string,
   config: CompiledConfig,
@@ -1121,9 +1220,10 @@ export function checkClassWithConfig(
   const slashIdx = withoutNeg.indexOf("/");
   const withoutOpacity = slashIdx >= 0 ? withoutNeg.slice(0, slashIdx) : withoutNeg;
 
-  // Skip arbitrary values like w-[28px], bg-[#123]
+  // Arbitrary values like w-[28px], bg-[#123] pass unless a rule opted in
+  // with `arbitraryValues: "check"` (see checkArbitraryClass).
   if (withoutOpacity.includes("[")) {
-    return null;
+    return checkArbitraryClass(className, withoutNeg, config);
   }
 
   // Check allowed list first: normalized form AND verbatim className, so a

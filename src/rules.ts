@@ -6,6 +6,7 @@
  */
 
 import { DEFAULT_CONFIG, compileConfig, type CompiledConfig, type CompiledRule } from './config.js';
+import { isRawZIndex } from './css-rules.js';
 
 export interface Violation {
   className: string;
@@ -70,9 +71,10 @@ export function checkClassWithConfig(className: string, config: CompiledConfig):
   const slashIdx = withoutNeg.indexOf('/');
   const withoutOpacity = slashIdx >= 0 ? withoutNeg.slice(0, slashIdx) : withoutNeg;
 
-  // Skip arbitrary values like w-[28px], bg-[#123]
+  // Arbitrary values like w-[28px], bg-[#123] pass unless a rule opted in
+  // with `arbitraryValues: "check"` (see checkArbitraryClass).
   if (withoutOpacity.includes('[')) {
-    return null;
+    return checkArbitraryClass(className, withoutNeg, config);
   }
 
   // Check allowed list first. Match against the normalized form (so bare
@@ -103,6 +105,98 @@ export function checkClassWithConfig(className: string, config: CompiledConfig):
     }
   }
 
+  return null;
+}
+
+/**
+ * Strip a trailing opacity modifier (`bg-[#123]/50`) from an arbitrary-value
+ * class without cutting a `/` that sits inside the brackets
+ * (`z-[calc(var(--z)/2)]`). Returns null when anything other than an
+ * opacity modifier follows the closing bracket.
+ */
+function stripArbitraryOpacity(withoutNeg: string): string | null {
+  const close = withoutNeg.lastIndexOf(']');
+  if (close === -1) {
+    return null;
+  }
+  const rest = withoutNeg.slice(close + 1);
+  if (rest !== '' && !rest.startsWith('/')) {
+    return null;
+  }
+  return withoutNeg.slice(0, close + 1);
+}
+
+/**
+ * Evaluate a class carrying an arbitrary value (`z-[70]`, `-z-[1]`,
+ * `hover:z-[60]`) against the rules that opted in with
+ * `arbitraryValues: "check"`. Every other rule keeps skipping it, so with no
+ * opted-in rule this returns null exactly as the old blanket `[` skip did.
+ */
+function checkArbitraryClass(
+  className: string,
+  withoutNeg: string,
+  config: CompiledConfig,
+): Violation | null {
+  const checkRules = config.rules.filter((rule) => rule.arbitraryValues === 'check');
+  if (checkRules.length === 0) {
+    return null;
+  }
+  const normalized = stripArbitraryOpacity(withoutNeg);
+  if (normalized === null) {
+    return null;
+  }
+  if (config.allowed.has(normalized) || config.allowed.has(className)) {
+    return null;
+  }
+  for (const rule of checkRules) {
+    const violation = matchArbitraryRule(className, normalized, rule, config);
+    if (violation) {
+      return violation;
+    }
+  }
+  return null;
+}
+
+function matchArbitraryRule(
+  originalClassName: string,
+  normalized: string,
+  rule: CompiledRule,
+  config: CompiledConfig,
+): Violation | null {
+  if (rule.valuePattern.source === '^$') {
+    return normalized === rule.prefix || originalClassName === rule.prefix
+      ? buildViolation(originalClassName, rule, normalized, config.suggestions)
+      : null;
+  }
+
+  const open = rule.prefix + '-[';
+  if (!normalized.startsWith(open) || !normalized.endsWith(']')) {
+    return null;
+  }
+  const rawBody = normalized.slice(open.length, -1);
+  // Tailwind arbitrary values spell spaces as underscores.
+  const body = rawBody.replace(/_/g, ' ').trim();
+  const unsigned = body.replace(/^[+-]/, '');
+
+  // z-[5] follows an allowed "z-5"; z-[0] follows the rule's own "0" bypass.
+  if (config.allowed.has(`${rule.prefix}-${rawBody}`)) {
+    return null;
+  }
+  if (rule.isSpacingRule && unsigned === '0') {
+    return null;
+  }
+  // A token reference (also inside calc()) is the sanctioned spelling.
+  if (/var\s*\(/i.test(body)) {
+    return null;
+  }
+  // Shared with css.zIndex so the class rule and the CSS rule agree on
+  // raw integers and token-less calc().
+  if (rule.isSpacingRule && isRawZIndex(body)) {
+    return buildViolation(originalClassName, rule, normalized, config.suggestions);
+  }
+  if (rule.valuePattern.test(unsigned)) {
+    return buildViolation(originalClassName, rule, normalized, config.suggestions);
+  }
   return null;
 }
 

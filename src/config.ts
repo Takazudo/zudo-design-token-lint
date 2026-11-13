@@ -160,6 +160,21 @@ export interface ProhibitedEntry {
   pattern: string;
   reason?: string;
   category?: string;
+  /**
+   * Whether arbitrary-value classes (`z-[70]`) are in scope for this rule.
+   * `"skip"` (default) keeps the long-standing behaviour of passing every
+   * class containing `[`; `"check"` evaluates the bracket body as the value.
+   */
+  arbitraryValues?: ArbitraryValuesMode;
+}
+
+/** Accepted values of `ProhibitedEntry.arbitraryValues`. */
+export type ArbitraryValuesMode = 'skip' | 'check';
+
+const ARBITRARY_VALUES_MODES: readonly unknown[] = ['skip', 'check'];
+
+function isArbitraryValuesMode(value: unknown): value is ArbitraryValuesMode {
+  return ARBITRARY_VALUES_MODES.includes(value);
 }
 
 /** A `prohibited`/`prohibitedAdd` entry: a plain pattern string, or a structured object. */
@@ -359,6 +374,8 @@ export const CONFIG_PRESETS: Record<string, ConfigPreset> = {
         pattern: 'z-{n}',
         reason: 'Numeric z-index "{CLASS}" — use a semantic z tier token',
         category: 'z-index',
+        // z-[70] is the most likely spelling of a raw stacking value (issue #187)
+        arbitraryValues: 'check',
       },
     ],
     allowed: ['z-0'],
@@ -381,6 +398,8 @@ export interface CompiledRule {
   isSpacingRule: boolean;
   /** Optional rule-family tag from a structured `prohibited` entry (e.g. "sizing", "z-index") */
   category?: string;
+  /** Present (as `"check"`) only when the rule also evaluates arbitrary-value classes like `z-[70]` */
+  arbitraryValues?: 'check';
 }
 
 /**
@@ -395,6 +414,8 @@ export interface CompilePatternOptions {
   reason?: string;
   /** Rule-family tag carried onto the compiled rule and, on a match, onto `Violation.category` */
   category?: string;
+  /** `"check"` brings arbitrary-value classes (`z-[70]`) into the rule's scope; default `"skip"` */
+  arbitraryValues?: ArbitraryValuesMode;
 }
 
 // Matches the placeholders compilePattern understands inside a value part.
@@ -485,7 +506,11 @@ export function compilePattern(
     typeof optionsOrSuffix === 'string'
       ? { suggestionSuffix: optionsOrSuffix }
       : (optionsOrSuffix ?? {});
-  const { suggestionSuffix, reason, category } = options;
+  const { suggestionSuffix, reason, category, arbitraryValues } = options;
+  if (arbitraryValues !== undefined && !isArbitraryValuesMode(arbitraryValues)) {
+    throw new Error(`Invalid pattern "${pattern}": "arbitraryValues" must be "skip" or "check"`);
+  }
+  const arbitraryField = arbitraryValues === 'check' ? { arbitraryValues: 'check' as const } : {};
 
   // Find the first placeholder
   const placeholderIndex = pattern.indexOf('{');
@@ -505,6 +530,7 @@ export function compilePattern(
       reasonTemplate: reason ?? `Prohibited class "{CLASS}"`,
       isSpacingRule: false,
       ...(category !== undefined ? { category } : {}),
+      ...arbitraryField,
     };
   }
 
@@ -546,6 +572,7 @@ export function compilePattern(
     reasonTemplate: reason ?? reasonTemplate,
     isSpacingRule,
     ...(category !== undefined ? { category } : {}),
+    ...arbitraryField,
   };
 }
 
@@ -638,6 +665,7 @@ export function compileConfig(config: LintConfig): CompiledConfig {
             suggestionSuffix: config.suggestionSuffix,
             reason: p.reason,
             category: p.category,
+            arbitraryValues: p.arbitraryValues,
           }),
     ),
     allowed: new Set(allowed),
@@ -670,7 +698,7 @@ const STRING_ARRAY_FIELDS = [
 ] as const;
 
 // Config fields whose value, when present, must be an array of strings and/or
-// structured `{pattern, reason?, category?}` objects.
+// structured `{pattern, reason?, category?, arbitraryValues?}` objects.
 const PROHIBITED_ARRAY_FIELDS = ['prohibited', 'prohibitedAdd'] as const;
 
 // Top-level config fields whose value, when present, must be a boolean.
@@ -692,6 +720,9 @@ function isProhibitedEntry(value: unknown): value is ProhibitedEntry {
     return false;
   }
   if (obj.category !== undefined && typeof obj.category !== 'string') {
+    return false;
+  }
+  if (obj.arbitraryValues !== undefined && !isArbitraryValuesMode(obj.arbitraryValues)) {
     return false;
   }
   return true;
@@ -721,10 +752,26 @@ function validateConfigFields(parsed: Record<string, unknown>, filename: string)
   }
   for (const field of PROHIBITED_ARRAY_FIELDS) {
     const value = parsed[field];
+    if (Array.isArray(value)) {
+      value.forEach((entry, index) => {
+        if (
+          typeof entry === 'object' &&
+          entry !== null &&
+          !Array.isArray(entry) &&
+          (entry as Record<string, unknown>).arbitraryValues !== undefined &&
+          !isArbitraryValuesMode((entry as Record<string, unknown>).arbitraryValues)
+        ) {
+          throw new ConfigError(
+            `Invalid config ${filename}: "${field}[${index}].arbitraryValues" must be ` +
+              '"skip" or "check"',
+          );
+        }
+      });
+    }
     if (value !== undefined && !isProhibitedArray(value)) {
       throw new ConfigError(
         `Invalid config ${filename}: "${field}" must be an array of strings or ` +
-          '{pattern, reason?, category?} objects',
+          '{pattern, reason?, category?, arbitraryValues?} objects',
       );
     }
   }
