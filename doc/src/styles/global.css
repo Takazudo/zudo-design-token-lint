@@ -19,9 +19,9 @@
  * in @takazudo/zudo-doc/theme.css live below — theme.css now covers the
  * full color/spacing/typography/radius/breakpoint/z-index token set, the
  * :root scale tokens, and the base rules (selection, focus ring, search
- * highlight, version-switcher visibility, find-in-page highlight) that used
- * to be hand-carried here verbatim from the pre-4.x site. See the doc
- * rescaffold PR body for the full ported/discarded audit.
+ * highlight, version-switcher visibility) that used to be hand-carried here
+ * verbatim from the pre-4.x site. See the doc rescaffold PR body for the full
+ * ported/discarded audit.
  * ======================================== */
 
 :root {

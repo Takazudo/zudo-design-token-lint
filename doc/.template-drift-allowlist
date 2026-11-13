@@ -5,10 +5,12 @@
 # Format: one repo-relative path per line (no leading slash).
 # Blank lines and `#` comments are ignored.
 #
-# Re-baselined against create-zudo-doc 10.0.3 (the version pinned in
-# doc/package.json's devDependencies) after the zudo-doc 6→10 / zfb 4→6 port
-# (issue #197): tsconfig.json now matches the template byte-for-byte (the
-# React→Preact compat paths are gone), so it needs no entry. The drift check
+# Re-baselined against create-zudo-doc 11.0.0 (the version pinned in
+# doc/package.json's devDependencies) for the zudo-doc 10→11 bump (issue
+# #205); the entries below date from the zudo-doc 6→10 / zfb 4→6 port (issue
+# #197) and still hold, because 11.0.0's templates/base and
+# templates/features/i18n are byte-identical to 10.0.3. tsconfig.json matches
+# the template byte-for-byte, so it needs no entry. The drift check
 # (scripts/check-template-drift.sh) only walks
 # node_modules/create-zudo-doc/templates/{base,features}; top-level identity
 # files (zfb.config.ts, wrangler.toml, package.json, setup-preset.json) have
