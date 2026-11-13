@@ -187,6 +187,7 @@ interface ProhibitedEntry {
   pattern: string;
   reason?: string; // full reason override — supports "{CLASS}"
   category?: string; // rule-family tag, surfaced on Violation.category when this rule matches
+  arbitraryValues?: 'skip' | 'check'; // default "skip"; "check" also evaluates z-[70]-style classes
 }
 
 type ProhibitedConfigEntry = string | ProhibitedEntry;
@@ -207,6 +208,8 @@ const compiled = compileConfig({
 checkClassWithConfig('w-4', compiled);
 // { className: 'w-4', reason: 'Numeric width "w-4" — use a semantic sizing token or arbitrary value', category: 'sizing' }
 ```
+
+`arbitraryValues: "check"` brings arbitrary-value classes such as `z-[70]` into that rule's scope (default `"skip"` keeps passing every `[...]` class); the built-in `z-index` preset sets it. `Violation` keeps the same shape for these matches — `className` is the original class. See [`arbitraryValues`](../../guide/configuration/index.mdx#fields-prohibited-arbitraryvalues) for the exact pass/flag rules.
 
 ### `setConfig(compiled)` / `getConfig()`
 
@@ -233,6 +236,7 @@ interface CompilePatternOptions {
   suggestionSuffix?: string; // tweaks the shape-inferred default reason (spacing/color patterns only)
   reason?: string; // full reason override — supports "{CLASS}"; wins over suggestionSuffix
   category?: string; // rule-family tag carried onto CompiledRule.category and, on a match, Violation.category
+  arbitraryValues?: 'skip' | 'check'; // "check" sets CompiledRule.arbitraryValues
 }
 
 const rule = compilePattern('w-{n}', {
@@ -479,6 +483,7 @@ interface ProhibitedEntry {
   pattern: string;
   reason?: string;
   category?: string;
+  arbitraryValues?: 'skip' | 'check';
 }
 
 type ProhibitedConfigEntry = string | ProhibitedEntry;
@@ -491,6 +496,7 @@ interface CompilePatternOptions {
   suggestionSuffix?: string;
   reason?: string;
   category?: string;
+  arbitraryValues?: 'skip' | 'check';
 }
 ```
 
@@ -502,7 +508,7 @@ const CONFIG_PRESETS: Record<string, ConfigPreset>;
 // { default: { prohibited: [...], allowed: [...] }, "z-index": { prohibited: [...], allowed: ["z-0"] } }
 ```
 
-`CONFIG_PRESETS` is the registry consulted by `extends`. The built-in `"z-index"` preset (opt-in, not part of `DEFAULT_CONFIG`) flags `z-{n}` classes with a z-index-specific reason — use `extends: ["default", "z-index"]` to layer it on top of the defaults.
+`CONFIG_PRESETS` is the registry consulted by `extends`. The built-in `"z-index"` preset (opt-in, not part of `DEFAULT_CONFIG`) flags `z-{n}` classes — including arbitrary-value spellings like `z-[70]`, via `arbitraryValues: "check"` — with a z-index-specific reason — use `extends: ["default", "z-index"]` to layer it on top of the defaults.
 
 ### `ExtractorOptions`
 

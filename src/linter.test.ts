@@ -394,3 +394,44 @@ describe('lintContent — ignore hygiene: requireIgnoreReason / reportUnusedIgno
     }
   });
 });
+
+describe('lintContent — arbitrary z-index classes (issue #187 reproduction)', () => {
+  afterEach(() => {
+    setConfig(compileConfig(DEFAULT_CONFIG));
+  });
+
+  it('reports z-[1], p-7 and gap-y-4 on the inner line of a className brace block', () => {
+    setConfig(
+      compileConfig({
+        ignore: [],
+        prohibited: [
+          ...DEFAULT_CONFIG.prohibited,
+          {
+            pattern: 'z-{n}',
+            reason: 'Raw z-index utility "{CLASS}" — use a semantic z-index token',
+            category: 'z-index',
+            arbitraryValues: 'check',
+          },
+        ],
+        allowed: ['z-0'],
+      }),
+    );
+    const content = [
+      'export function Card() {',
+      '  return (',
+      '    <div',
+      '      className={',
+      "        'absolute inset-0 z-[1] p-7 gap-y-4'",
+      '      }',
+      '    />',
+      '  );',
+      '}',
+    ].join('\n');
+    const results = lintContent('card.tsx', content);
+    expect(results.map((r) => [r.className, r.line])).toEqual([
+      ['z-[1]', 5],
+      ['p-7', 5],
+      ['gap-y-4', 5],
+    ]);
+  });
+});

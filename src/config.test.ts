@@ -355,7 +355,7 @@ describe('structured prohibited entries — object {pattern, reason?, category?}
       );
       await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
       await expect(loadConfig(dir)).rejects.toThrow(
-        /"prohibited" must be an array of strings or \{pattern, reason\?, category\?\} objects/,
+        /"prohibited" must be an array of strings or \{pattern, reason\?, category\?, arbitraryValues\?\} objects/,
       );
     }, 'dtl-test-prohibited-bad-');
   });
@@ -792,6 +792,7 @@ describe('"z-index" preset (decision D3, issue #128)', () => {
           pattern: 'z-{n}',
           reason: 'Numeric z-index "{CLASS}" — use a semantic z tier token',
           category: 'z-index',
+          arbitraryValues: 'check',
         },
       ],
       allowed: ['z-0'],
@@ -1116,5 +1117,56 @@ describe('requireIgnoreReason / reportUnusedIgnores config (issue #132)', () => 
       );
       await expect(loadConfig(dir)).rejects.toThrow(/"reportUnusedIgnores" must be a boolean/);
     }, 'dtl-test-hygiene-bad2-');
+  });
+});
+
+describe('arbitraryValues on structured prohibited entries (issue #187)', () => {
+  it('compilePattern carries arbitraryValues only when it is "check"', () => {
+    expect(compilePattern('z-{n}', { arbitraryValues: 'check' }).arbitraryValues).toBe('check');
+    expect(compilePattern('z-{n}', { arbitraryValues: 'skip' })).not.toHaveProperty(
+      'arbitraryValues',
+    );
+    expect(compilePattern('z-{n}')).not.toHaveProperty('arbitraryValues');
+  });
+
+  it('compilePattern rejects an unknown arbitraryValues mode', () => {
+    expect(() => compilePattern('z-{n}', { arbitraryValues: 'yes' as unknown as 'check' })).toThrow(
+      /"arbitraryValues" must be "skip" or "check"/,
+    );
+  });
+
+  it.each(['check', 'skip'])('loadConfig accepts arbitraryValues: %s', async (mode) => {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({
+          prohibited: [{ pattern: 'z-{n}', arbitraryValues: mode }],
+          prohibitedAdd: [{ pattern: 'p-{n}', arbitraryValues: mode }],
+          ignore: [],
+        }),
+      );
+      const config = await loadConfig(dir);
+      const compiled = compileConfig(config);
+      const flagged = checkClassWithConfig('z-[70]', compiled) !== null;
+      expect(flagged).toBe(mode === 'check');
+    }, 'dtl-test-arbitrary-ok-');
+  });
+
+  it.each([
+    ['prohibited', true],
+    ['prohibited', 'yes'],
+    ['prohibited', 1],
+    ['prohibitedAdd', 'yes'],
+  ])('loadConfig rejects %s[0].arbitraryValues = %j, naming the field', async (field, value) => {
+    await withTempDir(async (dir) => {
+      await writeFile(
+        join(dir, '.design-token-lint.json'),
+        JSON.stringify({ [field]: [{ pattern: 'z-{n}', arbitraryValues: value }], ignore: [] }),
+      );
+      await expect(loadConfig(dir)).rejects.toThrow(ConfigError);
+      await expect(loadConfig(dir)).rejects.toThrow(
+        `"${field}[0].arbitraryValues" must be "skip" or "check"`,
+      );
+    }, 'dtl-test-arbitrary-bad-');
   });
 });

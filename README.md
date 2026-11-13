@@ -122,7 +122,7 @@ Inherit `prohibited`/`allowed` patterns from one or more built-in presets instea
 }
 ```
 
-Two presets are registered: `default` (this package's built-in `prohibited`/`allowed` lists) and `z-index` (opt-in numeric z-index ban — flags `z-{n}`, allows `z-0`). Presets never auto-compose with `default` — list it explicitly if you want the defaults plus another preset. `prohibitedAdd`/`allowedAdd` append extra entries on top of whatever `extends` (or the built-in default) resolved to, without re-listing the full pattern list. An unknown preset name is a config error. See the [Configuration doc page](https://zudo-design-token-lint.takazudomodular.com/docs/guide/configuration/#fields-extends) for the full merge semantics.
+Two presets are registered: `default` (this package's built-in `prohibited`/`allowed` lists) and `z-index` (opt-in numeric z-index ban — flags `z-{n}` and arbitrary-value spellings like `z-[70]`, allows `z-0`). Presets never auto-compose with `default` — list it explicitly if you want the defaults plus another preset. `prohibitedAdd`/`allowedAdd` append extra entries on top of whatever `extends` (or the built-in default) resolved to, without re-listing the full pattern list. An unknown preset name is a config error. See the [Configuration doc page](https://zudo-design-token-lint.takazudomodular.com/docs/guide/configuration/#fields-extends) for the full merge semantics.
 
 #### Structured `prohibited` entries
 
@@ -142,6 +142,8 @@ Instead of a plain string, a `prohibited`/`prohibitedAdd` entry can be an object
 ```
 
 `category` (e.g. `"sizing"`, `"z-index"`) is copied onto the resulting `Violation.category` when the rule matches, so tooling can group or filter by rule family. The default config's numeric sizing-scale ban (`w-{n}`, `h-{n}`, `size-{n}`, `min-w-{n}`, `max-w-{n}`, `min-h-{n}`, `max-h-{n}`, `basis-{n}`) uses this shape with `category: "sizing"`; fraction (`w-1/2`), arbitrary-value (`w-[32px]`), and zero (`w-0`) forms still pass. Plain string entries never produce a `category`.
+
+`arbitraryValues` (`"skip"` by default, or `"check"`) decides whether arbitrary-value classes are in scope for the rule. By default every class containing `[` passes — for spacing and color the bracket form is the deliberate escape hatch. With `"check"`, the bracket body is evaluated as the value: `z-[70]`, `-z-[1]`, `hover:z-[60]` and token-less `z-[calc(70+1)]` are flagged, while `z-[var(--z-modal)]`, `z-[calc(var(--z-modal)+1)]`, `z-[auto]` and `z-[0]` pass, and the bracket form follows `allowed` (`z-[5]` passes when `z-5` or `z-[5]` is allowed). The `var()`/`calc()` classification is shared with the CSS `zIndex` rule. The `z-index` preset sets `"check"`. See the [Configuration doc page](https://zudo-design-token-lint.takazudomodular.com/docs/guide/configuration/#fields-prohibited-arbitraryvalues) for the full table.
 
 #### `suggestions`
 
@@ -236,7 +238,7 @@ This turns `Numeric spacing "p-4" — use a semantic spacing token or arbitrary 
 - **Design system colors**: `bg-surface`, `text-fg`, `bg-zd-black` (any non-default color name)
 - **Zero, for any numeric spacing/sizing rule**: `p-0`, `mt-0`, `px-0`, `inset-0`, `w-0`, `gap-0`, etc. — not just the handful of `0`-suffixed classes listed in `allowed`
 - **Non-numeric spacing-shaped values**: `p-1px`, `mt-1px`, etc. — these never match the numeric `{n}` pattern in the first place, so no `allowed` entry is needed
-- **Arbitrary values**: `w-[28px]`, `bg-[#123]`, `p-[10px]`
+- **Arbitrary values**: `w-[28px]`, `bg-[#123]`, `p-[10px]` — unless the matching rule opts in with `arbitraryValues: "check"`, as the `z-index` preset does (`z-[70]` is flagged)
 - **Non-spacing/color utilities**: `flex`, `grid`, `hidden`, `w-full`, `font-bold`, etc.
 - **Explicit allowlist**: Anything in your config's `allowed` array
 

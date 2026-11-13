@@ -773,3 +773,119 @@ describe('checkClass', () => {
     });
   });
 });
+
+describe('arbitraryValues: "check" (issue #187)', () => {
+  const zIndexConfig = compileConfig({ ignore: [], extends: ['default', 'z-index'] });
+
+  it.each([
+    'z-[70]',
+    'z-[1]',
+    'z-[9999]',
+    '-z-[1]',
+    'z-[-1]',
+    'hover:z-[60]',
+    'md:hover:z-[5]',
+    'data-[state=open]:z-[70]',
+    '!z-[70]',
+    'z-[70]!',
+    'z-[calc(70+1)]',
+    'z-[calc(70_+_1)]',
+    'z-[calc(10/2)]',
+    'z-10',
+  ])('z-index preset flags %s with category z-index', (cls) => {
+    const result = checkClassWithConfig(cls, zIndexConfig);
+    expect(result).not.toBeNull();
+    expect(result!.className).toBe(cls);
+    expect(result!.category).toBe('z-index');
+    expect(result!.reason).toBe(`Numeric z-index "${cls}" — use a semantic z tier token`);
+  });
+
+  it.each([
+    'z-[0]',
+    'z-[var(--z-index-content)]',
+    'z-[calc(var(--z-index-dialog-panel)+1)]',
+    'z-[calc(var(--z)/2)]',
+    'z-[auto]',
+    'z-[inherit]',
+    'z-(--z-modal)',
+    'z-0',
+    'p-[12px]',
+    'w-[28px]',
+    'bg-[#123]',
+  ])('z-index preset passes %s', (cls) => {
+    expect(checkClassWithConfig(cls, zIndexConfig)).toBeNull();
+  });
+
+  it('z-[5] passes when "z-[5]" is in allowed, z-[6] is still flagged', () => {
+    const compiled = compileConfig({
+      ignore: [],
+      extends: ['default', 'z-index'],
+      allowedAdd: ['z-[5]'],
+    });
+    expect(checkClassWithConfig('z-[5]', compiled)).toBeNull();
+    expect(checkClassWithConfig('hover:z-[5]', compiled)).toBeNull();
+    expect(checkClassWithConfig('z-[6]', compiled)).not.toBeNull();
+  });
+
+  it('z-[5] passes when "z-5" is in allowed', () => {
+    const compiled = compileConfig({
+      ignore: [],
+      extends: ['default', 'z-index'],
+      allowedAdd: ['z-5'],
+    });
+    expect(checkClassWithConfig('z-[5]', compiled)).toBeNull();
+  });
+
+  describe('without the flag nothing changes', () => {
+    const arbitrary = ['p-[12px]', 'w-[28px]', 'bg-[#123]', 'z-[70]', 'p-[4]'];
+    const configs: Array<[string, LintConfig]> = [
+      ['default config', DEFAULT_CONFIG],
+      ['plain "z-{n}" string entry', { prohibited: ['z-{n}', 'p-{n}'], allowed: [], ignore: [] }],
+      ['prohibitedAdd: ["z-{n}"]', { ignore: [], prohibitedAdd: ['z-{n}'] }],
+      [
+        'structured entry with arbitraryValues: "skip"',
+        { prohibited: [{ pattern: 'z-{n}', arbitraryValues: 'skip' }], allowed: [], ignore: [] },
+      ],
+    ];
+    describe.each(configs)('%s', (_name, config) => {
+      const compiled = compileConfig(config);
+      it.each(arbitrary)('%s passes', (cls) => {
+        expect(checkClassWithConfig(cls, compiled)).toBeNull();
+      });
+    });
+  });
+
+  describe('{ pattern: "p-{n}", arbitraryValues: "check" }', () => {
+    const compiled = compileConfig({
+      prohibited: [{ pattern: 'p-{n}', arbitraryValues: 'check' }],
+      allowed: [],
+      ignore: [],
+    });
+    it('flags p-[4]', () => {
+      expect(checkClassWithConfig('p-[4]', compiled)).not.toBeNull();
+    });
+    it.each(['p-[12px]', 'p-[var(--gap)]', 'p-[0]', 'px-[4]'])('passes %s', (cls) => {
+      expect(checkClassWithConfig(cls, compiled)).toBeNull();
+    });
+  });
+
+  it('only the opted-in rule sees bracket classes', () => {
+    const compiled = compileConfig({
+      prohibited: ['p-{n}', { pattern: 'z-{n}', arbitraryValues: 'check' }],
+      allowed: [],
+      ignore: [],
+    });
+    expect(checkClassWithConfig('p-[4]', compiled)).toBeNull();
+    expect(checkClassWithConfig('z-[4]', compiled)).not.toBeNull();
+  });
+
+  it('a color rule with "check" flags bg-[red-500] style bodies and ignores the opacity modifier', () => {
+    const compiled = compileConfig({
+      prohibited: [{ pattern: 'bg-{color}-{shade}', arbitraryValues: 'check' }],
+      allowed: [],
+      ignore: [],
+    });
+    expect(checkClassWithConfig('bg-[#123]/50', compiled)).toBeNull();
+    expect(checkClassWithConfig('bg-[red-500]/50', compiled)).not.toBeNull();
+  });
+});
