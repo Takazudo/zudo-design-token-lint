@@ -21,4 +21,4 @@ minimumReleaseAgeExclude:
   - '@takazudo/zfb-linux-arm64-gnu@6.0.1'
   - '@takazudo/zfb-linux-x64-gnu@6.0.1'
   - '@takazudo/zfb-win32-x64-msvc@6.0.1'
-  - '@takazudo/zdtp@0.9.5'
+  - '@takazudo/zdtp@0.9.7'
