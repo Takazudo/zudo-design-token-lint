@@ -105,9 +105,10 @@ and rotted links — not logic bugs.
 | 3   | Pin parity check            | Pin Parity Check           |
 | 4   | Wrangler pin check          | (part of Type Check job)   |
 | 5   | Type checking (`zfb check`) | Type Check                 |
-| 6   | Build (`zfb build`)         | Build Site                 |
-| 7   | HTML validation             | HTML validate              |
-| 8   | Link check                  | Build Site (`check:links`) |
+| 6   | zudo-wind audit             | (part of Type Check job)   |
+| 7   | Build (`zfb build`)         | Build Site                 |
+| 8   | HTML validation             | HTML validate              |
+| 9   | Link check                  | Build Site (`check:links`) |
 
 `b4push` is the **T4 local convenience lane** (bounded, run before pushing);
 `doc-preview.yml` is the **T1 enforced gate** that actually blocks a PR.
@@ -124,7 +125,10 @@ extra test layer.
   **wrangler pin check** (keep `@takazudo/zfb`/zudo-doc and the pinned
   `wrangler` version in lockstep — a stale pin would silently break local
   `zfb dev`/`preview`). These are specific to this repo's zfb/zudo-doc
-  toolchain, not part of the generic archetype.
+  toolchain, not part of the generic archetype. A **zudo-wind audit**
+  (`zfb wind audit --fail-on error`, after the type check) fails the gate on
+  error-level utility diagnostics such as an unknown token or an unconfigured
+  breakpoint; informational findings do not fail it.
 - **The full link check runs on every PR, not deferred to `main`.** The
   archetype suggests running the exhaustive link crawl on `main` and keeping
   PRs cheaper; here `check:links` runs unconditionally in the `build-site`
